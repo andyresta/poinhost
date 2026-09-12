@@ -118,6 +118,10 @@ export function EnableWebsiteSSL(arg1, arg2) {
   return window['go']['main']['App']['EnableWebsiteSSL'](arg1, arg2);
 }
 
+export function EnableWebsiteSSLAutoRenew(arg1, arg2) {
+  return window['go']['main']['App']['EnableWebsiteSSLAutoRenew'](arg1, arg2);
+}
+
 export function ExportWebsiteDNSZone(arg1, arg2) {
   return window['go']['main']['App']['ExportWebsiteDNSZone'](arg1, arg2);
 }
