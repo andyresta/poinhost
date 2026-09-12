@@ -286,6 +286,38 @@ export function OpenTerminal(arg1) {
   return window['go']['main']['App']['OpenTerminal'](arg1);
 }
 
+export function PGExploreDeleteRow(arg1) {
+  return window['go']['main']['App']['PGExploreDeleteRow'](arg1);
+}
+
+export function PGExploreExecuteQuery(arg1) {
+  return window['go']['main']['App']['PGExploreExecuteQuery'](arg1);
+}
+
+export function PGExploreInsertRow(arg1) {
+  return window['go']['main']['App']['PGExploreInsertRow'](arg1);
+}
+
+export function PGExploreListColumns(arg1, arg2) {
+  return window['go']['main']['App']['PGExploreListColumns'](arg1, arg2);
+}
+
+export function PGExploreListDatabases(arg1) {
+  return window['go']['main']['App']['PGExploreListDatabases'](arg1);
+}
+
+export function PGExploreListTables(arg1) {
+  return window['go']['main']['App']['PGExploreListTables'](arg1);
+}
+
+export function PGExploreTableRows(arg1) {
+  return window['go']['main']['App']['PGExploreTableRows'](arg1);
+}
+
+export function PGExploreUpdateRow(arg1) {
+  return window['go']['main']['App']['PGExploreUpdateRow'](arg1);
+}
+
 export function ReadFileContent(arg1, arg2, arg3) {
   return window['go']['main']['App']['ReadFileContent'](arg1, arg2, arg3);
 }

@@ -47,9 +47,10 @@ type ServerExport struct {
 	UseSudo    bool     `json:"useSudo"`
 }
 
-// DBCredentialExport satu kredensial database MySQL tersimpan (lihat
-// internal/modules/website/dbcreds.go) — Password diambil dari vault lokal
-// mesin sumber, akan disimpan lagi ke vault lokal mesin tujuan saat import.
+// DBCredentialExport satu kredensial database (MySQL atau PostgreSQL)
+// tersimpan (lihat internal/modules/website/dbcreds.go) — Password diambil
+// dari vault lokal mesin sumber, akan disimpan lagi ke vault lokal mesin
+// tujuan saat import.
 type DBCredentialExport struct {
 	ServerID string `json:"serverId"`
 	Engine   string `json:"engine"`
