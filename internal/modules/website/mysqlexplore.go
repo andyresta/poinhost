@@ -64,11 +64,17 @@ type MySQLTableRowsRequest struct {
 	Offset   int    `json:"offset"`
 	OrderBy  string `json:"orderBy,omitempty"`
 	OrderDir string `json:"orderDir,omitempty"` // "asc" | "desc"
+	// SkipTotal: lewati SELECT COUNT(*) (mahal untuk tabel besar — full
+	// scan index klaster InnoDB) kalau frontend sudah punya total dari
+	// panggilan sebelumnya dan tidak butuh hitung ulang, mis. sekadar
+	// pindah halaman di tabel yang sama. Total di hasil bernilai -1 kalau
+	// ini true (sentinel "tidak dihitung ulang, pakai nilai lama").
+	SkipTotal bool `json:"skipTotal,omitempty"`
 }
 
 // MySQLTableRowsResult satu halaman baris — nilai NULL asli direpresentasi
 // sebagai pointer nil (bukan string "NULL"), supaya UI bisa membedakannya
-// dari string kosong.
+// dari string kosong. Total bernilai -1 kalau request minta SkipTotal.
 type MySQLTableRowsResult struct {
 	Columns []string    `json:"columns"`
 	Rows    [][]*string `json:"rows"`
@@ -478,9 +484,11 @@ func (s *Service) MySQLExploreTableRows(req MySQLTableRowsRequest) (*MySQLTableR
 
 	qualified := quoteMySQLIdent(req.Database) + "." + quoteMySQLIdent(req.Table)
 
-	result := &MySQLTableRowsResult{}
-	if err := db.QueryRow("SELECT COUNT(*) FROM " + qualified).Scan(&result.Total); err != nil {
-		return nil, errFmt("hitung total baris: %v", err)
+	result := &MySQLTableRowsResult{Total: -1}
+	if !req.SkipTotal {
+		if err := db.QueryRow("SELECT COUNT(*) FROM " + qualified).Scan(&result.Total); err != nil {
+			return nil, errFmt("hitung total baris: %v", err)
+		}
 	}
 
 	orderClause := ""

@@ -1139,6 +1139,45 @@ dial bersamaan) punya test tersendiri di
 satu-satunya modul di proyek ini yang punya test unit sejauh ini, sengaja
 ditambahkan karena bagian ini genuinely concurrency-sensitive.
 
+### Lanjutan koreksi: pengalaman "senyaman tools desktop MySQL sungguhan"
+
+Setelah koneksinya sendiri tidak lagi dial ulang per klik, giliran pola
+pemanggilan di frontend yang diaudit — permintaan eksplisitnya adalah
+performa & efisiensi seperti Navicat, bukan cuma "tidak ada handshake
+berlebih". Ditemukan frontend (`MySQLExplorerModal.tsx`) masih mengulang
+kerja yang tidak perlu di setiap interaksi, walau koneksinya sendiri
+sudah dipakai ulang:
+
+- **`SELECT COUNT(*)` dihitung ulang di SETIAP pindah halaman & setiap
+  edit satu sel** — padahal jumlah baris tidak berubah oleh keduanya.
+  Untuk tabel InnoDB besar, `COUNT(*)` tetap harus scan index klaster
+  penuh (tidak instan seperti MyISAM), jadi ini nyata-nyata lambat kalau
+  diulang tiap klik. Diperbaiki: `MySQLTableRowsRequest.SkipTotal` —
+  paginasi & edit-sel kirim `skipTotal: true` (pakai angka total yang
+  sudah ada), hanya insert/delete (yang MEMANG mengubah jumlah baris) dan
+  buka tabel pertama kali yang minta hitung ulang.
+- **Struktur kolom (`information_schema.columns`) diambil ulang di
+  SETIAP pindah halaman & setiap edit/insert/delete satu baris** —
+  padahal struktur tabel tidak berubah oleh operasi-operasi itu.
+  Diperbaiki: `openTable` (dipanggil HANYA saat benar-benar pindah ke
+  tabel lain) satu-satunya titik yang mengambil kolom; `loadRows`
+  (paginasi + refresh sesudah mutasi) tidak menyentuhnya sama sekali.
+- **Klik database/tabel yang SUDAH terbuka tetap memicu round-trip
+  baru** (daftar tabel / kolom+baris) — sekarang di-skip kalau targetnya
+  sama dengan yang sedang aktif.
+- **Tombol "⟳ Refresh" eksplisit** ditambahkan di toolbar tabel — karena
+  total baris & isi tidak lagi otomatis dihitung ulang di setiap
+  interaksi, user butuh cara sadar untuk memaksa muat ulang kalau tahu
+  data berubah dari tempat lain (query manual, proses lain) — pola yang
+  sama dipakai tools desktop MySQL manapun (Navicat/DBeaver/TablePlus
+  semuanya punya tombol refresh eksplisit, bukan auto-poll).
+
+Paginasi LIMIT/OFFSET sendiri (biaya O(offset) untuk halaman yang sangat
+dalam) SENGAJA tidak diubah ke keyset pagination — ini batasan bawaan
+pendekatan LIMIT/OFFSET yang sama dipakai semua tools desktop MySQL
+populer (Navicat/DBeaver/dst), bukan sesuatu yang poinhost lakukan lebih
+buruk dari mereka.
+
 ### Solusi masalah password basi: deteksi eksplisit, bukan diam
 
 `classifyMySQLConnError` menandai kegagalan "Access denied" dengan prefix
