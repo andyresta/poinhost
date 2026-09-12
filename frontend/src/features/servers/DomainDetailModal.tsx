@@ -13,6 +13,13 @@ import {
 } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { DomainFilesTab } from './DomainFilesTab';
+import { DomainLogsTab } from './DomainLogsTab';
+import { DomainProxyTab } from './DomainProxyTab';
+import { DomainDNSTab } from './DomainDNSTab';
+import { DomainSFTPTab } from './DomainSFTPTab';
+import { DomainCronTab } from './DomainCronTab';
+import { DomainDatabaseTab } from './DomainDatabaseTab';
 
 const SSL_EMAIL_KEY = 'poinhost.website.sslEmail';
 
@@ -377,10 +384,10 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
   );
 }
 
-// Panel detail satu domain — sub-nav PHP/SSL (berfungsi penuh) + 7 tab lain
-// yang SUDAH berjalan di homepoin (Files/Logs/Proxy/Database/Cron/DNS/SFTP)
-// tapi belum di-porting ke poinhost pada tahap ini, jadi ditandai jujur
-// sebagai "menyusul", bukan disembunyikan seolah tidak ada.
+// Panel detail satu domain — sub-nav lengkap 9 tab (PHP, SSL, Files, Logs,
+// Proxy, DNS, SFTP, Cron, Database), semuanya berfungsi penuh. Ini
+// melengkapi seluruh menu Website yang ada di homepoin (lihat
+// ARCHITECTURE.md §Website untuk detail tiap tab & perbedaan arsitekturnya).
 export function DomainDetailModal({
   serverId,
   domain,
@@ -414,12 +421,13 @@ export function DomainDetailModal({
 
           {tab === 'php' && <PHPTab serverId={serverId} domain={domain} onChanged={onChanged} />}
           {tab === 'ssl' && <SSLTab serverId={serverId} domain={domain} onChanged={onChanged} />}
-          {tab !== 'php' && tab !== 'ssl' && (
-            <p className="workspace__placeholder">
-              Tab <code>{TABS.find((t) => t.key === tab)?.label}</code> sudah berjalan di homepoin, tapi
-              belum di-porting ke poinhost pada tahap ini — menyusul di sesi berikutnya.
-            </p>
-          )}
+          {tab === 'files' && <DomainFilesTab serverId={serverId} domain={domain} />}
+          {tab === 'logs' && <DomainLogsTab serverId={serverId} domain={domain} />}
+          {tab === 'proxy' && <DomainProxyTab serverId={serverId} domain={domain} />}
+          {tab === 'dns' && <DomainDNSTab serverId={serverId} domain={domain} />}
+          {tab === 'sftp' && <DomainSFTPTab serverId={serverId} domain={domain} />}
+          {tab === 'cron' && <DomainCronTab serverId={serverId} domain={domain} />}
+          {tab === 'database' && <DomainDatabaseTab serverId={serverId} domain={domain} />}
         </div>
         <div className="modal-card__footer">
           <button className="btn btn--ghost" onClick={onClose}>

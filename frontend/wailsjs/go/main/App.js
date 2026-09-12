@@ -38,6 +38,22 @@ export function CreateWebsite(arg1) {
   return window['go']['main']['App']['CreateWebsite'](arg1);
 }
 
+export function CreateWebsiteCronJob(arg1) {
+  return window['go']['main']['App']['CreateWebsiteCronJob'](arg1);
+}
+
+export function CreateWebsiteDatabase(arg1) {
+  return window['go']['main']['App']['CreateWebsiteDatabase'](arg1);
+}
+
+export function CreateWebsiteDatabaseUser(arg1) {
+  return window['go']['main']['App']['CreateWebsiteDatabaseUser'](arg1);
+}
+
+export function CreateWebsiteSFTPAccount(arg1) {
+  return window['go']['main']['App']['CreateWebsiteSFTPAccount'](arg1);
+}
+
 export function CreateWebsiteSubdomain(arg1) {
   return window['go']['main']['App']['CreateWebsiteSubdomain'](arg1);
 }
@@ -54,6 +70,18 @@ export function DeleteWebsite(arg1) {
   return window['go']['main']['App']['DeleteWebsite'](arg1);
 }
 
+export function DeleteWebsiteCronJob(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DeleteWebsiteCronJob'](arg1, arg2, arg3);
+}
+
+export function DeleteWebsiteProxyRule(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DeleteWebsiteProxyRule'](arg1, arg2, arg3);
+}
+
+export function DeleteWebsiteSFTPAccount(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DeleteWebsiteSFTPAccount'](arg1, arg2, arg3);
+}
+
 export function DetectDockerEngine(arg1) {
   return window['go']['main']['App']['DetectDockerEngine'](arg1);
 }
@@ -64,6 +92,10 @@ export function DetectNginxEngine(arg1) {
 
 export function DisableWebsitePHP(arg1, arg2) {
   return window['go']['main']['App']['DisableWebsitePHP'](arg1, arg2);
+}
+
+export function DisableWebsiteProxyDomain(arg1, arg2) {
+  return window['go']['main']['App']['DisableWebsiteProxyDomain'](arg1, arg2);
 }
 
 export function DisableWebsiteSSL(arg1, arg2) {
@@ -86,12 +118,40 @@ export function EnableWebsiteSSL(arg1, arg2) {
   return window['go']['main']['App']['EnableWebsiteSSL'](arg1, arg2);
 }
 
+export function ExportWebsiteDNSZone(arg1, arg2) {
+  return window['go']['main']['App']['ExportWebsiteDNSZone'](arg1, arg2);
+}
+
 export function ExtractArchive(arg1) {
   return window['go']['main']['App']['ExtractArchive'](arg1);
 }
 
+export function GetWebsiteDBPrivileges() {
+  return window['go']['main']['App']['GetWebsiteDBPrivileges']();
+}
+
+export function GetWebsiteDBStatus(arg1, arg2) {
+  return window['go']['main']['App']['GetWebsiteDBStatus'](arg1, arg2);
+}
+
+export function GetWebsiteDNSPreview(arg1, arg2) {
+  return window['go']['main']['App']['GetWebsiteDNSPreview'](arg1, arg2);
+}
+
+export function GetWebsiteDomainRoot(arg1, arg2) {
+  return window['go']['main']['App']['GetWebsiteDomainRoot'](arg1, arg2);
+}
+
+export function GetWebsiteLog(arg1) {
+  return window['go']['main']['App']['GetWebsiteLog'](arg1);
+}
+
 export function GetWebsitePHPStatus(arg1, arg2) {
   return window['go']['main']['App']['GetWebsitePHPStatus'](arg1, arg2);
+}
+
+export function GetWebsiteProxyStatus(arg1, arg2) {
+  return window['go']['main']['App']['GetWebsiteProxyStatus'](arg1, arg2);
 }
 
 export function GetWebsiteSSLStatus(arg1, arg2) {
@@ -134,6 +194,22 @@ export function ListSystemUsers(arg1) {
   return window['go']['main']['App']['ListSystemUsers'](arg1);
 }
 
+export function ListWebsiteCronJobs(arg1, arg2) {
+  return window['go']['main']['App']['ListWebsiteCronJobs'](arg1, arg2);
+}
+
+export function ListWebsiteDatabaseUsers(arg1, arg2) {
+  return window['go']['main']['App']['ListWebsiteDatabaseUsers'](arg1, arg2);
+}
+
+export function ListWebsiteDatabases(arg1, arg2) {
+  return window['go']['main']['App']['ListWebsiteDatabases'](arg1, arg2);
+}
+
+export function ListWebsiteSFTPAccounts(arg1, arg2) {
+  return window['go']['main']['App']['ListWebsiteSFTPAccounts'](arg1, arg2);
+}
+
 export function ListWebsites(arg1) {
   return window['go']['main']['App']['ListWebsites'](arg1);
 }
@@ -152,6 +228,10 @@ export function OpenTerminal(arg1) {
 
 export function ReadFileContent(arg1, arg2, arg3) {
   return window['go']['main']['App']['ReadFileContent'](arg1, arg2, arg3);
+}
+
+export function ReadWebsiteCronLog(arg1) {
+  return window['go']['main']['App']['ReadWebsiteCronLog'](arg1);
 }
 
 export function RecreateDockerContainer(arg1) {
@@ -202,12 +282,24 @@ export function SetTabActiveModule(arg1, arg2) {
   return window['go']['main']['App']['SetTabActiveModule'](arg1, arg2);
 }
 
+export function SetWebsiteDatabaseGrants(arg1) {
+  return window['go']['main']['App']['SetWebsiteDatabaseGrants'](arg1);
+}
+
 export function SetWebsiteEnabled(arg1) {
   return window['go']['main']['App']['SetWebsiteEnabled'](arg1);
 }
 
 export function SetWebsitePHP(arg1) {
   return window['go']['main']['App']['SetWebsitePHP'](arg1);
+}
+
+export function SetWebsiteProxyDomain(arg1) {
+  return window['go']['main']['App']['SetWebsiteProxyDomain'](arg1);
+}
+
+export function SetWebsiteProxyRule(arg1) {
+  return window['go']['main']['App']['SetWebsiteProxyRule'](arg1);
 }
 
 export function StartDockerContainer(arg1, arg2) {
@@ -220,6 +312,10 @@ export function StartDockerEngine(arg1) {
 
 export function StartNginxEngine(arg1) {
   return window['go']['main']['App']['StartNginxEngine'](arg1);
+}
+
+export function StartWebsiteDB(arg1, arg2) {
+  return window['go']['main']['App']['StartWebsiteDB'](arg1, arg2);
 }
 
 export function StopDockerContainer(arg1, arg2) {
@@ -246,12 +342,24 @@ export function StreamWebsiteInstall(arg1, arg2, arg3) {
   return window['go']['main']['App']['StreamWebsiteInstall'](arg1, arg2, arg3);
 }
 
+export function StreamWebsiteLog(arg1) {
+  return window['go']['main']['App']['StreamWebsiteLog'](arg1);
+}
+
 export function TestServerConnection(arg1) {
   return window['go']['main']['App']['TestServerConnection'](arg1);
 }
 
+export function ToggleWebsiteCronJob(arg1) {
+  return window['go']['main']['App']['ToggleWebsiteCronJob'](arg1);
+}
+
 export function TrustServerHostKey(arg1) {
   return window['go']['main']['App']['TrustServerHostKey'](arg1);
+}
+
+export function UpdateWebsiteCronJob(arg1) {
+  return window['go']['main']['App']['UpdateWebsiteCronJob'](arg1);
 }
 
 export function UploadFilesToServer(arg1, arg2, arg3) {

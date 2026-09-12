@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 
@@ -786,4 +787,179 @@ func (a *App) DisableWebsiteSSL(serverID, domain string) (*website.SSLStatus, er
 // RenewWebsiteSSL memperbarui sertifikat via certbot renew + reload Nginx.
 func (a *App) RenewWebsiteSSL(serverID, domain string) (*website.SSLStatus, error) {
 	return a.websiteSvc.SSLRenew(serverID, domain)
+}
+
+// GetWebsiteDomainRoot mengembalikan document root satu domain — dipakai
+// tab Files untuk mengunci FilesPanel ke root itu.
+func (a *App) GetWebsiteDomainRoot(serverID, domain string) (string, error) {
+	return a.websiteSvc.DomainRoot(serverID, domain)
+}
+
+// GetWebsiteDNSPreview menghitung preview zona DNS (BIND) untuk satu domain
+// parent — murni komputasi, tidak ada exec SSH.
+func (a *App) GetWebsiteDNSPreview(serverID, domain string) (*website.DNSPreviewResponse, error) {
+	return a.websiteSvc.DNSPreview(serverID, domain)
+}
+
+// ExportWebsiteDNSZone membuka dialog "Simpan" native lalu menulis teks
+// zona DNS ke file lokal yang dipilih — dialog OS asli, bukan trik
+// Blob/`<a download>` ala browser (konsisten dengan UploadFilesToServer/
+// DownloadFileFromServer di modul Files).
+func (a *App) ExportWebsiteDNSZone(serverID, domain string) error {
+	preview, err := a.websiteSvc.DNSPreview(serverID, domain)
+	if err != nil {
+		return err
+	}
+	localPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Simpan file zona DNS",
+		DefaultFilename: preview.Filename,
+	})
+	if err != nil {
+		return err
+	}
+	if localPath == "" {
+		return nil
+	}
+	return os.WriteFile(localPath, []byte(preview.ZoneText), 0o644)
+}
+
+// GetWebsiteLog membaca snapshot tail log domain (access/error).
+func (a *App) GetWebsiteLog(req website.LogReadRequest) (*website.LogReadResponse, error) {
+	return a.websiteSvc.ReadDomainLog(req)
+}
+
+// StreamWebsiteLog mengalirkan log domain realtime (`tail -f`) lewat event
+// "website:logs:<streamID>" — reuse stream registry yang sama dipakai
+// Docker/Nginx install.
+func (a *App) StreamWebsiteLog(req website.LogReadRequest) (string, error) {
+	streamID := uuid.NewString()
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.registerStream(streamID, cancel)
+	eventName := "website:logs:" + streamID
+
+	go func() {
+		err := a.websiteSvc.StreamDomainLog(ctx, req, func(line string) error {
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "line", Line: line})
+			return nil
+		})
+		a.stopStream(streamID)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "error", Message: err.Error()})
+			return
+		}
+		runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "end"})
+	}()
+
+	return streamID, nil
+}
+
+// GetWebsiteProxyStatus membaca status reverse-proxy satu domain.
+func (a *App) GetWebsiteProxyStatus(serverID, domain string) (*website.ProxyStatus, error) {
+	return a.websiteSvc.ProxyStatus(serverID, domain)
+}
+
+// SetWebsiteProxyDomain mengaktifkan proxy untuk SELURUH domain ke satu target.
+func (a *App) SetWebsiteProxyDomain(req website.ProxySetDomainRequest) error {
+	return a.websiteSvc.ProxySetDomain(req)
+}
+
+// DisableWebsiteProxyDomain melepas proxy whole-domain (kembali ke static/PHP).
+func (a *App) DisableWebsiteProxyDomain(serverID, domain string) error {
+	return a.websiteSvc.ProxyDisableDomain(serverID, domain)
+}
+
+// SetWebsiteProxyRule menambah/mengganti satu aturan proxy per-path.
+func (a *App) SetWebsiteProxyRule(req website.ProxyRuleRequest) error {
+	return a.websiteSvc.ProxySetRule(req)
+}
+
+// DeleteWebsiteProxyRule menghapus satu aturan proxy per-path.
+func (a *App) DeleteWebsiteProxyRule(serverID, domain, path string) error {
+	return a.websiteSvc.ProxyDeleteRule(serverID, domain, path)
+}
+
+// ListWebsiteSFTPAccounts mengembalikan akun SFTP ter-chroot milik satu domain.
+func (a *App) ListWebsiteSFTPAccounts(serverID, domain string) (*website.SFTPListResponse, error) {
+	return a.websiteSvc.ListSFTPAccounts(serverID, domain)
+}
+
+// CreateWebsiteSFTPAccount membuat akun SFTP ter-chroot baru untuk satu domain.
+func (a *App) CreateWebsiteSFTPAccount(req website.SFTPCreateAccountRequest) error {
+	return a.websiteSvc.CreateSFTPAccount(req)
+}
+
+// DeleteWebsiteSFTPAccount menghapus akun SFTP.
+func (a *App) DeleteWebsiteSFTPAccount(serverID, domain, username string) error {
+	return a.websiteSvc.DeleteSFTPAccount(serverID, domain, username)
+}
+
+// ListWebsiteCronJobs mengembalikan semua job cron milik satu domain.
+func (a *App) ListWebsiteCronJobs(serverID, domain string) (*website.CronListResponse, error) {
+	return a.websiteSvc.ListCronJobs(serverID, domain)
+}
+
+// CreateWebsiteCronJob membuat job cron baru.
+func (a *App) CreateWebsiteCronJob(req website.CronJobRequest) (*website.CronJobInfo, error) {
+	return a.websiteSvc.CreateCronJob(req)
+}
+
+// UpdateWebsiteCronJob memperbarui job cron yang sudah ada.
+func (a *App) UpdateWebsiteCronJob(req website.CronJobRequest) (*website.CronJobInfo, error) {
+	return a.websiteSvc.UpdateCronJob(req)
+}
+
+// ToggleWebsiteCronJob mengaktifkan/menonaktifkan satu job cron.
+func (a *App) ToggleWebsiteCronJob(req website.CronToggleRequest) error {
+	return a.websiteSvc.ToggleCronJob(req)
+}
+
+// DeleteWebsiteCronJob menghapus satu job cron.
+func (a *App) DeleteWebsiteCronJob(serverID, domain, jobID string) error {
+	return a.websiteSvc.DeleteCronJob(serverID, domain, jobID)
+}
+
+// ReadWebsiteCronLog membaca log satu job cron.
+func (a *App) ReadWebsiteCronLog(req website.CronLogRequest) (*website.CronLogResponse, error) {
+	return a.websiteSvc.ReadCronLog(req)
+}
+
+// GetWebsiteDBPrivileges mengembalikan daftar opsi privilege tetap (statis,
+// tanpa SSH) untuk dropdown grants MySQL/PostgreSQL.
+func (a *App) GetWebsiteDBPrivileges() []website.DBPrivilegeOption {
+	return website.DBPrivilegeOptions()
+}
+
+// GetWebsiteDBStatus membaca status instalasi & service satu engine database.
+func (a *App) GetWebsiteDBStatus(serverID, engine string) (*website.DBEngineStatus, error) {
+	return a.websiteSvc.DBStatus(serverID, engine)
+}
+
+// StartWebsiteDB mengaktifkan service database yang sudah terpasang.
+func (a *App) StartWebsiteDB(serverID, engine string) (*website.DBEngineStatus, error) {
+	return a.websiteSvc.DBStart(serverID, engine)
+}
+
+// ListWebsiteDatabases mengembalikan daftar database di server.
+func (a *App) ListWebsiteDatabases(serverID, engine string) ([]website.DBDatabaseInfo, error) {
+	return a.websiteSvc.DBListDatabases(serverID, engine)
+}
+
+// CreateWebsiteDatabase membuat database baru.
+func (a *App) CreateWebsiteDatabase(req website.DBCreateDatabaseRequest) error {
+	return a.websiteSvc.DBCreateDatabase(req)
+}
+
+// ListWebsiteDatabaseUsers mengembalikan daftar user database.
+func (a *App) ListWebsiteDatabaseUsers(serverID, engine string) ([]website.DBUserInfo, error) {
+	return a.websiteSvc.DBListUsers(serverID, engine)
+}
+
+// CreateWebsiteDatabaseUser membuat user database baru + grants awal.
+func (a *App) CreateWebsiteDatabaseUser(req website.DBCreateUserRequest) error {
+	return a.websiteSvc.DBCreateUser(req)
+}
+
+// SetWebsiteDatabaseGrants menerapkan ulang grants untuk user yang sudah ada.
+func (a *App) SetWebsiteDatabaseGrants(req website.DBGrantsRequest) error {
+	return a.websiteSvc.DBSetGrants(req)
 }

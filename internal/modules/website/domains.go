@@ -111,6 +111,22 @@ func (s *Service) getDomain(serverID, domain string) (DomainInfo, error) {
 	return DomainInfo{}, errFmt("domain %s tidak ditemukan", domain)
 }
 
+// DomainRoot mengembalikan document root satu domain — dipakai tab Files
+// di menu Website untuk mengunci FilesPanel ke root itu (lihat
+// DomainFilesTab.tsx). Baca dari listDomains yang sudah ter-cache, jadi
+// biasanya 0 round-trip SSH tambahan.
+func (s *Service) DomainRoot(serverID, domain string) (string, error) {
+	domain, err := NormalizeDomain(domain)
+	if err != nil {
+		return "", err
+	}
+	info, err := s.getDomain(serverID, domain)
+	if err != nil {
+		return "", err
+	}
+	return info.Root, nil
+}
+
 // optionsFromInfo merekonstruksi vhostOptions dari DomainInfo yang sudah
 // ter-parsing — dipakai saat PHP/SSL cuma perlu mengubah SATU aspek vhost
 // (versi PHP, status SSL) tanpa kehilangan proxy rule / field lain yang
@@ -123,6 +139,7 @@ func optionsFromInfo(info DomainInfo) *vhostOptions {
 		Parent:            info.Parent,
 		PHPVersion:        info.PHPVersion,
 		ProxyTarget:       info.ProxyTarget,
+		ProxyWebSocket:    info.ProxyWebSocket,
 		ProxyRules:        info.ProxyRules,
 		SSLEnabled:        info.SSLEnabled,
 		SSLCertificate:    info.SSLCertificate,

@@ -24,6 +24,14 @@ export function CreateFolder(arg1:files.MkdirRequest):Promise<void>;
 
 export function CreateWebsite(arg1:website.CreateWebsiteRequest):Promise<website.CreateWebsiteResult>;
 
+export function CreateWebsiteCronJob(arg1:website.CronJobRequest):Promise<website.CronJobInfo>;
+
+export function CreateWebsiteDatabase(arg1:website.DBCreateDatabaseRequest):Promise<void>;
+
+export function CreateWebsiteDatabaseUser(arg1:website.DBCreateUserRequest):Promise<void>;
+
+export function CreateWebsiteSFTPAccount(arg1:website.SFTPCreateAccountRequest):Promise<void>;
+
 export function CreateWebsiteSubdomain(arg1:website.CreateSubdomainRequest):Promise<website.DomainInfo>;
 
 export function DeleteFiles(arg1:files.DeleteRequest):Promise<void>;
@@ -32,11 +40,19 @@ export function DeleteServer(arg1:string):Promise<void>;
 
 export function DeleteWebsite(arg1:website.DeleteDomainRequest):Promise<void>;
 
+export function DeleteWebsiteCronJob(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function DeleteWebsiteProxyRule(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function DeleteWebsiteSFTPAccount(arg1:string,arg2:string,arg3:string):Promise<void>;
+
 export function DetectDockerEngine(arg1:string):Promise<docker.EngineStatus>;
 
 export function DetectNginxEngine(arg1:string):Promise<website.NginxStatus>;
 
 export function DisableWebsitePHP(arg1:string,arg2:string):Promise<void>;
+
+export function DisableWebsiteProxyDomain(arg1:string,arg2:string):Promise<void>;
 
 export function DisableWebsiteSSL(arg1:string,arg2:string):Promise<website.SSLStatus>;
 
@@ -48,9 +64,23 @@ export function DownloadFileFromServer(arg1:string,arg2:string,arg3:string):Prom
 
 export function EnableWebsiteSSL(arg1:string,arg2:string):Promise<website.SSLStatus>;
 
+export function ExportWebsiteDNSZone(arg1:string,arg2:string):Promise<void>;
+
 export function ExtractArchive(arg1:files.ExtractRequest):Promise<void>;
 
+export function GetWebsiteDBPrivileges():Promise<Array<website.DBPrivilegeOption>>;
+
+export function GetWebsiteDBStatus(arg1:string,arg2:string):Promise<website.DBEngineStatus>;
+
+export function GetWebsiteDNSPreview(arg1:string,arg2:string):Promise<website.DNSPreviewResponse>;
+
+export function GetWebsiteDomainRoot(arg1:string,arg2:string):Promise<string>;
+
+export function GetWebsiteLog(arg1:website.LogReadRequest):Promise<website.LogReadResponse>;
+
 export function GetWebsitePHPStatus(arg1:string,arg2:string):Promise<website.PHPStatus>;
+
+export function GetWebsiteProxyStatus(arg1:string,arg2:string):Promise<website.ProxyStatus>;
 
 export function GetWebsiteSSLStatus(arg1:string,arg2:string):Promise<website.SSLStatus>;
 
@@ -72,6 +102,14 @@ export function ListServers():Promise<Array<servers.Server>>;
 
 export function ListSystemUsers(arg1:string):Promise<Array<files.SystemUser>>;
 
+export function ListWebsiteCronJobs(arg1:string,arg2:string):Promise<website.CronListResponse>;
+
+export function ListWebsiteDatabaseUsers(arg1:string,arg2:string):Promise<Array<website.DBUserInfo>>;
+
+export function ListWebsiteDatabases(arg1:string,arg2:string):Promise<Array<website.DBDatabaseInfo>>;
+
+export function ListWebsiteSFTPAccounts(arg1:string,arg2:string):Promise<website.SFTPListResponse>;
+
 export function ListWebsites(arg1:string):Promise<website.ListResponse>;
 
 export function OpenDockerExec(arg1:string,arg2:string,arg3:string):Promise<string>;
@@ -81,6 +119,8 @@ export function OpenServerTab(arg1:string,arg2:string):Promise<session.Tab>;
 export function OpenTerminal(arg1:string):Promise<string>;
 
 export function ReadFileContent(arg1:string,arg2:string,arg3:string):Promise<files.ReadResult>;
+
+export function ReadWebsiteCronLog(arg1:website.CronLogRequest):Promise<website.CronLogResponse>;
 
 export function RecreateDockerContainer(arg1:docker.RecreateContainerRequest):Promise<docker.RecreateContainerResponse>;
 
@@ -106,15 +146,23 @@ export function SearchFiles(arg1:files.SearchRequest):Promise<files.SearchResult
 
 export function SetTabActiveModule(arg1:string,arg2:string):Promise<void>;
 
+export function SetWebsiteDatabaseGrants(arg1:website.DBGrantsRequest):Promise<void>;
+
 export function SetWebsiteEnabled(arg1:website.SetEnabledRequest):Promise<void>;
 
 export function SetWebsitePHP(arg1:website.PHPSetDomainRequest):Promise<void>;
+
+export function SetWebsiteProxyDomain(arg1:website.ProxySetDomainRequest):Promise<void>;
+
+export function SetWebsiteProxyRule(arg1:website.ProxyRuleRequest):Promise<void>;
 
 export function StartDockerContainer(arg1:string,arg2:string):Promise<void>;
 
 export function StartDockerEngine(arg1:string):Promise<docker.EngineStatus>;
 
 export function StartNginxEngine(arg1:string):Promise<website.NginxStatus>;
+
+export function StartWebsiteDB(arg1:string,arg2:string):Promise<website.DBEngineStatus>;
 
 export function StopDockerContainer(arg1:string,arg2:string):Promise<void>;
 
@@ -128,9 +176,15 @@ export function StreamDockerEngineInstall(arg1:string):Promise<string>;
 
 export function StreamWebsiteInstall(arg1:string,arg2:string,arg3:string):Promise<string>;
 
+export function StreamWebsiteLog(arg1:website.LogReadRequest):Promise<string>;
+
 export function TestServerConnection(arg1:servers.SaveServerRequest):Promise<servers.ConnectionTestResult>;
 
+export function ToggleWebsiteCronJob(arg1:website.CronToggleRequest):Promise<void>;
+
 export function TrustServerHostKey(arg1:servers.SaveServerRequest):Promise<void>;
+
+export function UpdateWebsiteCronJob(arg1:website.CronJobRequest):Promise<website.CronJobInfo>;
 
 export function UploadFilesToServer(arg1:string,arg2:string,arg3:string):Promise<void>;
 
