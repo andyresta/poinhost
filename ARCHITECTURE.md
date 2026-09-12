@@ -119,16 +119,26 @@ poinhost/
 │       │   ├── pathutil.go        # NormalizePath/JoinPath/dst (traversal-safe)
 │       │   ├── archive_cmd.go     # command zip/tar.gz + fallback python3
 │       │   └── service.go         # list/mkdir/upload/download/delete/compress
-│       └── docker/                # Containers + Networks via CLI docker (lihat §11)
+│       ├── docker/                # Containers + Networks via CLI docker (lihat §11)
+│       │   ├── dto.go
+│       │   ├── access.go          # dockerAccess/resolveAccess/wrap (sudo ke root)
+│       │   ├── parse.go           # parsing TSV docker ps + JSON inspect/stats/network
+│       │   ├── config.go          # inspect -> createTemplate -> buildCreateArgs (recreate)
+│       │   ├── service.go         # ListContainers + start/stop/restart/remove + logs/stats
+│       │   ├── service_networks.go
+│       │   ├── service_config.go  # InspectContainer/RecreateContainer
+│       │   ├── install.go         # detect distro + install/start Docker engine
+│       │   └── exec.go            # BuildExecCommand (dipakai terminal.OpenCommand)
+│       └── website/               # domain/vhost Nginx + PHP-FPM + SSL (lihat §12)
 │           ├── dto.go
-│           ├── access.go          # dockerAccess/resolveAccess/wrap (sudo ke root)
-│           ├── parse.go           # parsing TSV docker ps + JSON inspect/stats/network
-│           ├── config.go          # inspect -> createTemplate -> buildCreateArgs (recreate)
-│           ├── service.go         # ListContainers + start/stop/restart/remove + logs/stats
-│           ├── service_networks.go
-│           ├── service_config.go  # InspectContainer/RecreateContainer
-│           ├── install.go         # detect distro + install/start Docker engine
-│           └── exec.go            # BuildExecCommand (dipakai terminal.OpenCommand)
+│           ├── access.go          # websiteAccess/resolveAccess/wrap (selalu butuh root)
+│           ├── parse.go           # NormalizeDomain, shellQuote, util kecil
+│           ├── service.go         # cache status Nginx/domain + StreamInstall generik
+│           ├── nginx.go           # DetectStatus gabungan+cache, TestReload gabungan
+│           ├── vhost.go           # builder vhost gabungan (static/PHP/proxy) + webroot
+│           ├── domains.go         # List SATU round-trip, Create/Delete/SetEnabled/CreateWebsite
+│           ├── php.go             # status/install repo+versi/switch per domain
+│           └── ssl.go             # status/issue/enable/disable/renew via certbot
 │
 ├── migrations/
 │   └── 001_core.sql             # servers, app_settings, activity_logs, ui_tabs
@@ -141,7 +151,9 @@ poinhost/
     │   │   │                     # OverviewPanel, TerminalPanel (xterm.js),
     │   │   │                     # FilesPanel, StatusDot, PromptModal, CompressModal,
     │   │   │                     # DockerPanel, NetworksPanel, EngineInstallWizard,
-    │   │   │                     # ContainerLogsModal/StatsModal/ExecModal, RecreateContainerModal
+    │   │   │                     # ContainerLogsModal/StatsModal/ExecModal, RecreateContainerModal,
+    │   │   │                     # WebsitePanel, WebsiteEngineWizard, CreateWebsiteModal,
+    │   │   │                     # SubdomainModal, DomainDetailModal (tab PHP/SSL)
     │   │   └── tabs/              # TabBar & TabContent (keep-alive per tab)
     │   └── App.tsx
     └── wailsjs/                  # auto-generated binding Go<->TS (`wails generate module`)
@@ -693,7 +705,148 @@ karena "masuk sebentar ke satu container" adalah tindakan sesaat, beda
 dari sesi Terminal VPS yang memang dirancang bertahan lintas perpindahan
 modul (§9).
 
-## 12. Yang BELUM di-porting di skeleton ini (roadmap)
+## 12. Website: domain/vhost Nginx + PHP-FPM + SSL Let's Encrypt
+
+### Scope tahap ini — "inti" menu Website, sisanya menyusul
+
+Menu "Website" homepoin (link sidebar-nya ke `/servers/{id}/hosting/domains`)
+sebenarnya adalah SEMBILAN modul terpisah di baliknya:
+`domains`/`nginx`/`php`/`ssl` (tahap ini) + `domainfiles`/`logs`/`proxy`/
+`database`(per-domain)/`cron`/`dns`/`sftp` (menyusul). Beda dari Docker
+§11 (yang batas scope-nya ditentukan homepoin sendiri — Images/Volumes/
+Compose memang belum pernah diimplementasikan di sana), SEMUA sembilan
+bagian Website ini sudah production-ready di homepoin — pembatasan scope
+di sini murni soal urutan pengerjaan (dikonfirmasi ke user), bukan karena
+sisanya tidak ada. Tab Files/Logs/Proxy/Database/Cron/DNS/SFTP di
+`DomainDetailModal.tsx` diberi placeholder yang jujur menyebutkan itu:
+"sudah berjalan di homepoin, belum di-porting ke poinhost" — beda kalimat
+dari placeholder Docker yang bilang "belum ada di homepoin sendiri".
+
+### Kenapa homepoin terasa lambat pindah-pindah menu di sini (bukan re-handshake SSH)
+
+Sebelum porting, dilakukan riset kode homepoin secara langsung untuk
+menjawab pertanyaan user "katanya sudah pooling, kok masih lambat?".
+Hasilnya: **SSH memang tidak pernah re-handshake** di homepoin (ada
+connection pool) — masalahnya adalah SETIAP tampilan halaman menjalankan
+BANYAK perintah SSH berurutan yang saling menunggu (round-trip), bukan
+satu:
+
+- `domains.List()` — 1 `ls` untuk daftar file vhost, LALU **satu `cat`
+  terpisah per file vhost** (pola N+1: 10 domain = 11 round-trip HANYA
+  untuk daftar domain), ditambah `nginx.DetectStatus` (2 round-trip lagi)
+  yang dipanggil DI DALAM `List()` walau frontend sendiri SUDAH memanggil
+  status Nginx secara terpisah sebelumnya — deteksi yang sama diulang.
+- `php.Status`/`ssl.Status` masing-masing mendeteksi ULANG distro +
+  status Nginx dari nol (tidak ada cache sama sekali di request
+  sebelumnya), dan `ssl.Status` bahkan memanggil ULANG seluruh
+  `domains.List()` (N+1 round-trip lagi) hanya untuk menghitung daftar
+  SAN satu domain.
+- Hasilnya: membuka tab SSL untuk server dengan 10 domain bisa memicu
+  **~20 round-trip SSH berurutan** sebelum halaman selesai render — dan
+  klik "Aktifkan SSL" bisa mencapai **60-80 round-trip** (Status
+  dipanggil ulang 2-3 kali di dalam satu alur Issue/Enable). Di koneksi
+  SSH dengan latency 50-100ms per round-trip, itu detik-demi-detik nyata,
+  padahal connection pool-nya sendiri sama sekali tidak bermasalah.
+
+### Perbaikan di poinhost — gabungkan perintah, cache pendek, bukan ubah pool
+
+Pool SSH poinhost (`sshpool.Executor`, §3) sudah otomatis tidak pernah
+re-handshake sejak awal — jadi perbaikan di sini murni soal **mengurangi
+JUMLAH round-trip per tampilan**, bukan menyentuh lapisan koneksi:
+
+1. **`listDomains()` — SATU round-trip, bukan N+1.** Satu skrip shell
+   me-`for`-loop semua file vhost DAN `cat` isinya sekaligus, dipisahkan
+   marker (`===POINHOST_VHOST_START===`/`END===`), diparsing di sisi Go
+   (`domains.go:parseVhostBlocks`). Berapa pun banyak domainnya, tetap 1
+   round-trip SSH.
+2. **`getNginxStatus()` — distro-detect + status Nginx digabung jadi SATU
+   skrip** (`nginx.go:combinedStatusScript`, gabungan
+   `distroDetectScript` + cek binary/versi/service Nginx), lalu
+   di-**cache 5 detik per server** (`statusCacheTTL`). `domains.List`/
+   `php.Status`/`ssl.Status` semua memanggil fungsi cache ini — begitu
+   salah satu memicu deteksi, yang lain dalam jendela 5 detik yang sama
+   dapat jawabannya GRATIS, tanpa SSH sama sekali.
+3. **`listDomains()` JUGA di-cache 5 detik** — jadi `ssl.Status` yang di
+   homepoin memanggil ulang `domains.List()` (N+1 round-trip) di poinhost
+   tinggal baca dari cache yang sama (nyaris selalu 0 round-trip
+   tambahan), bukan karena logikanya diubah jadi "lebih ringan", tapi
+   karena `listDomains()` itu sendiri SUDAH murah (poin 1) dan di-cache.
+4. **`testReload()` — `nginx -t` + reload digabung jadi SATU Exec**
+   (`nginx.go:testReload`, pakai `set -e` supaya reload TIDAK pernah
+   jalan kalau test config gagal), bukan dua panggilan terpisah seperti
+   `nginx.TestReload` homepoin.
+5. **Operasi tulis (Create/Delete/SetEnabled/rewriteVhost) masing-masing
+   SATU Exec besar**, bukan rangkaian panggilan kecil — mis.
+   `provisionDomain` (dipakai Create/CreateSubdomain) menggabungkan cek
+   duplikat + siapkan webroot + tulis index.html + tulis vhost + `nginx
+   -t` + reload dalam SATU skrip, dengan `trap ... ERR` untuk rollback
+   (hapus vhost yang baru ditulis) kalau test config gagal — bandingkan
+   dengan homepoin's `provisionDomain` yang ~8 round-trip terpisah untuk
+   hal yang sama.
+
+Cache 5 detik dipilih supaya user yang klik-klik pindah tab
+domain/PHP/SSL dalam satu sesi kerja tetap terasa instan, tapi perubahan
+nyata di server (mis. install Nginx lewat wizard) tetap kelihatan dalam
+hitungan detik — bukan basi berjam-jam. Setiap operasi tulis yang
+mengubah keadaan (`Create`, `Delete`, `SetEnabled`, `rewriteVhost`,
+install) memanggil `invalidateDomainCache`/`invalidateNginxCache` supaya
+tidak perlu menunggu TTL habis untuk melihat hasilnya sendiri.
+
+### Model vhost — satu builder, bukan dua tingkat legacy+options
+
+Homepoin punya DUA fungsi pembangun vhost berbeda (`BuildVhostConfig`
+"legacy" untuk static/PHP, `BuildVhostConfigWithOptions` terpisah untuk
+varian proxy) yang bisa saling drift. poinhost cuma punya SATU
+(`vhost.go:buildVhostConfig` + `vhostOptions`) yang menangani
+static/PHP/proxy-per-path/proxy-whole-domain DAN blok SSL sekaligus — dan
+inilah yang dipakai bahkan untuk domain paling sederhana sekalipun (bukan
+jalur khusus). Metadata rekonstruksi (`# poinhost-managed domain: ... php=
+... ssl=on ...`) ditulis sebagai komentar di vhost itu sendiri — sama
+seperti homepoin, tidak ada database terpisah untuk "apa isi vhost ini".
+
+### PHP-FPM per domain — ubah `fastcgi_pass`, bukan pool config
+
+Sama seperti homepoin: mengaktifkan versi PHP untuk satu domain BUKAN
+membuat pool php-fpm baru — cuma menulis ulang `fastcgi_pass unix:<socket
+versi X>` di blok `location ~ \.php$` vhost domain itu (`php.go:
+PHPSetDomain` -> `rewriteVhost`), lalu reload Nginx. Socket path
+mengikuti konvensi package manager (`phpFastCGISocket`: Debian/Ubuntu
+`/run/php/php<versi>-fpm.sock`, RHEL/Remi `/var/opt/remi/php<compact>/
+run/php-fpm/www.sock`).
+
+### SSL — webroot mode, satu sertifikat mencakup seluruh keluarga
+
+`ssl.go` mem-porting pola certbot homepoin apa adanya: `certbot certonly
+--webroot` (BUKAN plugin nginx certbot, BUKAN `--standalone`) — setiap
+domain parent + `www.<domain>` + semua subdomain-nya divalidasi dan
+dicakup DALAM SATU permintaan sertifikat (`sanTargets`), lalu diterapkan
+ke vhost parent DAN tiap vhost subdomain (`vhostFamily` + `SSLEnable`)
+lewat `rewriteVhost` masing-masing. `Issue` TIDAK otomatis mengaktifkan
+SSL di vhost (`Enable` terpisah) — supaya user bisa pastikan sertifikat
+berhasil terbit dulu sebelum situs production ikut pindah ke HTTPS.
+
+### UX: alur "Buat Website" gabungan, bukan 3 halaman terpisah
+
+Di homepoin, membuat situs baru + PHP + SSL adalah TIGA kunjungan halaman
+terpisah (Domains -> PHP -> SSL), masing-masing mulai dari nol lagi.
+`CreateWebsiteModal.tsx` + `website.Service.CreateWebsite` menggabungkan
+ketiganya jadi SATU submit: nama domain + versi PHP (opsional, dropdown
+diisi dari versi yang sudah terpasang) + centang SSL (opsional, dengan
+email). Kegagalan PHP/SSL (keduanya opsional) dilaporkan sebagai
+**warning**, BUKAN membatalkan domain yang sudah berhasil dibuat — situs
+statis yang sudah jadi tetap berguna walau mis. penerbitan SSL gagal
+karena DNS belum diarahkan.
+
+Instalasi komponen (Nginx/repo PHP/versi PHP/Certbot) memakai SATU
+mekanisme stream generik (`Service.StreamInstall`, kind:
+`"nginx"|"php-repo"|"php"|"certbot"`) lewat event Wails
+`website:install:<streamId>` — pola yang sama dengan instalasi Docker
+engine di §11 (stream registry `a.streams` di `app.go` dipakai ULANG,
+bukan dibuat baru khusus Website), mengikuti homepoin yang juga memakai
+SATU handler WS untuk semua jenis instalasi hosting (bukan endpoint
+terpisah per jenis).
+
+## 13. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -712,22 +865,28 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   modul migrasi/instalasinya sendiri yang belum di-porting.
 - **activitylog** (audit trail tiap operasi).
 - **`access`/sudo untuk MODUL LAIN** — elevasi ke user/root lewat sudo
-  sekarang ada di dua modul: `files` (§10, `asUser` penuh — List/Mkdir/
+  sekarang ada di tiga modul: `files` (§10, `asUser` penuh — List/Mkdir/
   Rename/Delete/Compress/Extract/Read/Write/Chmod/Upload/Download/Copy/
-  Search) dan `docker` (§11, lebih sederhana — cuma naik ke root, tidak
-  ada "jalankan sebagai user lain"). Keduanya masih implementasi
-  sendiri-sendiri (`fileAccess` vs `dockerAccess`) — belum ada abstraksi
+  Search), `docker` (§11, lebih sederhana — cuma naik ke root) dan
+  `website` (§12, mirip docker — selalu butuh root, tidak ada "jalankan
+  sebagai user lain"). Ketiganya masih implementasi sendiri-sendiri
+  (`fileAccess`/`dockerAccess`/`websiteAccess`) — belum ada abstraksi
   lintas-modul untuk "user efektif", sengaja ditunda sampai polanya makin
-  jelas dari modul ketiga (`dbmanager`, dst) supaya tidak salah abstraksi
+  jelas dari modul keempat (`dbmanager`, dst) supaya tidak salah abstraksi
   lebih awal.
 - Files: copy & search sudah ada (§10). Yang masih sengaja belum:
   editor gambar/preview biner, drag-drop upload dari file explorer OS.
 - Docker (§11): Containers & Networks sudah penuh. Images/Volumes/Compose
   masih placeholder — **sama seperti di homepoin sendiri**, bukan utang
   porting sepihak poinhost (lihat §11).
-- Modul lain: services, cron, webserver/php/ssl/dns/email/ftp, dbmanager
-  (mysql/pg), migration. Semua akan mengikuti pola
-  `servers/`/`terminal/`/`files/`/`docker/` di atas satu per satu.
+- Website (§12): domain/vhost Nginx + PHP-FPM + SSL sudah penuh. Yang
+  masih placeholder — Files/Logs/Proxy/Database(per-domain)/Cron/DNS/
+  SFTP per domain — **SUDAH ada dan jalan di homepoin**, cuma belum
+  sempat di-porting tahap ini (lihat §12, beda dari placeholder Docker
+  yang memang belum pernah ada di homepoin).
+- Modul lain: services, cron, dbmanager (mysql/pg), migration, email/ftp
+  server-wide. Semua akan mengikuti pola
+  `servers/`/`terminal/`/`files/`/`docker/`/`website/` di atas satu per satu.
 - **Split-pane multi-terminal per tab** (>1 sesi shell dalam satu tab) —
   fondasinya sudah ada di backend (`TerminalRegistry` & `terminal.Service`
   sudah mendukung N sesi per tab, lihat §9), yang belum ada cuma UI-nya
@@ -736,7 +895,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 13. Menjalankan (development)
+## 14. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev

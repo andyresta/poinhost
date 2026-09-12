@@ -16,6 +16,7 @@ import (
 	"github.com/andyresta/poinhost/internal/modules/files"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 	"github.com/andyresta/poinhost/internal/modules/terminal"
+	"github.com/andyresta/poinhost/internal/modules/website"
 	"github.com/andyresta/poinhost/internal/session"
 	"github.com/google/uuid"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -40,6 +41,7 @@ type App struct {
 	terminalSvc *terminal.Service
 	filesSvc    *files.Service
 	dockerSvc   *docker.Service
+	websiteSvc  *website.Service
 
 	// streamMu/streams melacak stream Docker yang sedang berjalan (logs,
 	// stats, instalasi engine) supaya frontend bisa membatalkannya secara
@@ -87,6 +89,7 @@ func NewApp() *App {
 	filesSvc := files.NewService(sftpClient, executor, serversSvc)
 
 	dockerSvc := docker.NewService(serversSvc, executor, mutex)
+	websiteSvc := website.NewService(serversSvc, executor, mutex)
 
 	return &App{
 		cfg:         cfg,
@@ -99,6 +102,7 @@ func NewApp() *App {
 		terminalSvc: terminalSvc,
 		filesSvc:    filesSvc,
 		dockerSvc:   dockerSvc,
+		websiteSvc:  websiteSvc,
 		streams:     make(map[string]context.CancelFunc),
 	}
 }
@@ -653,4 +657,133 @@ func (a *App) OpenDockerExec(tabID, containerID, shell string) (string, error) {
 		}()
 	}
 	return sessionID, nil
+}
+
+// ---------------------------------------------------------------------
+// Bindings: Website (lihat internal/modules/website)
+//
+// Scope tahap ini: domain/vhost Nginx (list/buat/subdomain/hapus/enable-
+// disable), wizard install Nginx, PHP-FPM (versi/switch per domain), dan
+// SSL Let's Encrypt via certbot — ini "inti" menu Website homepoin.
+// Files/Logs/Proxy/Database/Cron/DNS per-domain + akun SFTP menyusul di
+// sesi berikutnya (lihat ARCHITECTURE.md §Website untuk detail scope dan
+// diagnosis KENAPA homepoin terasa lambat pindah menu di modul ini —
+// bukan soal SSH re-handshake, tapi terlalu banyak round-trip perintah
+// berurutan per halaman, yang diperbaiki di sini lewat penggabungan skrip
+// + cache pendek per server).
+// ---------------------------------------------------------------------
+
+// ListWebsites mengembalikan status Nginx + daftar domain/vhost di server.
+func (a *App) ListWebsites(serverID string) (*website.ListResponse, error) {
+	return a.websiteSvc.List(serverID)
+}
+
+// CreateWebsite adalah alur "Buat Website" gabungan: domain + PHP (opsional)
+// + SSL (opsional) dalam SATU submit — beda dari homepoin yang mengharuskan
+// tiga kunjungan halaman terpisah (Domains -> PHP -> SSL) untuk hasil yang
+// sama.
+func (a *App) CreateWebsite(req website.CreateWebsiteRequest) (*website.CreateWebsiteResult, error) {
+	return a.websiteSvc.CreateWebsite(req)
+}
+
+// CreateWebsiteSubdomain membuat subdomain baru di bawah domain induk.
+func (a *App) CreateWebsiteSubdomain(req website.CreateSubdomainRequest) (website.DomainInfo, error) {
+	return a.websiteSvc.CreateSubdomain(req)
+}
+
+// DeleteWebsite menghapus vhost domain (dan opsional document root-nya).
+func (a *App) DeleteWebsite(req website.DeleteDomainRequest) error {
+	return a.websiteSvc.Delete(req)
+}
+
+// SetWebsiteEnabled mengaktifkan/menonaktifkan satu domain.
+func (a *App) SetWebsiteEnabled(req website.SetEnabledRequest) error {
+	return a.websiteSvc.SetEnabled(req)
+}
+
+// DetectNginxEngine membaca status instalasi Nginx di server (dipakai wizard).
+func (a *App) DetectNginxEngine(serverID string) (*website.NginxStatus, error) {
+	return a.websiteSvc.GetNginxStatus(serverID)
+}
+
+// StartNginxEngine mengaktifkan service Nginx yang sudah terpasang tapi
+// sedang tidak berjalan.
+func (a *App) StartNginxEngine(serverID string) (*website.NginxStatus, error) {
+	return a.websiteSvc.StartNginx(serverID)
+}
+
+// StreamWebsiteInstall menjalankan instalasi salah satu komponen hosting
+// (kind: "nginx" | "php-repo" | "php" | "certbot"; param = versi PHP kalau
+// kind=="php") sambil mengalirkan progresnya lewat event
+// "website:install:<streamID>" — satu titik masuk untuk semua jenis
+// instalasi hosting, mengikuti pola homepoin yang juga memakai SATU handler
+// untuk nginx/php/php-repo/certbot (bukan endpoint terpisah per jenis).
+func (a *App) StreamWebsiteInstall(serverID, kind, param string) (string, error) {
+	streamID := uuid.NewString()
+	ctx, cancel := context.WithTimeout(a.ctx, 30*time.Minute)
+	a.registerStream(streamID, cancel)
+	eventName := "website:install:" + streamID
+
+	go func() {
+		err := a.websiteSvc.StreamInstall(ctx, serverID, kind, param, func(line string) error {
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "line", Line: line})
+			return nil
+		})
+		a.stopStream(streamID)
+		switch {
+		case err == nil:
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "end"})
+		case errors.Is(err, context.Canceled):
+			// Dibatalkan user lewat StopDockerStream — tidak perlu event error.
+		case errors.Is(err, context.DeadlineExceeded):
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "error", Message: "Instalasi melebihi batas waktu (30 menit) — periksa koneksi atau lock paket di server."})
+		default:
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "error", Message: err.Error()})
+		}
+	}()
+
+	return streamID, nil
+}
+
+// GetWebsitePHPStatus membaca status PHP-FPM di server (+ PHP domain
+// tertentu kalau domain diisi, kosongkan untuk status server-wide saja).
+func (a *App) GetWebsitePHPStatus(serverID, domain string) (*website.PHPStatus, error) {
+	return a.websiteSvc.PHPStatus(serverID, domain)
+}
+
+// SetWebsitePHP mengaktifkan satu versi PHP-FPM untuk satu domain.
+func (a *App) SetWebsitePHP(req website.PHPSetDomainRequest) error {
+	return a.websiteSvc.PHPSetDomain(req)
+}
+
+// DisableWebsitePHP mengembalikan domain ke static-only (melepas PHP).
+func (a *App) DisableWebsitePHP(serverID, domain string) error {
+	return a.websiteSvc.PHPDisableDomain(serverID, domain)
+}
+
+// GetWebsiteSSLStatus membaca status SSL untuk satu domain (parent).
+func (a *App) GetWebsiteSSLStatus(serverID, domain string) (*website.SSLStatus, error) {
+	return a.websiteSvc.SSLStatus(serverID, domain)
+}
+
+// IssueWebsiteSSL menerbitkan sertifikat Let's Encrypt baru (belum otomatis
+// mengaktifkannya di vhost — lihat EnableWebsiteSSL).
+func (a *App) IssueWebsiteSSL(req website.SSLIssueRequest) (*website.SSLStatus, error) {
+	return a.websiteSvc.SSLIssue(req)
+}
+
+// EnableWebsiteSSL menerapkan sertifikat yang sudah terbit ke vhost domain
+// (+ subdomainnya) dan reload Nginx.
+func (a *App) EnableWebsiteSSL(serverID, domain string) (*website.SSLStatus, error) {
+	return a.websiteSvc.SSLEnable(serverID, domain)
+}
+
+// DisableWebsiteSSL melepas SSL dari vhost (sertifikat di server tidak dihapus).
+func (a *App) DisableWebsiteSSL(serverID, domain string) (*website.SSLStatus, error) {
+	return a.websiteSvc.SSLDisable(serverID, domain)
+}
+
+// RenewWebsiteSSL memperbarui sertifikat via certbot renew + reload Nginx.
+func (a *App) RenewWebsiteSSL(serverID, domain string) (*website.SSLStatus, error) {
+	return a.websiteSvc.SSLRenew(serverID, domain)
 }

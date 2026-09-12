@@ -34,6 +34,14 @@ export function CreateFolder(arg1) {
   return window['go']['main']['App']['CreateFolder'](arg1);
 }
 
+export function CreateWebsite(arg1) {
+  return window['go']['main']['App']['CreateWebsite'](arg1);
+}
+
+export function CreateWebsiteSubdomain(arg1) {
+  return window['go']['main']['App']['CreateWebsiteSubdomain'](arg1);
+}
+
 export function DeleteFiles(arg1) {
   return window['go']['main']['App']['DeleteFiles'](arg1);
 }
@@ -42,8 +50,24 @@ export function DeleteServer(arg1) {
   return window['go']['main']['App']['DeleteServer'](arg1);
 }
 
+export function DeleteWebsite(arg1) {
+  return window['go']['main']['App']['DeleteWebsite'](arg1);
+}
+
 export function DetectDockerEngine(arg1) {
   return window['go']['main']['App']['DetectDockerEngine'](arg1);
+}
+
+export function DetectNginxEngine(arg1) {
+  return window['go']['main']['App']['DetectNginxEngine'](arg1);
+}
+
+export function DisableWebsitePHP(arg1, arg2) {
+  return window['go']['main']['App']['DisableWebsitePHP'](arg1, arg2);
+}
+
+export function DisableWebsiteSSL(arg1, arg2) {
+  return window['go']['main']['App']['DisableWebsiteSSL'](arg1, arg2);
 }
 
 export function DockerContainerLogs(arg1) {
@@ -58,12 +82,28 @@ export function DownloadFileFromServer(arg1, arg2, arg3) {
   return window['go']['main']['App']['DownloadFileFromServer'](arg1, arg2, arg3);
 }
 
+export function EnableWebsiteSSL(arg1, arg2) {
+  return window['go']['main']['App']['EnableWebsiteSSL'](arg1, arg2);
+}
+
 export function ExtractArchive(arg1) {
   return window['go']['main']['App']['ExtractArchive'](arg1);
 }
 
+export function GetWebsitePHPStatus(arg1, arg2) {
+  return window['go']['main']['App']['GetWebsitePHPStatus'](arg1, arg2);
+}
+
+export function GetWebsiteSSLStatus(arg1, arg2) {
+  return window['go']['main']['App']['GetWebsiteSSLStatus'](arg1, arg2);
+}
+
 export function InspectDockerContainer(arg1, arg2) {
   return window['go']['main']['App']['InspectDockerContainer'](arg1, arg2);
+}
+
+export function IssueWebsiteSSL(arg1) {
+  return window['go']['main']['App']['IssueWebsiteSSL'](arg1);
 }
 
 export function ListDockerContainers(arg1) {
@@ -92,6 +132,10 @@ export function ListServers() {
 
 export function ListSystemUsers(arg1) {
   return window['go']['main']['App']['ListSystemUsers'](arg1);
+}
+
+export function ListWebsites(arg1) {
+  return window['go']['main']['App']['ListWebsites'](arg1);
 }
 
 export function OpenDockerExec(arg1, arg2, arg3) {
@@ -130,6 +174,10 @@ export function RenameFile(arg1) {
   return window['go']['main']['App']['RenameFile'](arg1);
 }
 
+export function RenewWebsiteSSL(arg1, arg2) {
+  return window['go']['main']['App']['RenewWebsiteSSL'](arg1, arg2);
+}
+
 export function ReorderServerTabs(arg1) {
   return window['go']['main']['App']['ReorderServerTabs'](arg1);
 }
@@ -154,12 +202,24 @@ export function SetTabActiveModule(arg1, arg2) {
   return window['go']['main']['App']['SetTabActiveModule'](arg1, arg2);
 }
 
+export function SetWebsiteEnabled(arg1) {
+  return window['go']['main']['App']['SetWebsiteEnabled'](arg1);
+}
+
+export function SetWebsitePHP(arg1) {
+  return window['go']['main']['App']['SetWebsitePHP'](arg1);
+}
+
 export function StartDockerContainer(arg1, arg2) {
   return window['go']['main']['App']['StartDockerContainer'](arg1, arg2);
 }
 
 export function StartDockerEngine(arg1) {
   return window['go']['main']['App']['StartDockerEngine'](arg1);
+}
+
+export function StartNginxEngine(arg1) {
+  return window['go']['main']['App']['StartNginxEngine'](arg1);
 }
 
 export function StopDockerContainer(arg1, arg2) {
@@ -180,6 +240,10 @@ export function StreamDockerContainerStats(arg1, arg2) {
 
 export function StreamDockerEngineInstall(arg1) {
   return window['go']['main']['App']['StreamDockerEngineInstall'](arg1);
+}
+
+export function StreamWebsiteInstall(arg1, arg2, arg3) {
+  return window['go']['main']['App']['StreamWebsiteInstall'](arg1, arg2, arg3);
 }
 
 export function TestServerConnection(arg1) {
