@@ -146,12 +146,102 @@ func classifyMySQLConnError(err error) error {
 	return errFmt("koneksi ke MySQL gagal: %v", err)
 }
 
-// openMySQLExplore membuka koneksi MySQL asli lewat tunnel SSH memakai
-// password yang diberikan langsung (dipakai juga oleh verifyMySQLCredential
-// sebelum sebuah password disimpan ke vault).
-func (s *Service) openMySQLExplore(serverID, username, host, password string) (*sql.DB, error) {
-	if _, err := s.resolveAccess(serverID); err != nil {
-		return nil, err
+// mysqlConnCacheEntry satu koneksi Explore yang ditahan hidup, dipakai
+// ulang oleh panggilan-panggilan berikutnya untuk kredensial yang sama.
+type mysqlConnCacheEntry struct {
+	db       *sql.DB
+	lastUsed time.Time
+}
+
+// mysqlDialWaiter menandai satu proses dial yang sedang berjalan untuk satu
+// key tertentu — kalau ada panggilan LAIN untuk key yang SAMA datang
+// selagi dial pertama masih berlangsung, panggilan itu menunggu hasil dial
+// yang sama alih-alih ikut membuka koneksi kedua (yang kalau dibiarkan,
+// salah satunya bakal langsung ditutup lagi oleh putCachedMySQLConn dan
+// menyebabkan panggilan yang kebagian koneksi "kalah" itu gagal dengan
+// "database is closed").
+type mysqlDialWaiter struct {
+	done chan struct{}
+	db   *sql.DB
+	err  error
+}
+
+// mysqlConnIdleTTL — koneksi yang tidak dipakai selama ini ditutup otomatis
+// (disapu lazy setiap ada akses baru) supaya tidak menahan koneksi MySQL ke
+// server yang sudah lama tidak di-browse. 5 menit cukup untuk satu sesi
+// klik-klik pindah tabel/halaman, tapi tidak menumpuk koneksi selamanya.
+const mysqlConnIdleTTL = 5 * time.Minute
+
+func mysqlConnCacheKey(serverID, username, host string) string {
+	return serverID + "\x00" + username + "\x00" + host
+}
+
+// sweepIdleMySQLConnsLocked menutup & membuang entry yang sudah idle lebih
+// dari mysqlConnIdleTTL. Dipanggil dengan mysqlConnMu SUDAH terkunci.
+func (s *Service) sweepIdleMySQLConnsLocked() {
+	now := time.Now()
+	for key, entry := range s.mysqlConns {
+		if now.Sub(entry.lastUsed) > mysqlConnIdleTTL {
+			_ = entry.db.Close()
+			delete(s.mysqlConns, key)
+		}
+	}
+}
+
+// putCachedMySQLConn menyimpan koneksi baru ke cache — menutup entry lama
+// untuk key yang sama dulu kalau ada, supaya tidak ada koneksi yang bocor
+// tak tertutup. Dipanggil HANYA dari jalur yang sudah dijamin tidak
+// tumpang tindih dial lain untuk key yang sama (verifyMySQLCredential, atau
+// dari dalam getOrDialMySQLExplore yang sudah diserialisasi lewat
+// mysqlDialing).
+func (s *Service) putCachedMySQLConn(key string, db *sql.DB) {
+	s.mysqlConnMu.Lock()
+	defer s.mysqlConnMu.Unlock()
+	if old, ok := s.mysqlConns[key]; ok {
+		_ = old.db.Close()
+	}
+	s.mysqlConns[key] = &mysqlConnCacheEntry{db: db, lastUsed: time.Now()}
+}
+
+// evictMySQLConn menutup & membuang koneksi cache untuk satu kredensial —
+// dipanggil saat password kredensial itu berubah (SaveDBCredential) atau
+// dilupakan (ForgetDBCredential), supaya tidak ada operasi Explore
+// berikutnya yang diam-diam masih memakai koneksi dari password lama.
+func (s *Service) evictMySQLConn(serverID, username, host string) {
+	key := mysqlConnCacheKey(serverID, username, host)
+	s.mysqlConnMu.Lock()
+	defer s.mysqlConnMu.Unlock()
+	if entry, ok := s.mysqlConns[key]; ok {
+		_ = entry.db.Close()
+		delete(s.mysqlConns, key)
+	}
+}
+
+// CloseAllMySQLConns menutup semua koneksi Explore yang masih tertahan di
+// cache — dipanggil saat aplikasi ditutup (lihat app.go: shutdown), sejalan
+// dengan pool.Close() untuk koneksi SSH.
+func (s *Service) CloseAllMySQLConns() {
+	s.mysqlConnMu.Lock()
+	defer s.mysqlConnMu.Unlock()
+	for key, entry := range s.mysqlConns {
+		_ = entry.db.Close()
+		delete(s.mysqlConns, key)
+	}
+}
+
+// dialMySQLExplore SELALU membuka koneksi BARU lewat tunnel SSH (dial+ping
+// sekali) — dipakai hanya oleh getOrDialMySQLExplore (cache miss) dan
+// verifyMySQLCredential (test koneksi eksplisit sebelum simpan password).
+// TIDAK mensyaratkan akses root/sudo SSH sama sekali (beda dari operasi
+// provisioning di database.go): browsing sebagai user MySQL biasa tidak
+// pernah butuh privilege root di sisi SSH, cuma butuh koneksi SSH yang
+// hidup untuk di-tunnel — makanya di sini SENGAJA tidak memanggil
+// resolveAccess (yang menolak user SSH non-root/non-sudo), supaya server
+// dengan SSH user terbatas (praktik yang lebih aman) tetap bisa dipakai
+// Explore.
+func (s *Service) dialMySQLExplore(serverID, username, host, password string) (*sql.DB, error) {
+	if _, err := s.servers.Get(serverID); err != nil {
+		return nil, errFmt("server tidak ditemukan: %v", err)
 	}
 
 	cfg := mysqldriver.NewConfig()
@@ -170,9 +260,15 @@ func (s *Service) openMySQLExplore(serverID, username, host, password string) (*
 		return nil, errFmt("konfigurasi koneksi MySQL tidak valid: %v", err)
 	}
 	db := sql.OpenDB(connector)
-	db.SetMaxOpenConns(2)
-	db.SetMaxIdleConns(1)
-	db.SetConnMaxLifetime(2 * time.Minute)
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(2)
+	// SENGAJA tanpa batas umur (0 = tidak pernah dipaksa re-connect) — koneksi
+	// ini ditahan hidup lewat cache di Service (lihat getOrDialMySQLExplore),
+	// jadi tidak ada alasan memaksa handshake ulang secara berkala selama
+	// masih dipakai aktif; MySQL server sendiri yang akan menutup kalau
+	// benar-benar idle terlalu lama (wait_timeout), dan sweep idle 5 menit
+	// di atas sudah membuang koneksi yang memang sudah tidak dipakai.
+	db.SetConnMaxLifetime(0)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -183,19 +279,68 @@ func (s *Service) openMySQLExplore(serverID, username, host, password string) (*
 	return db, nil
 }
 
+// getOrDialMySQLExplore mengembalikan koneksi cache kalau ada, atau dial
+// baru (lalu menyimpannya ke cache) kalau belum — inilah satu-satunya jalur
+// yang dipakai semua operasi Explore biasa (List*/TableRows/Insert/Update/
+// Delete/ExecuteQuery), sehingga handshake MySQL cuma terjadi SEKALI per
+// (server, user, host) yang sedang aktif di-browse, bukan sekali per
+// panggilan.
+//
+// Kalau dua panggilan datang BERSAMAAN untuk key yang sama saat belum ada
+// koneksi tercache (mis. dua tab dibuka nyaris bersamaan), panggilan kedua
+// menunggu hasil dial yang PERTAMA lewat mysqlDialing alih-alih ikut
+// membuka koneksi kedua — mencegah salah satu koneksi langsung ditutup lagi
+// oleh yang lain (race "database is closed").
+func (s *Service) getOrDialMySQLExplore(serverID, username, host, password string) (*sql.DB, error) {
+	key := mysqlConnCacheKey(serverID, username, host)
+
+	s.mysqlConnMu.Lock()
+	s.sweepIdleMySQLConnsLocked()
+	if entry, ok := s.mysqlConns[key]; ok {
+		entry.lastUsed = time.Now()
+		db := entry.db
+		s.mysqlConnMu.Unlock()
+		return db, nil
+	}
+	if w, ok := s.mysqlDialing[key]; ok {
+		s.mysqlConnMu.Unlock()
+		<-w.done
+		return w.db, w.err
+	}
+	w := &mysqlDialWaiter{done: make(chan struct{})}
+	s.mysqlDialing[key] = w
+	s.mysqlConnMu.Unlock()
+
+	db, err := s.dialMySQLExplore(serverID, username, host, password)
+	w.db, w.err = db, err
+	close(w.done)
+
+	s.mysqlConnMu.Lock()
+	delete(s.mysqlDialing, key)
+	if err == nil {
+		s.mysqlConns[key] = &mysqlConnCacheEntry{db: db, lastUsed: time.Now()}
+	}
+	s.mysqlConnMu.Unlock()
+
+	return db, err
+}
+
 // verifyMySQLCredential dipakai SaveDBCredential (opsi Verify) — memastikan
-// password benar SEBELUM disimpan ke vault, supaya vault tidak pernah
-// menyimpan kredensial yang salah.
+// password benar SEBELUM disimpan ke vault. Koneksi yang berhasil langsung
+// disimpan ke cache (bukan ditutup) supaya Explore pertama setelah
+// menyimpan kredensial terasa instan, tidak perlu dial ulang.
 func (s *Service) verifyMySQLCredential(serverID, username, host, password string) error {
-	db, err := s.openMySQLExplore(serverID, username, host, password)
+	db, err := s.dialMySQLExplore(serverID, username, host, password)
 	if err != nil {
 		return err
 	}
-	return db.Close()
+	s.putCachedMySQLConn(mysqlConnCacheKey(serverID, username, host), db)
+	return nil
 }
 
-// openMySQLExploreStored membuka koneksi Explore memakai password yang
-// SUDAH tersimpan di vault lokal (jalur normal semua endpoint Explore).
+// openMySQLExploreStored membuka (atau memakai ulang dari cache) koneksi
+// Explore memakai password yang SUDAH tersimpan di vault lokal — jalur
+// normal semua endpoint Explore.
 func (s *Service) openMySQLExploreStored(req MySQLExploreRequest) (*sql.DB, string, string, error) {
 	username, err := normalizeDBUsername(req.Username)
 	if err != nil {
@@ -209,7 +354,7 @@ func (s *Service) openMySQLExploreStored(req MySQLExploreRequest) (*sql.DB, stri
 	if !ok {
 		return nil, "", "", errFmt("KREDENSIAL_BELUM_TERSIMPAN: belum ada password tersimpan untuk %s@%s — simpan dulu lewat \"Kelola kredensial\"", username, host)
 	}
-	db, err := s.openMySQLExplore(req.ServerID, username, host, password)
+	db, err := s.getOrDialMySQLExplore(req.ServerID, username, host, password)
 	return db, username, host, err
 }
 
@@ -221,7 +366,6 @@ func (s *Service) MySQLExploreListDatabases(req MySQLExploreRequest) ([]string, 
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 
 	rows, err := db.Query("SHOW DATABASES")
 	if err != nil {
@@ -253,7 +397,6 @@ func (s *Service) MySQLExploreListTables(req MySQLExploreRequest, database strin
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 
 	rows, err := db.Query(`
 		SELECT TABLE_NAME, IFNULL(TABLE_ROWS, 0), IFNULL(ENGINE, '')
@@ -286,7 +429,6 @@ func (s *Service) MySQLExploreListColumns(req MySQLExploreRequest, database, tab
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 
 	rows, err := db.Query(`
 		SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, IFNULL(COLUMN_DEFAULT, ''), EXTRA
@@ -333,7 +475,6 @@ func (s *Service) MySQLExploreTableRows(req MySQLTableRowsRequest) (*MySQLTableR
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 
 	qualified := quoteMySQLIdent(req.Database) + "." + quoteMySQLIdent(req.Table)
 
@@ -455,7 +596,6 @@ func (s *Service) MySQLExploreInsertRow(req MySQLRowMutateRequest) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
 
 	q := "INSERT INTO " + quoteMySQLIdent(req.Database) + "." + quoteMySQLIdent(req.Table) +
 		" (" + strings.Join(quotedCols, ", ") + ") VALUES (" + strings.Join(placeholders, ", ") + ")"
@@ -507,7 +647,6 @@ func (s *Service) MySQLExploreUpdateRow(req MySQLRowMutateRequest) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
 
 	q := "UPDATE " + quoteMySQLIdent(req.Database) + "." + quoteMySQLIdent(req.Table) +
 		" SET " + strings.Join(setParts, ", ") + " WHERE " + whereClause + " LIMIT 1"
@@ -539,7 +678,6 @@ func (s *Service) MySQLExploreDeleteRow(req MySQLRowMutateRequest) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
 
 	q := "DELETE FROM " + quoteMySQLIdent(req.Database) + "." + quoteMySQLIdent(req.Table) +
 		" WHERE " + whereClause + " LIMIT 1"
@@ -573,14 +711,27 @@ func (s *Service) MySQLExploreExecuteQuery(req MySQLQueryRequest) (*MySQLQueryRe
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 
-	if _, err := db.Exec("USE " + quoteMySQLIdent(req.Database)); err != nil {
+	// Ambil SATU koneksi fisik dari pool (bukan db.Exec/db.Query langsung)
+	// dan pakai itu juga untuk query sesudahnya — "USE" bersifat per-koneksi,
+	// kalau lewat db.Exec+db.Query biasa, database/sql bebas memberikan DUA
+	// koneksi fisik berbeda dari pool (MaxOpenConns=4 di sini) sehingga USE
+	// di koneksi pertama tidak berlaku sama sekali untuk query di koneksi
+	// kedua — db.Conn menjamin keduanya jalan di koneksi fisik yang sama.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return nil, errFmt("ambil koneksi: %v", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, "USE "+quoteMySQLIdent(req.Database)); err != nil {
 		return nil, errFmt("pilih database: %v", err)
 	}
 
 	if isSelectLikeSQL(sqlText) {
-		rows, err := db.Query(sqlText)
+		rows, err := conn.QueryContext(ctx, sqlText)
 		if err != nil {
 			return nil, errFmt("query gagal: %v", err)
 		}
@@ -612,7 +763,7 @@ func (s *Service) MySQLExploreExecuteQuery(req MySQLQueryRequest) (*MySQLQueryRe
 		return result, rows.Err()
 	}
 
-	res, err := db.Exec(sqlText)
+	res, err := conn.ExecContext(ctx, sqlText)
 	if err != nil {
 		return nil, errFmt("eksekusi gagal: %v", err)
 	}
