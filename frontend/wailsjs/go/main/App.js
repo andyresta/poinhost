@@ -10,6 +10,10 @@ export function DeleteServer(arg1) {
   return window['go']['main']['App']['DeleteServer'](arg1);
 }
 
+export function ListServerStatuses() {
+  return window['go']['main']['App']['ListServerStatuses']();
+}
+
 export function ListServerTabs() {
   return window['go']['main']['App']['ListServerTabs']();
 }
@@ -20,6 +24,10 @@ export function ListServers() {
 
 export function OpenServerTab(arg1, arg2) {
   return window['go']['main']['App']['OpenServerTab'](arg1, arg2);
+}
+
+export function RefreshServerStatus(arg1) {
+  return window['go']['main']['App']['RefreshServerStatus'](arg1);
 }
 
 export function ReorderServerTabs(arg1) {

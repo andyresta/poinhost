@@ -1,4 +1,5 @@
 import { useTabsStore } from '../../store/tabs';
+import { OverviewPanel } from './OverviewPanel';
 import type { session } from '../../../wailsjs/go/models';
 
 const MODULES = [
@@ -33,10 +34,14 @@ export function ServerWorkspace({ tab }: { tab: session.Tab }) {
       </nav>
       <div className="workspace__panel">
         <h2>{MODULES.find((m) => m.key === tab.activeModule)?.label ?? tab.activeModule}</h2>
-        <p className="workspace__placeholder">
-          Modul <code>{tab.activeModule}</code> untuk server <code>{tab.serverId}</code> akan
-          tampil di sini setelah di-porting dari homepoin.
-        </p>
+        {tab.activeModule === 'overview' ? (
+          <OverviewPanel serverId={tab.serverId} />
+        ) : (
+          <p className="workspace__placeholder">
+            Modul <code>{tab.activeModule}</code> untuk server <code>{tab.serverId}</code> akan
+            tampil di sini setelah di-porting dari homepoin.
+          </p>
+        )}
       </div>
     </div>
   );

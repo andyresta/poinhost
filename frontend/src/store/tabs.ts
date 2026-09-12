@@ -13,17 +13,26 @@ import {
   ListServerTabs,
   SetTabActiveModule,
   ReorderServerTabs,
+  ListServerStatuses,
+  RefreshServerStatus,
 } from '../../wailsjs/go/main/App';
-import { session, type servers } from '../../wailsjs/go/models';
+import { session, servers } from '../../wailsjs/go/models';
 
 interface TabsState {
   servers: servers.Server[];
   tabs: session.Tab[];
   activeTabId: string | null;
   loading: boolean;
+  // Status per serverId — diisi sekali via loadStatuses() lalu diperbarui
+  // terus-menerus lewat event "server:status" dari backend (lihat App.tsx),
+  // BUKAN dengan frontend polling binding berulang-ulang.
+  statuses: Record<string, servers.ServerStatus>;
 
   loadServers: () => Promise<void>;
   loadTabs: () => Promise<void>;
+  loadStatuses: () => Promise<void>;
+  applyStatus: (status: servers.ServerStatus) => void;
+  refreshStatus: (serverId: string) => Promise<void>;
   saveServer: (req: servers.SaveServerRequest) => Promise<void>;
   deleteServer: (id: string) => Promise<void>;
 
@@ -39,10 +48,29 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   tabs: [],
   activeTabId: null,
   loading: false,
+  statuses: {},
 
   loadServers: async () => {
     const list = await ListServers();
     set({ servers: list ?? [] });
+  },
+
+  // Ambil snapshot status TERAKHIR yang sudah diketahui backend (instan,
+  // tidak menunggu SSH apa pun — Collector.Snapshot cuma baca cache).
+  loadStatuses: async () => {
+    const list = await ListServerStatuses();
+    const statuses: Record<string, servers.ServerStatus> = {};
+    for (const st of list ?? []) statuses[st.id] = st;
+    set({ statuses });
+  },
+
+  applyStatus: (status) => {
+    set((s) => ({ statuses: { ...s.statuses, [status.id]: status } }));
+  },
+
+  refreshStatus: async (serverId) => {
+    const status = await RefreshServerStatus(serverId);
+    get().applyStatus(status);
   },
 
   loadTabs: async () => {
