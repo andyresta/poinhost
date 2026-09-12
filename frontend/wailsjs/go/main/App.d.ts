@@ -4,6 +4,8 @@ import {files} from '../models';
 import {servers} from '../models';
 import {session} from '../models';
 
+export function ChmodFile(arg1:files.ChmodRequest):Promise<void>;
+
 export function CloseServerTab(arg1:string):Promise<void>;
 
 export function CloseTerminal(arg1:string):Promise<void>;
@@ -34,6 +36,8 @@ export function OpenServerTab(arg1:string,arg2:string):Promise<session.Tab>;
 
 export function OpenTerminal(arg1:string):Promise<string>;
 
+export function ReadFileContent(arg1:string,arg2:string):Promise<files.ReadResult>;
+
 export function RefreshServerStatus(arg1:string):Promise<servers.ServerStatus>;
 
 export function RenameFile(arg1:files.RenameRequest):Promise<void>;
@@ -51,5 +55,7 @@ export function TestServerConnection(arg1:servers.SaveServerRequest):Promise<ser
 export function TrustServerHostKey(arg1:servers.SaveServerRequest):Promise<void>;
 
 export function UploadFilesToServer(arg1:string,arg2:string):Promise<void>;
+
+export function WriteFileContent(arg1:files.WriteFileRequest):Promise<void>;
 
 export function WriteTerminal(arg1:string,arg2:string):Promise<void>;

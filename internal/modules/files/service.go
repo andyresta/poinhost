@@ -17,11 +17,18 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 )
+
+// maxEditableFileSize membatasi ukuran file yang boleh dibuka di editor
+// dalam app (sama seperti batas homepoin) — mencegah UI membeku menampung
+// file besar di textarea/CodeMirror, dan mencegah salah pakai file manager
+// ini untuk file biner besar yang memang bukan untuk diedit sebagai teks.
+const maxEditableFileSize = 2 * 1024 * 1024 // 2MB
 
 // Service mengorkestrasi operasi file manager satu server via SFTP + exec
 // (untuk operasi yang SFTP tidak punya primitifnya sendiri: hapus direktori
@@ -192,6 +199,60 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) error {
 
 	_, err = s.executor.Exec(ctx, req.ServerID, 10*time.Minute, cmd, true)
 	return err
+}
+
+// ReadFile membaca isi file teks remote untuk ditampilkan di editor.
+// Menolak file di atas maxEditableFileSize supaya UI tidak membeku.
+func (s *Service) ReadFile(ctx context.Context, serverID, rawPath string) (*ReadResult, error) {
+	p, err := NormalizePath(rawPath)
+	if err != nil {
+		return nil, err
+	}
+	data, err := s.sftp.ReadFile(ctx, serverID, p)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxEditableFileSize {
+		return nil, fmt.Errorf("file terlalu besar untuk diedit di aplikasi (maks %d MB)", maxEditableFileSize/1024/1024)
+	}
+	return &ReadResult{Path: p, Content: string(data), Size: int64(len(data))}, nil
+}
+
+// WriteFile menulis isi baru file teks remote (dipakai saat menyimpan hasil
+// edit) — overwrite penuh, bukan patch, konsisten dengan CreateFile/upload.
+func (s *Service) WriteFile(ctx context.Context, req WriteFileRequest) error {
+	p, err := NormalizePath(req.Path)
+	if err != nil {
+		return err
+	}
+	return s.sftp.WriteFile(ctx, req.ServerID, p, []byte(req.Content))
+}
+
+// Chmod mengubah permission file atau direktori remote.
+func (s *Service) Chmod(ctx context.Context, req ChmodRequest) error {
+	p, err := NormalizePath(req.Path)
+	if err != nil {
+		return err
+	}
+	mode, err := parseFileMode(req.Mode)
+	if err != nil {
+		return err
+	}
+	return s.sftp.Chmod(ctx, req.ServerID, p, mode)
+}
+
+// parseFileMode mengurai string mode oktal (mis. "644" atau "0755").
+func parseFileMode(raw string) (os.FileMode, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, fmt.Errorf("mode permission wajib diisi")
+	}
+	raw = strings.TrimPrefix(raw, "0")
+	n, err := strconv.ParseUint(raw, 8, 32)
+	if err != nil {
+		return 0, fmt.Errorf("format permission tidak valid: %s", raw)
+	}
+	return os.FileMode(n), nil
 }
 
 // UploadFromLocalPath meng-upload satu file LOKAL (dipilih user lewat

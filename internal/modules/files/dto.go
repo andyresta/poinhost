@@ -51,3 +51,24 @@ type ExtractRequest struct {
 	ArchivePath string `json:"archivePath"`
 	DestPath    string `json:"destPath"`
 }
+
+// ReadResult berisi isi file teks remote untuk diedit.
+type ReadResult struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+	Size    int64  `json:"size"`
+}
+
+// WriteFileRequest memuat isi baru file teks remote (simpan hasil edit).
+type WriteFileRequest struct {
+	ServerID string `json:"serverId"`
+	Path     string `json:"path"`
+	Content  string `json:"content"`
+}
+
+// ChmodRequest memuat perubahan permission file/direktori remote.
+type ChmodRequest struct {
+	ServerID string `json:"serverId"`
+	Path     string `json:"path"`
+	Mode     string `json:"mode"` // string oktal, mis. "644" atau "0755"
+}

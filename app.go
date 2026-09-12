@@ -315,6 +315,21 @@ func (a *App) ExtractArchive(req files.ExtractRequest) error {
 	return a.filesSvc.Extract(a.ctx, req)
 }
 
+// ReadFileContent membaca isi file teks remote untuk dibuka di editor.
+func (a *App) ReadFileContent(serverID, path string) (*files.ReadResult, error) {
+	return a.filesSvc.ReadFile(a.ctx, serverID, path)
+}
+
+// WriteFileContent menyimpan hasil edit isi file teks remote.
+func (a *App) WriteFileContent(req files.WriteFileRequest) error {
+	return a.filesSvc.WriteFile(a.ctx, req)
+}
+
+// ChmodFile mengubah permission file/direktori remote.
+func (a *App) ChmodFile(req files.ChmodRequest) error {
+	return a.filesSvc.Chmod(a.ctx, req)
+}
+
 // UploadFilesToServer membuka dialog pilih-file NATIVE OS (boleh pilih
 // lebih dari satu sekaligus), lalu meng-upload tiap file yang dipilih ke
 // remoteDir. Ini sengaja BUKAN <input type=file>+base64 ala aplikasi web —
