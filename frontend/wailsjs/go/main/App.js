@@ -122,6 +122,10 @@ export function EnableWebsiteSSLAutoRenew(arg1, arg2) {
   return window['go']['main']['App']['EnableWebsiteSSLAutoRenew'](arg1, arg2);
 }
 
+export function ExportBackup(arg1, arg2) {
+  return window['go']['main']['App']['ExportBackup'](arg1, arg2);
+}
+
 export function ExportWebsiteDNSZone(arg1, arg2) {
   return window['go']['main']['App']['ExportWebsiteDNSZone'](arg1, arg2);
 }
@@ -164,6 +168,10 @@ export function GetWebsiteProxyStatus(arg1, arg2) {
 
 export function GetWebsiteSSLStatus(arg1, arg2) {
   return window['go']['main']['App']['GetWebsiteSSLStatus'](arg1, arg2);
+}
+
+export function ImportBackup(arg1) {
+  return window['go']['main']['App']['ImportBackup'](arg1);
 }
 
 export function InspectDockerContainer(arg1, arg2) {

@@ -1,3 +1,24 @@
+export namespace backup {
+	
+	export class ImportSummary {
+	    serversImported: number;
+	    dbCredentialsImported: number;
+	    domainLinksImported: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImportSummary(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serversImported = source["serversImported"];
+	        this.dbCredentialsImported = source["dbCredentialsImported"];
+	        this.domainLinksImported = source["domainLinksImported"];
+	    }
+	}
+
+}
+
 export namespace docker {
 	
 	export class ContainerInfo {

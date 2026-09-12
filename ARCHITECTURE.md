@@ -95,6 +95,7 @@ poinhost/
 │
 ├── internal/
 │   ├── core/                   # infra lintas-modul (setara internal/shared/ homepoin)
+│   │   ├── backup/             # export/import arsip terenkripsi passphrase (§16)
 │   │   ├── config/             # parameter runtime (trimmed — lihat §6 roadmap)
 │   │   ├── database/           # buka SQLite WAL, migration runner
 │   │   ├── secrets/            # vault password LOKAL: OS keychain + fallback file AES-GCM (§14)
@@ -166,7 +167,7 @@ poinhost/
     │   │   │                     # WebsitePanel, WebsiteEngineWizard, CreateWebsiteModal,
     │   │   │                     # SubdomainModal, DomainDetailModal (9 tab: PHP/SSL/
     │   │   │                     # Files/Logs/Proxy/DNS/SFTP/Cron/Database),
-    │   │   │                     # MySQLExplorerModal (§14)
+    │   │   │                     # MySQLExplorerModal (§14), BackupModal (§16)
     │   │   └── tabs/              # TabBar & TabContent (keep-alive per tab)
     │   └── App.tsx
     └── wailsjs/                  # auto-generated binding Go<->TS (`wails generate module`)
@@ -1115,7 +1116,68 @@ tidak pernah dibaca ulang di mana pun (lihat §13).
 5. Database bisa ditautkan ke domain manapun lewat tombol "🔗 Tautkan" di
    tabel Database — murni kurasi, tidak mengubah akses.
 
-## 15. Yang BELUM di-porting di skeleton ini (roadmap)
+## 16. Backup: export/import data lintas perangkat (tanpa akun/server)
+
+Latar belakang: user bertanya soal sign-in Google + sync otomatis antar
+perangkat. Itu diskusikan dulu (bukan langsung dibangun) karena berlawanan
+dengan keputusan desain §7 (poinhost sengaja tanpa login/server) — begitu
+ada akun+sync, kredensial (password SSH, vault MySQL §14) HARUS lewat
+suatu tempat di luar mesin lokal, menambah permukaan risiko yang tadinya
+sengaja dihindari. Tiga opsi didiskusikan (manual export/import terenkripsi
+vs Google Sign-In+Drive milik user vs backend cloud sendiri) — user
+memilih opsi pertama: **paling ringan, tanpa infrastruktur baru sama
+sekali**, konsisten dengan sikap "tanpa server" yang sudah ada.
+
+### Format: satu file, terenkripsi passphrase, dibawa user sendiri
+
+`internal/core/backup` (`dto.go`/`crypto.go`/`service.go`) membangun satu
+`Payload` JSON dari beberapa modul sekaligus (BUKAN dump mentah tabel
+SQLite, supaya format stabil walau skema internal berubah):
+
+- **servers** — semua field `Server` + password SSH (`servers.Service.
+  SudoPassword`), plus opsional **isi file private key** (base64, HANYA
+  kalau user centang eksplisit "Sertakan isi private key" — default off,
+  supaya membaca & menyertakan kunci privat SSH ke arsip adalah keputusan
+  sadar, bukan otomatis).
+- **website_db_credentials** — password diambil dari vault lokal
+  (`website.Service.ExportCredentialPassword`, wrapper baru khusus dipakai
+  backup, TIDAK diekspos sebagai binding umum lain).
+- **website_domain_databases** — tautan domain<->database (§14).
+- SENGAJA TIDAK menyertakan `activity_logs` (audit, bisa besar/tak
+  relevan dipindah) atau `ui_tabs` (state UI device-specific).
+
+Payload itu dienkripsi jadi satu file biner: `magic || salt || nonce ||
+ciphertext(AES-256-GCM)`, kuncinya PBKDF2-HMAC-SHA256 (200rb iterasi) dari
+**passphrase yang diingat user** — beda dari kunci vault lokal (§14) yang
+acak & spesifik satu mesin: arsip ini sengaja dibawa ke mesin LAIN, jadi
+kuncinya harus bisa direproduksi dari sesuatu yang TIDAK disimpan di mesin
+mana pun. Tidak ada mekanisme "lupa passphrase" — itu memang harga dari
+tidak adanya akun/server yang bisa menyimpan/reset kredensial.
+
+### Import: upsert mempertahankan ID, aman dijalankan berulang
+
+`servers.Service.UpsertFromBackup` (beda dari `Save` biasa yang SELALU
+generate ID baru atau meng-update-tanpa-insert) mempertahankan ID dari
+arsip — cek `repo.Get(id)` dulu, insert kalau belum ada (kasus normal:
+perangkat baru), update kalau sudah (mis. import ulang arsip yang sama,
+atau restore ke mesin yang sama) — idempotent. Kredensial database &
+tautan domain memakai fungsi upsert yang sudah ada (`SaveDBCredential`,
+`LinkDomainDatabase`), jadi tidak ada duplikasi juga. Private key yang
+dibawa arsip ditulis ke `~/.poinhost/imported_keys/<serverID>_<nama>`
+(permission 0600) — folder terpisah, TIDAK menimpa file kunci apa pun yang
+sudah ada di mesin tujuan.
+
+### UI: dialog native, bukan upload/download browser
+
+`ExportBackup`/`ImportBackup` di `app.go` memakai `runtime.SaveFileDialog`/
+`OpenFileDialog` (pola sama dengan Download file di Files §10 dan Export
+DNS zone §13) — dialog OS asli, file tidak pernah "singgah" di memori JS.
+`BackupModal.tsx` (dipicu tombol "⇄ Backup" di header `ServersPage`) punya
+2 tab: Export (passphrase + konfirmasi + checkbox sertakan key file) dan
+Import (passphrase + ringkasan hasil: jumlah server/kredensial/tautan yang
+berhasil masuk).
+
+## 17. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -1165,7 +1227,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 16. Menjalankan (development)
+## 18. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev
