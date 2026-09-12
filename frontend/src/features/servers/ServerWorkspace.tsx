@@ -3,6 +3,7 @@ import { useTabsStore } from '../../store/tabs';
 import { OverviewPanel } from './OverviewPanel';
 import { TerminalPanel } from './TerminalPanel';
 import { FilesPanel } from './FilesPanel';
+import { DockerPanel } from './DockerPanel';
 import type { session } from '../../../wailsjs/go/models';
 
 const MODULES = [
@@ -19,14 +20,14 @@ const MODULES = [
 // `hidden`, bukan unmount) selama tab ini masih terbuka. Modul lain masih
 // placeholder, belum ada state yang perlu dipertahankan, jadi render
 // sederhana saja.
-const STATEFUL_MODULES = new Set(['overview', 'terminal', 'files']);
+const STATEFUL_MODULES = new Set(['overview', 'terminal', 'files', 'docker']);
 
 // Isi satu tab: nav modul di kiri + panel konten modul aktif di kanan.
-// Modul files/services/docker di sini masih placeholder — akan di-porting
-// bertahap dari homepoin sebagai vertical slice terpisah, lalu didaftarkan
-// di MODULES di atas. Berpindah modul DI DALAM satu tab hanya mengubah
-// `activeModule` (dan visibilitas panel via `hidden`) — tidak pernah
-// reload/reconnect apa pun, termasuk sesi terminal yang sedang berjalan.
+// Modul services di sini masih placeholder — akan di-porting bertahap dari
+// homepoin sebagai vertical slice terpisah, lalu didaftarkan di MODULES di
+// atas. Berpindah modul DI DALAM satu tab hanya mengubah `activeModule`
+// (dan visibilitas panel via `hidden`) — tidak pernah reload/reconnect apa
+// pun, termasuk sesi terminal yang sedang berjalan.
 export function ServerWorkspace({ tab }: { tab: session.Tab }) {
   const setModule = useTabsStore((s) => s.setModule);
   const [visited, setVisited] = useState<Set<string>>(() => new Set([tab.activeModule]));
@@ -71,6 +72,12 @@ export function ServerWorkspace({ tab }: { tab: session.Tab }) {
         {visited.has('files') && (
           <div className="workspace__module" hidden={tab.activeModule !== 'files'}>
             <FilesPanel serverId={tab.serverId} />
+          </div>
+        )}
+
+        {visited.has('docker') && (
+          <div className="workspace__module" hidden={tab.activeModule !== 'docker'}>
+            <DockerPanel tabId={tab.id} serverId={tab.serverId} />
           </div>
         )}
 

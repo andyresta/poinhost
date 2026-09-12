@@ -22,6 +22,10 @@ export function CopyFiles(arg1) {
   return window['go']['main']['App']['CopyFiles'](arg1);
 }
 
+export function CreateDockerNetwork(arg1) {
+  return window['go']['main']['App']['CreateDockerNetwork'](arg1);
+}
+
 export function CreateFile(arg1) {
   return window['go']['main']['App']['CreateFile'](arg1);
 }
@@ -38,12 +42,36 @@ export function DeleteServer(arg1) {
   return window['go']['main']['App']['DeleteServer'](arg1);
 }
 
+export function DetectDockerEngine(arg1) {
+  return window['go']['main']['App']['DetectDockerEngine'](arg1);
+}
+
+export function DockerContainerLogs(arg1) {
+  return window['go']['main']['App']['DockerContainerLogs'](arg1);
+}
+
+export function DockerContainerStats(arg1, arg2) {
+  return window['go']['main']['App']['DockerContainerStats'](arg1, arg2);
+}
+
 export function DownloadFileFromServer(arg1, arg2, arg3) {
   return window['go']['main']['App']['DownloadFileFromServer'](arg1, arg2, arg3);
 }
 
 export function ExtractArchive(arg1) {
   return window['go']['main']['App']['ExtractArchive'](arg1);
+}
+
+export function InspectDockerContainer(arg1, arg2) {
+  return window['go']['main']['App']['InspectDockerContainer'](arg1, arg2);
+}
+
+export function ListDockerContainers(arg1) {
+  return window['go']['main']['App']['ListDockerContainers'](arg1);
+}
+
+export function ListDockerNetworks(arg1) {
+  return window['go']['main']['App']['ListDockerNetworks'](arg1);
 }
 
 export function ListFiles(arg1, arg2, arg3) {
@@ -66,6 +94,10 @@ export function ListSystemUsers(arg1) {
   return window['go']['main']['App']['ListSystemUsers'](arg1);
 }
 
+export function OpenDockerExec(arg1, arg2, arg3) {
+  return window['go']['main']['App']['OpenDockerExec'](arg1, arg2, arg3);
+}
+
 export function OpenServerTab(arg1, arg2) {
   return window['go']['main']['App']['OpenServerTab'](arg1, arg2);
 }
@@ -78,8 +110,20 @@ export function ReadFileContent(arg1, arg2, arg3) {
   return window['go']['main']['App']['ReadFileContent'](arg1, arg2, arg3);
 }
 
+export function RecreateDockerContainer(arg1) {
+  return window['go']['main']['App']['RecreateDockerContainer'](arg1);
+}
+
 export function RefreshServerStatus(arg1) {
   return window['go']['main']['App']['RefreshServerStatus'](arg1);
+}
+
+export function RemoveDockerContainer(arg1, arg2) {
+  return window['go']['main']['App']['RemoveDockerContainer'](arg1, arg2);
+}
+
+export function RemoveDockerNetwork(arg1, arg2) {
+  return window['go']['main']['App']['RemoveDockerNetwork'](arg1, arg2);
 }
 
 export function RenameFile(arg1) {
@@ -94,6 +138,10 @@ export function ResizeTerminal(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeTerminal'](arg1, arg2, arg3);
 }
 
+export function RestartDockerContainer(arg1, arg2) {
+  return window['go']['main']['App']['RestartDockerContainer'](arg1, arg2);
+}
+
 export function SaveServer(arg1) {
   return window['go']['main']['App']['SaveServer'](arg1);
 }
@@ -104,6 +152,34 @@ export function SearchFiles(arg1) {
 
 export function SetTabActiveModule(arg1, arg2) {
   return window['go']['main']['App']['SetTabActiveModule'](arg1, arg2);
+}
+
+export function StartDockerContainer(arg1, arg2) {
+  return window['go']['main']['App']['StartDockerContainer'](arg1, arg2);
+}
+
+export function StartDockerEngine(arg1) {
+  return window['go']['main']['App']['StartDockerEngine'](arg1);
+}
+
+export function StopDockerContainer(arg1, arg2) {
+  return window['go']['main']['App']['StopDockerContainer'](arg1, arg2);
+}
+
+export function StopDockerStream(arg1) {
+  return window['go']['main']['App']['StopDockerStream'](arg1);
+}
+
+export function StreamDockerContainerLogs(arg1) {
+  return window['go']['main']['App']['StreamDockerContainerLogs'](arg1);
+}
+
+export function StreamDockerContainerStats(arg1, arg2) {
+  return window['go']['main']['App']['StreamDockerContainerStats'](arg1, arg2);
+}
+
+export function StreamDockerEngineInstall(arg1) {
+  return window['go']['main']['App']['StreamDockerEngineInstall'](arg1);
 }
 
 export function TestServerConnection(arg1) {

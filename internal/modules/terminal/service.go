@@ -59,6 +59,19 @@ func (s *Service) SetEmitters(onData func(sessionID string, data []byte), onExit
 // begitu FitAddon menghitung ukuran kontainer sebenarnya — lihat
 // TerminalPanel.tsx), bukan angka final.
 func (s *Service) Open(ctx context.Context, tabID, serverID string) (string, error) {
+	return s.open(ctx, tabID, serverID, "")
+}
+
+// OpenCommand membuka sesi PTY yang menjalankan SATU perintah tertentu
+// (bukan shell login biasa) — dipakai modul docker untuk "exec ke dalam
+// container" (mis. `docker exec -it <id> bash`), supaya bisa memakai ulang
+// seluruh infrastruktur PTY/keep-alive/xterm.js yang sama dengan Terminal
+// VPS biasa, alih-alih membangun jalur streaming terpisah.
+func (s *Service) OpenCommand(ctx context.Context, tabID, serverID, command string) (string, error) {
+	return s.open(ctx, tabID, serverID, command)
+}
+
+func (s *Service) open(ctx context.Context, tabID, serverID, command string) (string, error) {
 	sessionID, client, err := s.registry.Open(ctx, tabID, serverID)
 	if err != nil {
 		return "", err
@@ -94,7 +107,12 @@ func (s *Service) Open(ctx context.Context, tabID, serverID string) (string, err
 		return "", fmt.Errorf("buka stdout: %w", err)
 	}
 
-	if err := sshSess.Shell(); err != nil {
+	if command == "" {
+		err = sshSess.Shell()
+	} else {
+		err = sshSess.Start(command)
+	}
+	if err != nil {
 		_ = sshSess.Close()
 		s.registry.Close(tabID, sessionID)
 		return "", fmt.Errorf("mulai shell: %w", err)

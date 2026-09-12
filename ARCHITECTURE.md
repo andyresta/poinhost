@@ -112,13 +112,23 @@ poinhost/
 │       │   ├── status.go         # ServerStatus DTO + fetchMetrics
 │       │   ├── metrics.go        # script SSH + parser (paritas homepoin)
 │       │   └── collector.go      # scheduler status/metrik (lihat §8)
-│       ├── terminal/             # PTY interaktif (lihat §9)
-│       │   └── service.go        # bungkus koneksi dedicated jadi shell PTY
-│       └── files/                 # file manager SFTP (lihat §10)
+│       ├── terminal/             # PTY interaktif (lihat §9) + exec-into-container (§11)
+│       │   └── service.go        # bungkus koneksi dedicated jadi shell PTY (Open/OpenCommand)
+│       ├── files/                 # file manager SFTP (lihat §10)
+│       │   ├── dto.go
+│       │   ├── pathutil.go        # NormalizePath/JoinPath/dst (traversal-safe)
+│       │   ├── archive_cmd.go     # command zip/tar.gz + fallback python3
+│       │   └── service.go         # list/mkdir/upload/download/delete/compress
+│       └── docker/                # Containers + Networks via CLI docker (lihat §11)
 │           ├── dto.go
-│           ├── pathutil.go        # NormalizePath/JoinPath/dst (traversal-safe)
-│           ├── archive_cmd.go     # command zip/tar.gz + fallback python3
-│           └── service.go         # list/mkdir/upload/download/delete/compress
+│           ├── access.go          # dockerAccess/resolveAccess/wrap (sudo ke root)
+│           ├── parse.go           # parsing TSV docker ps + JSON inspect/stats/network
+│           ├── config.go          # inspect -> createTemplate -> buildCreateArgs (recreate)
+│           ├── service.go         # ListContainers + start/stop/restart/remove + logs/stats
+│           ├── service_networks.go
+│           ├── service_config.go  # InspectContainer/RecreateContainer
+│           ├── install.go         # detect distro + install/start Docker engine
+│           └── exec.go            # BuildExecCommand (dipakai terminal.OpenCommand)
 │
 ├── migrations/
 │   └── 001_core.sql             # servers, app_settings, activity_logs, ui_tabs
@@ -129,7 +139,9 @@ poinhost/
     │   ├── features/
     │   │   ├── servers/          # ServersPage, ServerFormModal, ServerWorkspace,
     │   │   │                     # OverviewPanel, TerminalPanel (xterm.js),
-    │   │   │                     # FilesPanel, StatusDot, PromptModal, CompressModal
+    │   │   │                     # FilesPanel, StatusDot, PromptModal, CompressModal,
+    │   │   │                     # DockerPanel, NetworksPanel, EngineInstallWizard,
+    │   │   │                     # ContainerLogsModal/StatsModal/ExecModal, RecreateContainerModal
     │   │   └── tabs/              # TabBar & TabContent (keep-alive per tab)
     │   └── App.tsx
     └── wailsjs/                  # auto-generated binding Go<->TS (`wails generate module`)
@@ -528,7 +540,160 @@ Interaksi per-baris pakai tombol yang muncul saat hover (pola yang sama
 dengan `ServersPage`), bukan context-menu klik-kanan kustom — pilihan sadar
 untuk mengurangi kompleksitas UI di porting awal ini.
 
-## 11. Yang BELUM di-porting di skeleton ini (roadmap)
+## 11. Docker: containers, networks, exec, install wizard
+
+### Scope — mengikuti homepoin APA ADANYA, bukan menambah cakupan baru
+
+Sebelum porting, homepoin dicek langsung (`routes.go` + template
+`docker/images.html`/`volumes.html`/`compose.html`): dari lima submenu
+Docker di homepoin, cuma **Containers** dan **Networks** yang benar-benar
+punya implementasi backend. **Images, Volumes, dan Compose di homepoin
+sendiri cuma halaman placeholder "coming soon"** — tidak ada satu route
+API pun untuk ketiganya. Jadi porting ke poinhost sengaja dibatasi sama:
+Containers + Networks dibangun **penuh** (termasuk fitur yang di homepoin
+ada di balik service.go/service_config.go/install.go — bukan cuma daftar
+sederhana), sementara tiga submenu lain diberi placeholder yang JUJUR
+mengatakan itu ("belum ada implementasinya di homepoin sendiri"), bukan
+pura-pura sudah porting padahal cuma tampilan kosong.
+
+### Eksekusi tetap lewat CLI `docker` via SSH, bukan Docker API/socket
+
+Sama seperti homepoin: tidak ada dependency ke Docker Engine API atau akses
+langsung ke `/var/run/docker.sock` dari poinhost. Semua operasi adalah
+perintah `docker ...` yang dieksekusi lewat `sshpool.Executor` (slot
+shared untuk perintah cepat, koneksi dedicated untuk yang streaming) —
+konsisten dengan §3: pindah dari tab Files/Terminal ke tab Docker (atau
+sebaliknya) tidak pernah memicu dial SSH baru.
+
+`internal/modules/docker/access.go` (`dockerAccess`/`resolveAccess`/`wrap`)
+polanya sama dengan `files/access.go`, tapi lebih sederhana — Docker tidak
+punya konsep "jalankan sebagai user lain" seperti Files; cuma ada dua
+keadaan: jalan langsung (user SSH sudah `root` atau `server.useSudo`
+false) atau dibungkus `sudo` (naik ke root, pakai password tersimpan kalau
+auth-nya password, atau `sudo -n` mengandalkan NOPASSWD kalau auth-nya
+key). `mapDockerError` diporting apa adanya dari homepoin — menerjemahkan
+pesan sudo/socket/daemon-not-running mentah jadi pesan yang jelas.
+
+### Containers
+
+`ListContainers` mem-parsing `docker ps -a --format` TSV (bukan
+`{{json .}}` — jauh lebih cepat kalau container punya banyak Label besar,
+teknik yang sama dipertahankan dari homepoin), di-cache 8 detik per server
+di dalam `docker.Service` sendiri (cache in-memory sederhana, bukan paket
+generik terpisah seperti homepoin — dipakainya cuma di sini) supaya
+polling ringan dari `DockerPanel` (setiap 10 detik selagi sub-tab
+Containers aktif) tidak berarti `docker ps` baru tiap panggilan.
+Start/Stop/Restart/Remove dikunci per-server lewat
+`sshpool.ServerMutexRegistry` yang sama dipakai modul lain — dua aksi
+Docker dari dua tab yang menunjuk server yang sama tidak saling
+tabrakan.
+
+Log & statistik container punya dua mode, sama seperti homepoin:
+snapshot (`DockerContainerLogs`/`DockerContainerStats`, sekali panggil)
+dan **stream realtime** (`docker logs -f` / `docker stats`) lewat
+`Executor.ExecStreamDedicated` — jalan di koneksi SSH KHUSUS, bukan slot
+shared, supaya `tail -f` yang berjalan lama tidak ikut mengantre di
+belakang operasi Docker lain, dan beberapa modal log/stats bisa terbuka
+bersamaan ke container berbeda tanpa saling memblokir.
+
+### Streaming lewat event Wails, bukan WebSocket custom
+
+Homepoin memakai WebSocket khusus (`WSHandler.HandleLogsWS`/
+`HandleStatsWS`/`HandleInstallWS`) untuk mengalirkan log/stats/progress
+instalasi ke browser. Poinhost tidak punya server HTTP sama sekali (§1),
+jadi pola ini diganti dengan **event Wails per-stream**, mengikuti pola
+yang sama dipakai Terminal (§9) dan status server (§8):
+
+- `App.StreamDockerContainerLogs`/`StreamDockerContainerStats`/
+  `StreamDockerEngineInstall` masing-masing membuat `streamID` (UUID) +
+  `context.CancelFunc` yang didaftarkan ke `App.streams` (map kecil di
+  `app.go`, dianalogikan dengan `handler_ws.go` homepoin tapi untuk event,
+  bukan koneksi WS), lalu menjalankan stream di goroutine terpisah dan
+  mem-`runtime.EventsEmit` tiap baris/sampel ke event bernama
+  `docker:logs:<streamID>` / `docker:stats:<streamID>` /
+  `docker:install:<streamID>`.
+- `App.StopDockerStream(streamID)` membatalkan context-nya — dipanggil
+  frontend saat modal log/stats ditutup, atau otomatis dibersihkan sendiri
+  begitu stream berakhir wajar (container di-stop, instalasi selesai/gagal).
+- Semua stream yang masih terdaftar dibatalkan paksa di `shutdown()`
+  supaya tidak ada goroutine tersisa nyoba jalan setelah SSH pool/DB
+  ditutup.
+
+### Inspect & Recreate — bukan "edit container in place"
+
+Docker tidak punya cara mengubah env/port/volume/memory container yang
+sudah berjalan begitu saja — satu-satunya jalan adalah siklus **stop → rm
+→ create (dengan konfigurasi baru) → start**, dengan nama container
+dipertahankan. `internal/modules/docker/config.go` (diporting verbatim
+dari homepoin, fungsi murni tanpa dependency sesi/DB) mem-parsing output
+`docker inspect` jadi `createTemplate`, menerapkan override dari form UI
+(`applyOverrides`/`validateRecreateOverrides` — validasi port 1-65535,
+path volume harus absolut, memory limit minimal 6MB), lalu membangun ulang
+argumen `docker create` (`buildCreateArgs`) termasuk melestarikan alias
+DNS network dari `docker-compose` (`networkAliasesFor` — kalau tidak
+di-preserve, container lain di network yang sama gagal resolve nama
+service itu lagi setelah recreate). `RecreateContainerModal.tsx` memuat
+konfigurasi SEKARANG lewat `InspectDockerContainer` sebagai starting
+point, dan meminta konfirmasi eksplisit sebelum apply (container akan
+berhenti sesaat).
+
+### Networks
+
+`ListNetworks`/`CreateNetwork`/`RemoveNetwork` diporting nyaris apa adanya
+— network bawaan Docker (`default`/`bridge`/`host`/`none`, dicek lewat
+`IsBuiltinNetworkMode`) tidak bisa dihapus maupun dipakai sebagai nama
+network baru, dijaga baik di backend (source of truth) maupun disembunyikan
+tombol hapusnya di `NetworksPanel.tsx`.
+
+### Engine install wizard
+
+VPS baru sering belum punya Docker terpasang sama sekali. `install.go`
+mendeteksi distro (`/etc/os-release` + package manager yang tersedia) dan
+status service (`DetectEngineStatus`), lalu:
+
+- Kalau sudah terpasang tapi service-nya mati → `StartEngine`
+  (`systemctl start/enable`, atau `rc-service` untuk Alpine/OpenRC).
+- Kalau belum terpasang → `StreamInstallEngine` menjalankan skrip resmi
+  `get.docker.com` (didukung: apt/dnf/yum/apk) lewat `ExecStreamPTY` (PTY
+  supaya output progress terasa seperti terminal asli), progresnya
+  mengalir ke `EngineInstallWizard.tsx` sebagai log baris-per-baris lewat
+  event di atas.
+
+Beda dari homepoin: skrip apt/dnf/yum homepoin memakai helper
+`nginx.AptPrelude`/`DockerPMWrapperAPT` dkk dari modul `hosting/nginx`
+(wrapper lock-wait yang dipakai bersama modul Nginx homepoin) — poinhost
+belum punya modul hosting apa pun, jadi bagian tunggu-lock apt (`fuser
+/var/lib/dpkg/lock-frontend`) ditulis inline & self-contained di
+`docker/install.go` sendiri, bukan diimpor dari modul yang tidak ada.
+Kalau nanti ada modul kedua yang butuh helper serupa (mis. modul Nginx
+di-porting), baru diekstrak jadi shared package — sama seperti keputusan
+"belum ada abstraksi `access` lintas modul" di §11 lama (sekarang §12).
+
+### Exec ke dalam container — memakai ulang `terminal.Service`, bukan jalur baru
+
+Homepoin punya jalur PTY terpisah untuk "docker exec" (`terminal/
+docker_exec_cmd.go` + `handler_docker_exec_ws.go`, WebSocket sendiri).
+Poinhost TIDAK membuat jalur duplikat — `terminal.Service.Open` di-refactor
+jadi `terminal.Service.open(ctx, tabID, serverID, command)` (dipakai lewat
+dua nama publik: `Open` untuk shell login biasa, `OpenCommand` untuk
+menjalankan SATU perintah tertentu lewat PTY). `docker.Service
+.BuildExecCommand` cuma menyusun string perintah `docker exec -it <id>
+<shell>` (dibungkus sudo bila perlu, port dari `buildDockerExecCommand`
+homepoin) — `App.OpenDockerExec` memanggil `terminalSvc.OpenCommand` dengan
+perintah itu, lalu (kalau perlu password sudo) mengirimkannya lewat
+`terminalSvc.Write` yang SAMA dipakai keystroke terminal biasa.
+
+Konsekuensinya: sesi exec container otomatis dapat SEMUA infrastruktur PTY
+yang sudah ada — event `terminal:output:<sessionId>`/`terminal:exit:<sessionId>`,
+base64 encoding output, `WriteTerminal`/`ResizeTerminal`/`CloseTerminal` —
+tanpa satu baris kode baru di lapisan itu. `ContainerExecModal.tsx` memakai
+`xterm.js` dengan pola render yang sama persis dengan `TerminalPanel.tsx`,
+bedanya SENGAJA tidak di-keep-alive: sesi ditutup begitu modal ditutup,
+karena "masuk sebentar ke satu container" adalah tindakan sesaat, beda
+dari sesi Terminal VPS yang memang dirancang bertahan lintas perpindahan
+modul (§9).
+
+## 12. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -546,19 +711,23 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   `EventsOn`, dipakai server status di §8 dan terminal di §9), tinggal
   modul migrasi/instalasinya sendiri yang belum di-porting.
 - **activitylog** (audit trail tiap operasi).
-- **`access`/sudo untuk MODUL LAIN** — elevasi `asUser` sudah ada khusus
-  untuk `files` (§10: List/Mkdir/Rename/Delete/Compress/Extract/Read/Write/
-  Chmod/Upload/Download/Copy/Search semua sudo-aware). Modul berikutnya yang
-  butuh ini (`dbmanager`, `docker`, dst di homepoin) masih perlu menerapkan
-  pola yang sama sendiri-sendiri — belum ada abstraksi lintas-modul untuk
-  "user efektif" di poinhost (homepoin punya modul `access` terpisah untuk
-  itu; poinhost sengaja belum, tunggu ada modul kedua yang butuh baru
-  diekstrak supaya tidak salah abstraksi lebih awal).
+- **`access`/sudo untuk MODUL LAIN** — elevasi ke user/root lewat sudo
+  sekarang ada di dua modul: `files` (§10, `asUser` penuh — List/Mkdir/
+  Rename/Delete/Compress/Extract/Read/Write/Chmod/Upload/Download/Copy/
+  Search) dan `docker` (§11, lebih sederhana — cuma naik ke root, tidak
+  ada "jalankan sebagai user lain"). Keduanya masih implementasi
+  sendiri-sendiri (`fileAccess` vs `dockerAccess`) — belum ada abstraksi
+  lintas-modul untuk "user efektif", sengaja ditunda sampai polanya makin
+  jelas dari modul ketiga (`dbmanager`, dst) supaya tidak salah abstraksi
+  lebih awal.
 - Files: copy & search sudah ada (§10). Yang masih sengaja belum:
   editor gambar/preview biner, drag-drop upload dari file explorer OS.
+- Docker (§11): Containers & Networks sudah penuh. Images/Volumes/Compose
+  masih placeholder — **sama seperti di homepoin sendiri**, bukan utang
+  porting sepihak poinhost (lihat §11).
 - Modul lain: services, cron, webserver/php/ssl/dns/email/ftp, dbmanager
-  (mysql/pg), docker, migration. Semua akan mengikuti pola
-  `servers/`/`terminal/`/`files/` di atas satu per satu.
+  (mysql/pg), migration. Semua akan mengikuti pola
+  `servers/`/`terminal/`/`files/`/`docker/` di atas satu per satu.
 - **Split-pane multi-terminal per tab** (>1 sesi shell dalam satu tab) —
   fondasinya sudah ada di backend (`TerminalRegistry` & `terminal.Service`
   sudah mendukung N sesi per tab, lihat §9), yang belum ada cuma UI-nya
@@ -567,7 +736,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 12. Menjalankan (development)
+## 13. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev
