@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"log"
 
 	"github.com/andyresta/poinhost/internal/core/config"
 	"github.com/andyresta/poinhost/internal/core/database"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/andyresta/poinhost/internal/modules/servers"
+	"github.com/andyresta/poinhost/internal/modules/terminal"
 	"github.com/andyresta/poinhost/internal/session"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -24,10 +26,11 @@ type App struct {
 	db   *sql.DB
 	pool *sshpool.Pool
 
-	serversSvc *servers.Service
-	collector  *servers.Collector
-	sessionMgr *session.Manager
-	terminals  *session.TerminalRegistry
+	serversSvc  *servers.Service
+	collector   *servers.Collector
+	sessionMgr  *session.Manager
+	terminals   *session.TerminalRegistry
+	terminalSvc *terminal.Service
 }
 
 // NewApp membuat instance App baru. Semua wiring dependency (config, db,
@@ -61,15 +64,17 @@ func NewApp() *App {
 
 	sessionMgr := session.NewManager(db)
 	terminals := session.NewTerminalRegistry(pool)
+	terminalSvc := terminal.NewService(terminals)
 
 	return &App{
-		cfg:        cfg,
-		db:         db,
-		pool:       pool,
-		serversSvc: serversSvc,
-		collector:  collector,
-		sessionMgr: sessionMgr,
-		terminals:  terminals,
+		cfg:         cfg,
+		db:          db,
+		pool:        pool,
+		serversSvc:  serversSvc,
+		collector:   collector,
+		sessionMgr:  sessionMgr,
+		terminals:   terminals,
+		terminalSvc: terminalSvc,
 	}
 }
 
@@ -98,6 +103,21 @@ func (a *App) startup(ctx context.Context) {
 		runtime.EventsEmit(ctx, "server:status", st)
 	})
 	a.collector.Start()
+
+	// Output PTY di-base64-kan dulu sebelum lewat event Wails (yang membawa
+	// payload sebagai JSON) — byte mentah dari remote shell tidak dijamin
+	// UTF-8 valid (mis. karakter multi-byte terpotong tepat di batas satu
+	// pembacaan), dan base64 menghindari itu tanpa perlu peduli soal encoding
+	// sama sekali. Event per-sesi ("terminal:output:<id>") supaya tiap
+	// TerminalPanel di frontend cuma dengar output miliknya sendiri.
+	a.terminalSvc.SetEmitters(
+		func(sessionID string, data []byte) {
+			runtime.EventsEmit(ctx, "terminal:output:"+sessionID, base64.StdEncoding.EncodeToString(data))
+		},
+		func(sessionID string, reason string) {
+			runtime.EventsEmit(ctx, "terminal:exit:"+sessionID, reason)
+		},
+	)
 }
 
 // shutdown dipanggil Wails saat aplikasi ditutup — hentikan collector dulu
@@ -180,14 +200,17 @@ func (a *App) OpenServerTab(serverID, title string) (*session.Tab, error) {
 	return tab, nil
 }
 
-// CloseServerTab menutup tab: semua sesi terminal dedicated milik tab ini
-// ditutup lebih dulu, baru tab-nya sendiri dihapus dari registry — dan
-// prioritas status collector untuk server itu diturunkan (Unsubscribe).
+// CloseServerTab menutup tab: semua sesi terminal PTY milik tab ini ditutup
+// dulu (terminalSvc — shell + koneksi dedicated-nya), lalu jaring pengaman
+// session.TerminalRegistry (menutup koneksi dedicated APA PUN yang tersisa
+// untuk tab ini walau bukan lewat terminalSvc), baru tab-nya sendiri
+// dihapus — dan prioritas status collector untuk server itu diturunkan.
 func (a *App) CloseServerTab(tabID string) error {
 	tab, err := a.sessionMgr.GetTab(tabID)
 	if err != nil {
 		return err
 	}
+	a.terminalSvc.CloseAllForTab(tabID)
 	a.terminals.CloseAllForTab(tabID)
 	if err := a.sessionMgr.CloseTab(tabID); err != nil {
 		return err
@@ -210,4 +233,36 @@ func (a *App) SetTabActiveModule(tabID, module string) error {
 // ReorderServerTabs menyimpan urutan baru tab bar setelah drag & drop.
 func (a *App) ReorderServerTabs(tabIDs []string) error {
 	return a.sessionMgr.Reorder(tabIDs)
+}
+
+// ---------------------------------------------------------------------
+// Bindings: Terminal (PTY, lihat internal/modules/terminal)
+// ---------------------------------------------------------------------
+
+// OpenTerminal membuka sesi shell interaktif baru untuk tab tertentu.
+// Output-nya TIDAK dikembalikan lewat return value — mengalir terus lewat
+// event "terminal:output:<sessionId>" (lihat startup()) sampai sesi ditutup.
+func (a *App) OpenTerminal(tabID string) (string, error) {
+	tab, err := a.sessionMgr.GetTab(tabID)
+	if err != nil {
+		return "", err
+	}
+	return a.terminalSvc.Open(a.ctx, tabID, tab.ServerID)
+}
+
+// WriteTerminal mengirim keystroke dari xterm.js ke shell remote.
+func (a *App) WriteTerminal(sessionID, data string) error {
+	return a.terminalSvc.Write(sessionID, []byte(data))
+}
+
+// ResizeTerminal memberi tahu ukuran PTY baru (dipanggil FitAddon frontend).
+func (a *App) ResizeTerminal(sessionID string, cols, rows int) error {
+	return a.terminalSvc.Resize(sessionID, cols, rows)
+}
+
+// CloseTerminal menutup satu sesi terminal secara eksplisit (mis. user
+// menutup panel terminal tanpa menutup keseluruhan tab — belum ada di UI
+// v1, tapi binding-nya sudah tersedia untuk itu).
+func (a *App) CloseTerminal(sessionID string) {
+	a.terminalSvc.Close(sessionID)
 }

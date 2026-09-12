@@ -105,19 +105,25 @@ poinhost/
 │   │   └── terminal.go          # TerminalRegistry (tab -> koneksi dedicated)
 │   │
 │   └── modules/                 # vertical slice per fitur, sama filosofi homepoin
-│       └── servers/              # SATU-SATUNYA modul yang sudah di-porting di skeleton ini
-│           ├── dto.go
-│           ├── repository.go     # CRUD tabel `servers`
-│           └── service.go        # CRUD + register/warm ke sshpool.Pool
+│       ├── servers/              # CRUD server + status/metrik (lihat §8)
+│       │   ├── dto.go
+│       │   ├── repository.go     # CRUD tabel `servers`
+│       │   ├── service.go        # CRUD + register/warm ke sshpool.Pool
+│       │   ├── status.go         # ServerStatus DTO + fetchMetrics
+│       │   ├── metrics.go        # script SSH + parser (paritas homepoin)
+│       │   └── collector.go      # scheduler status/metrik (lihat §8)
+│       └── terminal/             # PTY interaktif (lihat §9)
+│           └── service.go        # bungkus koneksi dedicated jadi shell PTY
 │
 ├── migrations/
 │   └── 001_core.sql             # servers, app_settings, activity_logs, ui_tabs
 │
 └── frontend/
     ├── src/
-    │   ├── store/tabs.ts         # Zustand: servers + tabs + activeTabId
+    │   ├── store/tabs.ts         # Zustand: servers + tabs + statuses + activeTabId
     │   ├── features/
-    │   │   ├── servers/          # ServersPage (list+form) & ServerWorkspace (isi 1 tab)
+    │   │   ├── servers/          # ServersPage, ServerFormModal, ServerWorkspace,
+    │   │   │                     # OverviewPanel, TerminalPanel (xterm.js), StatusDot
     │   │   └── tabs/              # TabBar & TabContent (keep-alive per tab)
     │   └── App.tsx
     └── wailsjs/                  # auto-generated binding Go<->TS (`wails generate module`)
@@ -298,7 +304,76 @@ ratusan/ribuan, langkah lanjut yang wajar adalah menambah "visible in
 viewport" sebagai syarat subscribe tambahan (mirip virtualized list),
 bukan cuma "punya tab terbuka".
 
-## 9. Yang BELUM di-porting di skeleton ini (roadmap)
+## 9. Terminal: PTY interaktif via xterm.js
+
+### Cara homepoin
+
+WebSocket binary (`/ws/servers/{id}/terminal`, frame `0x00=STDIN,
+0x01=STDOUT, 0x02=RESIZE, ...`) menjembatani xterm.js di browser ke satu
+sesi PTY di server, lewat `sshpool.OpenTerminal` — SATU slot dedicated per
+server yang otomatis MENGGANTIKAN sesi lama begitu ada yang baru dibuka
+(lihat catatan `OpenTerminal` di kode lama: "Sesi lama … otomatis
+digantikan"). Buka 2 tab terminal ke server yang sama = tab pertama putus.
+
+### Cara poinhost
+
+**Transport**: bukan WebSocket custom, tapi event Wails yang sudah dipakai
+untuk status server (§8) — `runtime.EventsEmit`/`EventsOn`. Tidak perlu
+protokol frame biner sendiri (0x00/0x01/dst) karena Wails cuma satu window,
+bukan banyak client browser yang perlu di-multipleks.
+
+- **Encoding**: output PTY di-**base64**-kan sebelum lewat event
+  (`app.go` startup, emitter `terminalSvc.SetEmitters`) — byte mentah dari
+  shell remote tidak dijamin UTF-8 valid (karakter multi-byte bisa
+  terpotong pas di batas satu `Read()`), dan base64 menghindari masalah itu
+  tanpa perlu peduli soal encoding sama sekali. Frontend decode balik ke
+  `Uint8Array` dan serahkan ke `term.write()` — xterm.js terima raw bytes,
+  bukan string JS, supaya tidak ada mangling di lapisan UTF-16 JS.
+- **Event per-sesi**: `terminal:output:<sessionId>` dan
+  `terminal:exit:<sessionId>`, bukan satu event global — tiap `TerminalPanel`
+  di frontend cuma dengar output miliknya sendiri, tidak perlu filter
+  payload sisi klien.
+- **Input** (keystroke dari xterm.js `onData`) dikirim apa adanya sebagai
+  string lewat binding `WriteTerminal` — arah ini tidak butuh base64 karena
+  keystroke pengguna praktis selalu valid UTF-8.
+
+**Arsitektur backend** (`internal/modules/terminal/service.go`, di atas
+`session.TerminalRegistry` yang sudah dibangun sejak §3):
+
+1. `Service.Open(ctx, tabID, serverID)` — minta koneksi dedicated dari
+   `TerminalRegistry.Open` (yang mendial via `sshpool.Pool.OpenDedicated`),
+   lalu `RequestPty` + `Shell()` di atasnya, simpan `(tabID, *ssh.Session,
+   stdin)` di map sendiri dikunci `sessionID` yang SAMA dengan yang
+   dikembalikan `TerminalRegistry` — sengaja satu sistem ID, bukan dua.
+2. Goroutine `readLoop` per sesi membaca stdout terus-menerus dan
+   memanggil callback `onData` (dihubungkan ke `EventsEmit` di `app.go`)
+   sampai sesi berakhir, lalu panggil `onExit`.
+3. **Tidak ada slot tunggal per server** seperti homepoin — `Open` boleh
+   dipanggil berkali-kali untuk server yang sama (dari tab berbeda) dan
+   masing-masing dapat `*ssh.Session` + koneksi dedicated sendiri, karena
+   `sshpool.OpenDedicated` (§3) sudah didesain ulang untuk itu sejak awal.
+
+**Siklus hidup terikat ke TAB, bukan ke modul yang sedang aktif**:
+`ServerWorkspace.tsx` me-mount `TerminalPanel` SEKALI saat modul "Terminal"
+pertama kali dikunjungi dalam satu tab, lalu menjaganya tetap mounted
+(`hidden`, bukan unmount) selama tab itu terbuka — sama seperti `TabContent`
+menjaga semua TAB tetap mounted (§lihat kode `ServerWorkspace`, set
+`STATEFUL_MODULES`). Jadi pindah ke Files/Docker lalu balik ke Terminal
+TIDAK memutus shell atau menghilangkan scrollback. Sesi baru benar-benar
+ditutup hanya saat TAB-nya ditutup: `App.CloseServerTab` memanggil
+`terminalSvc.CloseAllForTab(tabID)` (menutup tiap `*ssh.Session` + koneksi
+dedicated-nya) SEBELUM `TerminalRegistry.CloseAllForTab(tabID)` (jaring
+pengaman kalau ada koneksi dedicated lain untuk tab itu di masa depan yang
+bukan dari modul terminal).
+
+**Ukuran PTY**: `FitAddon` xterm.js menghitung cols/rows dari ukuran
+kontainer sungguhan, lalu `ResizeTerminal` mengirimkannya ke
+`ssh.Session.WindowChange`. `ResizeObserver` di kontainer memicu ini tiap
+window/panel di-resize; efek terpisah men-trigger `fit()` lagi saat panel
+yang tadinya `hidden` ditampilkan kembali (elemen `display:none` punya
+ukuran 0, jadi ResizeObserver tidak berguna selama disembunyikan).
+
+## 10. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -311,20 +386,23 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   jangan simpan password produksi sampai ini di-porting. Ini tetap relevan
   walau tanpa login, karena melindungi isi file `poinhost.db` kalau
   di-copy/dicuri, bukan melindungi akses ke aplikasi.
-- **Jobs & event bus** — homepoin pakai WebSocket broadcaster custom;
-  poinhost akan pakai `runtime.EventsEmit`/`EventsOn` bawaan Wails (lebih
-  simpel, tidak perlu reconnect logic sendiri).
+- **Jobs & event bus untuk operasi jangka panjang** (mis. instalasi paket,
+  migrasi file/DB/Docker) — polanya sudah ada (`runtime.EventsEmit`/
+  `EventsOn`, dipakai server status di §8 dan terminal di §9), tinggal
+  modul migrasi/instalasinya sendiri yang belum di-porting.
 - **activitylog** (audit trail tiap operasi).
-- Modul lain: files, terminal (PTY xterm.js di frontend), services, cron,
-  webserver/php/ssl/dns/email/ftp, dbmanager (mysql/pg), docker, migration.
-  Semua akan mengikuti pola `servers/` di atas satu per satu.
-- **Split-pane multi-terminal per tab** — fondasinya sudah ada
-  (`TerminalRegistry` sudah mendukung N sesi per tab), tinggal UI-nya.
+- Modul lain: files, services, cron, webserver/php/ssl/dns/email/ftp,
+  dbmanager (mysql/pg), docker, migration. Semua akan mengikuti pola
+  `servers/`/`terminal/` di atas satu per satu.
+- **Split-pane multi-terminal per tab** (>1 sesi shell dalam satu tab) —
+  fondasinya sudah ada di backend (`TerminalRegistry` & `terminal.Service`
+  sudah mendukung N sesi per tab, lihat §9), yang belum ada cuma UI-nya
+  (`ServerWorkspace`/`TerminalPanel` masih 1 sesi per tab).
 - Restore tab saat startup sudah tersimpan (`ui_tabs`), tapi UI belum
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 10. Menjalankan (development)
+## 11. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev

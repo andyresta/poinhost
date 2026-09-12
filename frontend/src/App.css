@@ -447,10 +447,34 @@
 .workspace__panel {
   flex: 1;
   padding: 16px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .workspace__placeholder {
   opacity: 0.6;
   font-size: 13px;
+}
+
+/* Panel modul yang di-keep-alive (hidden, bukan unmount) di dalam satu tab
+   — lihat ServerWorkspace.tsx. Butuh tinggi eksplisit supaya isinya (mis.
+   terminal) tahu berapa ruang yang tersedia. */
+.workspace__module {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.terminal-panel {
+  flex: 1;
+  min-height: 0;
+  background: #12192a;
+  border-radius: 6px;
+  padding: 8px;
+}
+.terminal-panel .xterm {
+  height: 100%;
 }
 
 /* Status dot (koneksi server, lihat Collector) */

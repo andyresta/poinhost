@@ -6,6 +6,10 @@ export function CloseServerTab(arg1) {
   return window['go']['main']['App']['CloseServerTab'](arg1);
 }
 
+export function CloseTerminal(arg1) {
+  return window['go']['main']['App']['CloseTerminal'](arg1);
+}
+
 export function DeleteServer(arg1) {
   return window['go']['main']['App']['DeleteServer'](arg1);
 }
@@ -26,12 +30,20 @@ export function OpenServerTab(arg1, arg2) {
   return window['go']['main']['App']['OpenServerTab'](arg1, arg2);
 }
 
+export function OpenTerminal(arg1) {
+  return window['go']['main']['App']['OpenTerminal'](arg1);
+}
+
 export function RefreshServerStatus(arg1) {
   return window['go']['main']['App']['RefreshServerStatus'](arg1);
 }
 
 export function ReorderServerTabs(arg1) {
   return window['go']['main']['App']['ReorderServerTabs'](arg1);
+}
+
+export function ResizeTerminal(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ResizeTerminal'](arg1, arg2, arg3);
 }
 
 export function SaveServer(arg1) {
@@ -48,4 +60,8 @@ export function TestServerConnection(arg1) {
 
 export function TrustServerHostKey(arg1) {
   return window['go']['main']['App']['TrustServerHostKey'](arg1);
+}
+
+export function WriteTerminal(arg1, arg2) {
+  return window['go']['main']['App']['WriteTerminal'](arg1, arg2);
 }

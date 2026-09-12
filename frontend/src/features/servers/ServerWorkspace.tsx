@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { useTabsStore } from '../../store/tabs';
 import { OverviewPanel } from './OverviewPanel';
+import { TerminalPanel } from './TerminalPanel';
 import type { session } from '../../../wailsjs/go/models';
 
 const MODULES = [
@@ -10,14 +12,31 @@ const MODULES = [
   { key: 'docker', label: 'Docker' },
 ];
 
+// Modul yang punya koneksi/state nyata yang MAHAL untuk dibuang & dibuat
+// ulang (sesi shell PTY, nanti file listing/scroll position, dst) — begitu
+// pertama kali dikunjungi, panelnya tetap MOUNTED (di-toggle `hidden`, bukan
+// unmount) selama tab ini masih terbuka. Modul lain masih placeholder,
+// belum ada state yang perlu dipertahankan, jadi render sederhana saja.
+const STATEFUL_MODULES = new Set(['overview', 'terminal']);
+
 // Isi satu tab: nav modul di kiri + panel konten modul aktif di kanan.
-// Modul di sini masih placeholder — files/terminal/docker/dll akan
-// di-porting bertahap dari homepoin sebagai vertical slice terpisah
-// (internal/modules/<nama>), lalu didaftarkan di sini seperti MODULES di
-// atas. Yang sudah nyata & bisa dites sekarang: berpindah modul DI DALAM
-// satu tab hanya mengubah `activeModule`, tidak reload/reconnect apapun.
+// Modul files/services/docker di sini masih placeholder — akan di-porting
+// bertahap dari homepoin sebagai vertical slice terpisah, lalu didaftarkan
+// di MODULES di atas. Berpindah modul DI DALAM satu tab hanya mengubah
+// `activeModule` (dan visibilitas panel via `hidden`) — tidak pernah
+// reload/reconnect apa pun, termasuk sesi terminal yang sedang berjalan.
 export function ServerWorkspace({ tab }: { tab: session.Tab }) {
   const setModule = useTabsStore((s) => s.setModule);
+  const [visited, setVisited] = useState<Set<string>>(() => new Set([tab.activeModule]));
+
+  useEffect(() => {
+    if (STATEFUL_MODULES.has(tab.activeModule) && !visited.has(tab.activeModule)) {
+      setVisited((v) => new Set(v).add(tab.activeModule));
+    }
+  }, [tab.activeModule, visited]);
+
+  const activeLabel = MODULES.find((m) => m.key === tab.activeModule)?.label ?? tab.activeModule;
+  const isPlaceholder = !STATEFUL_MODULES.has(tab.activeModule);
 
   return (
     <div className="workspace">
@@ -33,10 +52,21 @@ export function ServerWorkspace({ tab }: { tab: session.Tab }) {
         ))}
       </nav>
       <div className="workspace__panel">
-        <h2>{MODULES.find((m) => m.key === tab.activeModule)?.label ?? tab.activeModule}</h2>
-        {tab.activeModule === 'overview' ? (
-          <OverviewPanel serverId={tab.serverId} />
-        ) : (
+        <h2>{activeLabel}</h2>
+
+        {visited.has('overview') && (
+          <div className="workspace__module" hidden={tab.activeModule !== 'overview'}>
+            <OverviewPanel serverId={tab.serverId} />
+          </div>
+        )}
+
+        {visited.has('terminal') && (
+          <div className="workspace__module" hidden={tab.activeModule !== 'terminal'}>
+            <TerminalPanel tabId={tab.id} active={tab.activeModule === 'terminal'} />
+          </div>
+        )}
+
+        {isPlaceholder && (
           <p className="workspace__placeholder">
             Modul <code>{tab.activeModule}</code> untuk server <code>{tab.serverId}</code> akan
             tampil di sini setelah di-porting dari homepoin.
