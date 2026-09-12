@@ -1069,15 +1069,75 @@ tidak pernah memicu handshake SSH baru. Alamat MySQL di sisi remote selalu
 host user (`%`, `localhost`, dst) cuma kunci lookup kredensial, bukan
 alamat jaringan, konsisten dengan `runMySQL` di §13.
 
-Operasi yang didukung (semua lewat koneksi driver yang sama, dibuka sekali
-per panggilan): `ListDatabases` (otomatis terbatas sesuai grants MySQL
-user itu sendiri — `SHOW DATABASES` MySQL memang begitu), `ListTables`/
-`ListColumns` (dari `information_schema`), `TableRows` (paginated LIMIT/
-OFFSET + total count), `InsertRow`/`UpdateRow`/`DeleteRow` (identifier
-divalidasi regex + di-quote backtick, WHERE WAJIB diisi untuk update/
-delete — default ke kolom PRIMARY KEY, fallback ke seluruh kolom kalau
-tabel tidak punya PK), dan `ExecuteQuery` (satu statement bebas, guard
-sederhana menolak `;` ganda).
+Operasi yang didukung: `ListDatabases` (otomatis terbatas sesuai grants
+MySQL user itu sendiri — `SHOW DATABASES` MySQL memang begitu),
+`ListTables`/`ListColumns` (dari `information_schema`), `TableRows`
+(paginated LIMIT/OFFSET + total count), `InsertRow`/`UpdateRow`/
+`DeleteRow` (identifier divalidasi regex + di-quote backtick, WHERE WAJIB
+diisi untuk update/delete — default ke kolom PRIMARY KEY, fallback ke
+seluruh kolom kalau tabel tidak punya PK), dan `ExecuteQuery` (satu
+statement bebas, guard sederhana menolak `;` ganda).
+
+### Koreksi setelah audit ulang: cache koneksi, bukan dial per panggilan
+
+Versi pertama fitur ini (sebelum ditinjau ulang atas permintaan eksplisit
+"saya tidak ingin ada handshake yang tidak perlu") ternyata **membuka
+koneksi MySQL baru DAN menutupnya lagi di setiap panggilan** — artinya
+setiap klik ganti halaman/edit sel/pindah tabel memicu handshake MySQL
+baru (bukan handshake SSH — itu tetap satu, lewat `DialTunnel` — tapi
+handshake protokol MySQL-nya sendiri, yang tidak murah: negosiasi versi,
+auth native password, dst). Ini persis masalah yang coba dihindari sejak
+awal proyek ini (lihat §2/§3), jadi diperbaiki:
+
+- **Cache koneksi per (server, user, host)** di `Service.mysqlConns` —
+  `getOrDialMySQLExplore` mengembalikan koneksi yang sudah hidup kalau
+  ada, dial baru HANYA kalau belum pernah/sudah idle lama. Semua endpoint
+  Explore (List*/TableRows/Insert/Update/Delete/ExecuteQuery) lewat jalur
+  ini, jadi handshake MySQL cuma terjadi SEKALI per kredensial yang aktif
+  dipakai, bukan sekali per klik.
+- **`SetConnMaxLifetime(0)`** (sebelumnya 2 menit) — batas umur 2 menit
+  akan memaksa reconnect periodik walau koneksi sedang aktif dipakai
+  terus-menerus, sama saja menambah handshake tak perlu secara berkala.
+  Koneksi sekarang hidup selama benar-benar dipakai; MySQL server sendiri
+  yang menutup kalau betul-betul menganggur (`wait_timeout`).
+- **Sapu idle 5 menit** (`mysqlConnIdleTTL`) — supaya tidak menahan
+  koneksi ke server yang sudah lama tidak di-browse selamanya.
+- **Dedup dial bersamaan** (`mysqlDialing`) — kalau dua panggilan datang
+  nyaris bersamaan untuk kredensial yang SAMA sebelum ada apa pun di
+  cache (mis. dua tab dibuka hampir serentak), panggilan kedua menunggu
+  hasil dial yang pertama alih-alih ikut dial sendiri — race sederhana
+  yang kalau dibiarkan bisa membuat salah satu panggilan gagal dengan
+  "database is closed" (koneksi yang "kalah" langsung ditutup lagi oleh
+  yang lain).
+- **Eviction saat kredensial berubah** — `SaveDBCredential` (menyimpan
+  password baru) dan `ForgetDBCredential` menutup & membuang entry cache
+  untuk kredensial itu, supaya operasi berikutnya tidak diam-diam
+  memakai sesi lama dengan password sebelumnya. `verifyMySQLCredential`
+  (opsi Verify saat simpan) langsung MENYIMPAN koneksi hasil verifikasi
+  ke cache (bukan menutupnya) — Explore pertama setelah menyimpan
+  kredensial jadi instan.
+- `CloseAllMySQLConns` dipanggil dari `app.go` (`shutdown`), sejalan
+  dengan `pool.Close()` untuk koneksi SSH.
+
+Audit yang sama menemukan dua isu lain: (1) `openMySQLExplore` semula
+memanggil `resolveAccess` yang mensyaratkan user SSH root/sudo — padahal
+Explore cuma perlu koneksi SSH untuk DI-TUNNEL, sama sekali tidak exec
+apa pun di server, jadi server dengan SSH user terbatas (non-root,
+non-sudo — praktik yang lebih aman) salah ditolak; sekarang cuma
+memvalidasi server-nya ada (`servers.Get`), tanpa syarat privilege. (2)
+`ExecuteQuery` menjalankan `USE database` lalu query lewat `*sql.DB`
+biasa — karena `database/sql` bebas memakai koneksi fisik BERBEDA dari
+pool untuk tiap panggilan, `USE` di satu koneksi tidak dijamin berlaku
+untuk query di koneksi lain begitu pool membesar (jadi lebih mungkin
+gagal justru SETELAH koneksi mulai di-cache/reuse dengan >1 koneksi
+fisik); diperbaiki dengan `db.Conn(ctx)` — mengambil SATU koneksi fisik
+eksplisit dan memakainya untuk `USE` + query yang sama.
+
+Kedua bug bookkeeping cache di atas (reuse, eviction, idle sweep, dedup
+dial bersamaan) punya test tersendiri di
+`internal/modules/website/mysqlexplore_test.go` (lulus dengan `-race`) —
+satu-satunya modul di proyek ini yang punya test unit sejauh ini, sengaja
+ditambahkan karena bagian ini genuinely concurrency-sensitive.
 
 ### Solusi masalah password basi: deteksi eksplisit, bukan diam
 

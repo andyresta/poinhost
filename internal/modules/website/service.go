@@ -52,18 +52,31 @@ type Service struct {
 	cacheMu     sync.Mutex
 	nginxCache  map[string]nginxStatusCacheEntry
 	domainCache map[string]domainListCacheEntry
+
+	// mysqlConnMu/mysqlConns menahan koneksi Explore MySQL AGAR HIDUP antar
+	// panggilan (lihat mysqlexplore.go) — sebelumnya tiap operasi membuka
+	// lalu langsung menutup koneksi baru, memicu handshake MySQL berulang
+	// di setiap klik (paginasi/edit sel/dst). Sekarang satu koneksi dipakai
+	// ulang selama credential (server+user+host) yang sama masih aktif
+	// dipakai, konsisten dengan filosofi "no unnecessary handshake" yang
+	// sudah dipakai di sshpool sejak awal proyek ini.
+	mysqlConnMu  sync.Mutex
+	mysqlConns   map[string]*mysqlConnCacheEntry
+	mysqlDialing map[string]*mysqlDialWaiter
 }
 
 // NewService membuat service modul website baru.
 func NewService(serversSvc *servers.Service, executor *sshpool.Executor, mutex *sshpool.ServerMutexRegistry, db *sql.DB, vault secrets.Vault) *Service {
 	return &Service{
-		servers:     serversSvc,
-		executor:    executor,
-		mutex:       mutex,
-		db:          db,
-		vault:       vault,
-		nginxCache:  make(map[string]nginxStatusCacheEntry),
-		domainCache: make(map[string]domainListCacheEntry),
+		servers:      serversSvc,
+		executor:     executor,
+		mutex:        mutex,
+		db:           db,
+		vault:        vault,
+		nginxCache:   make(map[string]nginxStatusCacheEntry),
+		domainCache:  make(map[string]domainListCacheEntry),
+		mysqlConns:   make(map[string]*mysqlConnCacheEntry),
+		mysqlDialing: make(map[string]*mysqlDialWaiter),
 	}
 }
 

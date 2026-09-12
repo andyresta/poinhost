@@ -187,6 +187,7 @@ func (a *App) shutdown(ctx context.Context) {
 		cancel()
 	}
 	a.streamMu.Unlock()
+	a.websiteSvc.CloseAllMySQLConns()
 	a.pool.Close()
 	_ = a.db.Close()
 }

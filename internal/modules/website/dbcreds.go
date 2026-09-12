@@ -81,6 +81,15 @@ func (s *Service) SaveDBCredential(req SaveDBCredentialRequest) (*DBCredentialIn
 	}
 	host := dbCredentialHost(engine, req.Host)
 
+	// Buang dulu koneksi Explore yang mungkin masih hidup di cache untuk
+	// kredensial ini (lihat mysqlexplore.go) — kalau tidak, operasi Explore
+	// berikutnya bisa diam-diam tetap memakai koneksi lama yang sudah
+	// terautentikasi dengan password SEBELUMNYA, bukan yang baru saja
+	// disimpan di sini.
+	if engine == "mysql" {
+		s.evictMySQLConn(req.ServerID, username, host)
+	}
+
 	verifiedAt := ""
 	if req.Verify {
 		if engine != "mysql" {
@@ -130,6 +139,9 @@ func (s *Service) ForgetDBCredential(serverID, engine, username, host string) er
 		serverID, engine, username, host)
 	if err != nil {
 		return errFmt("hapus metadata kredensial: %v", err)
+	}
+	if engine == "mysql" {
+		s.evictMySQLConn(serverID, username, host)
 	}
 	return nil
 }
