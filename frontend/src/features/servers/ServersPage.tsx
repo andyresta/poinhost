@@ -1,32 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useTabsStore } from '../../store/tabs';
-import { TestServerConnection } from '../../../wailsjs/go/main/App';
-import { servers } from '../../../wailsjs/go/models';
+import { ServerFormModal } from './ServerFormModal';
+import type { servers } from '../../../wailsjs/go/models';
 
-const emptyForm: servers.SaveServerRequest = new servers.SaveServerRequest({
-  name: '',
-  host: '',
-  port: 22,
-  username: '',
-  authType: 'key',
-  keyPath: '',
-  password: '',
-  tags: [],
-  color: '#6366f1',
-  notes: '',
-});
-
-// Panel kiri: daftar server terdaftar + form tambah server. Klik satu
-// server akan memfokuskan tab yang SUDAH terbuka untuk server itu kalau
-// ada (supaya tidak sengaja menumpuk tab duplikat setiap klik), atau
-// membuka tab baru kalau belum ada satupun.
+// Panel kiri: kartu server (bukan daftar teks polos seperti homepoin) +
+// tombol tambah. Klik kartu membuka/memfokuskan tab server itu; tombol edit
+// & hapus baru muncul saat kartu di-hover supaya daftar tetap ringkas saat
+// mengelola banyak server sekaligus.
 export function ServersPage() {
-  const { servers: list, tabs, loadServers, openTab, setActiveTab, saveServer, deleteServer } =
-    useTabsStore();
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<servers.SaveServerRequest>(emptyForm);
-  const [testResult, setTestResult] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const { servers: list, tabs, loadServers, openTab, setActiveTab, deleteServer } = useTabsStore();
+  const [modal, setModal] = useState<{ mode: 'create' | 'edit'; server?: servers.Server } | null>(
+    null,
+  );
+  const [confirmDelete, setConfirmDelete] = useState<servers.Server | null>(null);
 
   useEffect(() => {
     void loadServers();
@@ -41,122 +27,104 @@ export function ServersPage() {
     void openTab(server.id, server.name);
   }
 
-  async function handleTest() {
-    setBusy(true);
-    setTestResult(null);
-    try {
-      const res = await TestServerConnection(form);
-      setTestResult(
-        res.status === 'ok'
-          ? `OK — ${res.latency}`
-          : `${res.status}${res.message ? `: ${res.message}` : ''}`,
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleSave() {
-    setBusy(true);
-    try {
-      await saveServer(form);
-      setForm(emptyForm);
-      setShowForm(false);
-      setTestResult(null);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <div className="servers-page">
       <div className="servers-page__header">
         <h1>Servers</h1>
-        <button onClick={() => setShowForm((v) => !v)}>{showForm ? 'Batal' : '+ Tambah'}</button>
+        <button className="btn btn--primary btn--sm" onClick={() => setModal({ mode: 'create' })}>
+          + Tambah
+        </button>
       </div>
 
-      {showForm && (
-        <div className="servers-page__form">
-          <input
-            placeholder="Nama"
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-          />
-          <input
-            placeholder="Host"
-            value={form.host}
-            onChange={(e) => setForm({ ...form, host: e.target.value })}
-          />
-          <input
-            placeholder="Port"
-            type="number"
-            value={form.port}
-            onChange={(e) => setForm({ ...form, port: Number(e.target.value) })}
-          />
-          <input
-            placeholder="Username"
-            value={form.username}
-            onChange={(e) => setForm({ ...form, username: e.target.value })}
-          />
-          <select
-            value={form.authType}
-            onChange={(e) => setForm({ ...form, authType: e.target.value })}
-          >
-            <option value="key">SSH Key</option>
-            <option value="password">Password</option>
-          </select>
-          {form.authType === 'key' ? (
-            <input
-              placeholder="Key path (kosong = ~/.ssh/id_ed25519)"
-              value={form.keyPath}
-              onChange={(e) => setForm({ ...form, keyPath: e.target.value })}
-            />
-          ) : (
-            <input
-              placeholder="Password"
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-            />
-          )}
-          <div className="servers-page__form-actions">
-            <button disabled={busy} onClick={() => void handleTest()}>
-              Test Koneksi
-            </button>
-            <button disabled={busy} onClick={() => void handleSave()}>
-              Simpan
-            </button>
-          </div>
-          {testResult && <div className="servers-page__test-result">{testResult}</div>}
-        </div>
-      )}
-
-      <ul className="servers-page__list">
-        {list.map((server) => (
-          <li key={server.id} className="servers-page__item" onClick={() => openOrFocus(server)}>
-            <span className="servers-page__dot" style={{ backgroundColor: server.color }} />
-            <div className="servers-page__meta">
-              <div className="servers-page__name">{server.name}</div>
-              <div className="servers-page__host">
-                {server.username}@{server.host}:{server.port}
-              </div>
-            </div>
-            <button
-              className="servers-page__delete"
-              title="Hapus"
-              onClick={(e) => {
-                e.stopPropagation();
-                void deleteServer(server.id);
-              }}
+      <ul className="server-cards">
+        {list.map((server) => {
+          const tabCount = tabs.filter((t) => t.serverId === server.id).length;
+          return (
+            <li
+              key={server.id}
+              className="server-card"
+              style={{ borderLeftColor: server.color }}
+              onClick={() => openOrFocus(server)}
             >
-              🗑
-            </button>
+              <div className="server-card__main">
+                <div className="server-card__name">{server.name}</div>
+                <div className="server-card__host">
+                  {server.username}@{server.host}:{server.port}
+                </div>
+                {server.tags.length > 0 && (
+                  <div className="server-card__tags">
+                    {server.tags.map((t) => (
+                      <span key={t} className="tag-chip tag-chip--readonly">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="server-card__side">
+                {tabCount > 0 && <span className="server-card__tab-count">{tabCount} tab</span>}
+                <div className="server-card__actions">
+                  <button
+                    title="Edit"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setModal({ mode: 'edit', server });
+                    }}
+                  >
+                    ✎
+                  </button>
+                  <button
+                    title="Hapus"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmDelete(server);
+                    }}
+                  >
+                    🗑
+                  </button>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+        {list.length === 0 && (
+          <li className="servers-page__empty">
+            Belum ada server. Klik <strong>+ Tambah</strong> untuk mulai.
           </li>
-        ))}
-        {list.length === 0 && !showForm && (
-          <li className="servers-page__empty">Belum ada server. Klik "+ Tambah".</li>
         )}
       </ul>
+
+      {modal && (
+        <ServerFormModal mode={modal.mode} initial={modal.server} onClose={() => setModal(null)} />
+      )}
+
+      {confirmDelete && (
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && setConfirmDelete(null)}>
+          <div className="modal-card modal-card--small">
+            <div className="modal-card__body">
+              <p>
+                Hapus server <strong>{confirmDelete.name}</strong>? Semua tab yang menunjuk ke
+                server ini akan ikut ditutup.
+              </p>
+            </div>
+            <div className="modal-card__footer">
+              <button className="btn btn--ghost" onClick={() => setConfirmDelete(null)}>
+                Batal
+              </button>
+              <button
+                className="btn btn--danger"
+                onClick={() => {
+                  void deleteServer(confirmDelete.id);
+                  setConfirmDelete(null);
+                }}
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

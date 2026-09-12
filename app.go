@@ -112,9 +112,13 @@ func (a *App) TestServerConnection(req servers.SaveServerRequest) (*servers.Conn
 	return a.serversSvc.TestConnection(req)
 }
 
-// TrustServerHostKey menyimpan fingerprint host key baru untuk server.
-func (a *App) TrustServerHostKey(id string) error {
-	return a.serversSvc.TrustHostKey(id)
+// TrustServerHostKey menyimpan fingerprint host key baru. Menerima payload
+// form yang sama dengan SaveServer/TestServerConnection (bukan cuma ID),
+// supaya bisa dipanggil di tengah alur TAMBAH server (sebelum ID ada) saat
+// probe pertama kali menemukan host key baru — bukan hanya untuk server
+// yang sudah tersimpan.
+func (a *App) TrustServerHostKey(req servers.SaveServerRequest) error {
+	return a.serversSvc.TrustHostKey(req)
 }
 
 // ---------------------------------------------------------------------

@@ -21,4 +21,4 @@ export function SetTabActiveModule(arg1:string,arg2:string):Promise<void>;
 
 export function TestServerConnection(arg1:servers.SaveServerRequest):Promise<servers.ConnectionTestResult>;
 
-export function TrustServerHostKey(arg1:string):Promise<void>;
+export function TrustServerHostKey(arg1:servers.SaveServerRequest):Promise<void>;

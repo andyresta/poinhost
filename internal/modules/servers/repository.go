@@ -21,7 +21,7 @@ func NewRepository(db *sql.DB) *Repository {
 func (r *Repository) List() ([]*Server, error) {
 	rows, err := r.db.Query(`
 		SELECT id, name, host, port, username, auth_type, key_path, tags,
-		       color, notes, is_active, created_at, updated_at
+		       color, notes, is_active, use_sudo, created_at, updated_at
 		FROM servers ORDER BY name ASC`)
 	if err != nil {
 		return nil, err
@@ -43,7 +43,7 @@ func (r *Repository) List() ([]*Server, error) {
 func (r *Repository) Get(id string) (*Server, error) {
 	row := r.db.QueryRow(`
 		SELECT id, name, host, port, username, auth_type, key_path, tags,
-		       color, notes, is_active, created_at, updated_at
+		       color, notes, is_active, use_sudo, created_at, updated_at
 		FROM servers WHERE id = ?`, id)
 	return scanServer(row)
 }
@@ -69,10 +69,10 @@ func (r *Repository) Create(s *Server, rawPassword string) error {
 	}
 	_, err = r.db.Exec(`
 		INSERT INTO servers (id, name, host, port, username, auth_type, key_path,
-		                      password_enc, tags, color, notes, is_active)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
+		                      password_enc, tags, color, notes, is_active, use_sudo)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
 		s.ID, s.Name, s.Host, s.Port, s.Username, s.AuthType, s.KeyPath,
-		rawPassword, string(tagsJSON), s.Color, s.Notes)
+		rawPassword, string(tagsJSON), s.Color, s.Notes, boolToInt(s.UseSudo))
 	if err != nil {
 		return fmt.Errorf("simpan server: %w", err)
 	}
@@ -91,17 +91,18 @@ func (r *Repository) Update(s *Server, rawPassword string) error {
 		_, err = r.db.Exec(`
 			UPDATE servers SET name=?, host=?, port=?, username=?, auth_type=?,
 			       key_path=?, password_enc=?, tags=?, color=?, notes=?,
-			       updated_at=datetime('now')
+			       use_sudo=?, updated_at=datetime('now')
 			WHERE id=?`,
 			s.Name, s.Host, s.Port, s.Username, s.AuthType, s.KeyPath,
-			rawPassword, string(tagsJSON), s.Color, s.Notes, s.ID)
+			rawPassword, string(tagsJSON), s.Color, s.Notes, boolToInt(s.UseSudo), s.ID)
 	} else {
 		_, err = r.db.Exec(`
 			UPDATE servers SET name=?, host=?, port=?, username=?, auth_type=?,
-			       key_path=?, tags=?, color=?, notes=?, updated_at=datetime('now')
+			       key_path=?, tags=?, color=?, notes=?, use_sudo=?,
+			       updated_at=datetime('now')
 			WHERE id=?`,
 			s.Name, s.Host, s.Port, s.Username, s.AuthType, s.KeyPath,
-			string(tagsJSON), s.Color, s.Notes, s.ID)
+			string(tagsJSON), s.Color, s.Notes, boolToInt(s.UseSudo), s.ID)
 	}
 	if err != nil {
 		return fmt.Errorf("update server: %w", err)
@@ -123,19 +124,27 @@ func scanServer(row rowScanner) (*Server, error) {
 	var s Server
 	var keyPath sql.NullString
 	var tagsJSON string
-	var isActive int
+	var isActive, useSudo int
 	var createdAt, updatedAt string
 
 	err := row.Scan(&s.ID, &s.Name, &s.Host, &s.Port, &s.Username, &s.AuthType,
-		&keyPath, &tagsJSON, &s.Color, &s.Notes, &isActive, &createdAt, &updatedAt)
+		&keyPath, &tagsJSON, &s.Color, &s.Notes, &isActive, &useSudo, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err
 	}
 
 	s.KeyPath = keyPath.String
 	s.IsActive = isActive == 1
+	s.UseSudo = useSudo == 1
 	_ = json.Unmarshal([]byte(tagsJSON), &s.Tags)
 	s.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 	s.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
 	return &s, nil
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

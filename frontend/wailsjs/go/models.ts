@@ -32,6 +32,7 @@ export namespace servers {
 	    tags: string[];
 	    color: string;
 	    notes: string;
+	    useSudo: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new SaveServerRequest(source);
@@ -50,6 +51,7 @@ export namespace servers {
 	        this.tags = source["tags"];
 	        this.color = source["color"];
 	        this.notes = source["notes"];
+	        this.useSudo = source["useSudo"];
 	    }
 	}
 	export class Server {
@@ -63,6 +65,7 @@ export namespace servers {
 	    tags: string[];
 	    color: string;
 	    notes: string;
+	    useSudo: boolean;
 	    isActive: boolean;
 	    // Go type: time
 	    createdAt: any;
@@ -85,6 +88,7 @@ export namespace servers {
 	        this.tags = source["tags"];
 	        this.color = source["color"];
 	        this.notes = source["notes"];
+	        this.useSudo = source["useSudo"];
 	        this.isActive = source["isActive"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.updatedAt = this.convertValues(source["updatedAt"], null);

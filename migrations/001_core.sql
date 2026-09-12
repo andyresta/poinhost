@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS servers (
     color         TEXT NOT NULL DEFAULT '#6366f1',
     notes         TEXT NOT NULL DEFAULT '',
     is_active     INTEGER NOT NULL DEFAULT 1,
+    use_sudo      INTEGER NOT NULL DEFAULT 0,
     created_at    TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
