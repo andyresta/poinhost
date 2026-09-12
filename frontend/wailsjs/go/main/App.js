@@ -10,8 +10,36 @@ export function CloseTerminal(arg1) {
   return window['go']['main']['App']['CloseTerminal'](arg1);
 }
 
+export function CompressFiles(arg1) {
+  return window['go']['main']['App']['CompressFiles'](arg1);
+}
+
+export function CreateFile(arg1) {
+  return window['go']['main']['App']['CreateFile'](arg1);
+}
+
+export function CreateFolder(arg1) {
+  return window['go']['main']['App']['CreateFolder'](arg1);
+}
+
+export function DeleteFiles(arg1) {
+  return window['go']['main']['App']['DeleteFiles'](arg1);
+}
+
 export function DeleteServer(arg1) {
   return window['go']['main']['App']['DeleteServer'](arg1);
+}
+
+export function DownloadFileFromServer(arg1, arg2) {
+  return window['go']['main']['App']['DownloadFileFromServer'](arg1, arg2);
+}
+
+export function ExtractArchive(arg1) {
+  return window['go']['main']['App']['ExtractArchive'](arg1);
+}
+
+export function ListFiles(arg1, arg2) {
+  return window['go']['main']['App']['ListFiles'](arg1, arg2);
 }
 
 export function ListServerStatuses() {
@@ -38,6 +66,10 @@ export function RefreshServerStatus(arg1) {
   return window['go']['main']['App']['RefreshServerStatus'](arg1);
 }
 
+export function RenameFile(arg1) {
+  return window['go']['main']['App']['RenameFile'](arg1);
+}
+
 export function ReorderServerTabs(arg1) {
   return window['go']['main']['App']['ReorderServerTabs'](arg1);
 }
@@ -60,6 +92,10 @@ export function TestServerConnection(arg1) {
 
 export function TrustServerHostKey(arg1) {
   return window['go']['main']['App']['TrustServerHostKey'](arg1);
+}
+
+export function UploadFilesToServer(arg1, arg2) {
+  return window['go']['main']['App']['UploadFilesToServer'](arg1, arg2);
 }
 
 export function WriteTerminal(arg1, arg2) {

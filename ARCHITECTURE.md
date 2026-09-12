@@ -112,8 +112,13 @@ poinhost/
 │       │   ├── status.go         # ServerStatus DTO + fetchMetrics
 │       │   ├── metrics.go        # script SSH + parser (paritas homepoin)
 │       │   └── collector.go      # scheduler status/metrik (lihat §8)
-│       └── terminal/             # PTY interaktif (lihat §9)
-│           └── service.go        # bungkus koneksi dedicated jadi shell PTY
+│       ├── terminal/             # PTY interaktif (lihat §9)
+│       │   └── service.go        # bungkus koneksi dedicated jadi shell PTY
+│       └── files/                 # file manager SFTP (lihat §10)
+│           ├── dto.go
+│           ├── pathutil.go        # NormalizePath/JoinPath/dst (traversal-safe)
+│           ├── archive_cmd.go     # command zip/tar.gz + fallback python3
+│           └── service.go         # list/mkdir/upload/download/delete/compress
 │
 ├── migrations/
 │   └── 001_core.sql             # servers, app_settings, activity_logs, ui_tabs
@@ -123,7 +128,8 @@ poinhost/
     │   ├── store/tabs.ts         # Zustand: servers + tabs + statuses + activeTabId
     │   ├── features/
     │   │   ├── servers/          # ServersPage, ServerFormModal, ServerWorkspace,
-    │   │   │                     # OverviewPanel, TerminalPanel (xterm.js), StatusDot
+    │   │   │                     # OverviewPanel, TerminalPanel (xterm.js),
+    │   │   │                     # FilesPanel, StatusDot, PromptModal, CompressModal
     │   │   └── tabs/              # TabBar & TabContent (keep-alive per tab)
     │   └── App.tsx
     └── wailsjs/                  # auto-generated binding Go<->TS (`wails generate module`)
@@ -373,7 +379,68 @@ window/panel di-resize; efek terpisah men-trigger `fit()` lagi saat panel
 yang tadinya `hidden` ditampilkan kembali (elemen `display:none` punya
 ukuran 0, jadi ResizeObserver tidak berguna selama disembunyikan).
 
-## 10. Yang BELUM di-porting di skeleton ini (roadmap)
+## 10. Files: file manager via SFTP
+
+### Cara homepoin
+
+Upload lewat `<input type=file>` browser (multipart form POST ke
+`/api/.../files/upload`), download lewat `<a href="/api/.../files/download">`
+yang memicu download manager browser. Wajar untuk aplikasi web — tapi
+poinhost bukan aplikasi web.
+
+### Cara poinhost — dialog OS native, bukan trik ala-browser
+
+Upload & download di poinhost SENGAJA memakai **dialog file native OS**
+(`runtime.OpenMultipleFilesDialog` / `runtime.SaveFileDialog` dari Wails),
+bukan `<input type=file>` + base64 encode ke JSON ala aplikasi web:
+
+- **Upload**: `App.UploadFilesToServer(serverId, remoteDir)` membuka dialog
+  "Buka File" native (boleh pilih banyak sekaligus), lalu tiap file dibaca
+  langsung dari disk lokal (`os.Open`) dan di-stream ke SFTP
+  (`sftp.UploadStream`) — isi file TIDAK PERNAH ditampung penuh di memori
+  JS maupun sebagai string base64 yang membengkak ~33%, berapa pun besar
+  filenya.
+- **Download**: `App.DownloadFileFromServer(serverId, remotePath)` membuka
+  dialog "Simpan" native (default nama file dari `BaseName`), lalu SFTP
+  di-stream langsung ke file lokal yang dipilih. Tidak ada Blob/objectURL/
+  `<a download>` yang perilakunya tidak konsisten di dalam WebView.
+- `files.Service` sendiri tidak tahu apa-apa soal dialog — dia cuma
+  menerima PATH LOKAL (`UploadFromLocalPath`/`DownloadToLocalPath`), dialog
+  dipanggil di `app.go` (lapisan yang memang boleh bergantung ke Wails
+  runtime, sama seperti event emit di §8/§9) supaya `internal/modules/files`
+  sendiri tetap portable & gampang diuji.
+
+### Fitur
+
+List (direktori dulu, lalu file, terurut nama), buat folder, buat file
+kosong, upload, download, rename, hapus (rekursif untuk direktori berisi —
+coba SFTP `Remove` dulu, fallback `rm -rf` via exec kalau direktori tidak
+kosong), kompres (`.zip` dengan fallback Python3 kalau binary `zip`/`unzip`
+tidak terpasang — dipertahankan dari `archive_cmd.go` homepoin yang sudah
+teruji; `.tar.gz` via `tar`), ekstrak (deteksi format dari ekstensi nama
+arsip, tujuan default = direktori yang sedang dibuka).
+
+Konsisten dengan §3: operasi file lewat `sshpool.SFTPClient`/`Executor.Exec`
+yang keduanya jalan di slot `SlotShared` — pindah dari tab Files ke tab
+Terminal (atau ke server lain) TIDAK memicu dial SSH baru, koneksi shared
+yang sama (sudah dipanaskan sejak startup) dipakai bersama.
+
+**Sengaja BELUM ada** (dipersempit dari homepoin untuk porting awal ini):
+`chmod`, `copy`, `search` file, dan elevasi `asUser`/sudo (homepoin punya
+modul `access` terpisah untuk switch user efektif — belum di-porting ke
+poinhost sama sekali, lihat §11). Semua operasi file saat ini jalan sebagai
+user SSH yang login, apa adanya.
+
+Frontend (`FilesPanel.tsx`) di-keep-alive per tab sama seperti Overview &
+Terminal (§9) — direktori yang sedang dibuka & seleksi file tidak hilang
+saat pindah ke modul lain lalu balik lagi. Modal kecil (`PromptModal`,
+`CompressModal`) dipakai untuk nama folder/file/rename/kompres, bukan
+`window.prompt()` (dukungannya tidak konsisten lintas WebView platform).
+Interaksi per-baris pakai tombol yang muncul saat hover (pola yang sama
+dengan `ServersPage`), bukan context-menu klik-kanan kustom — pilihan
+sadar untuk mengurangi kompleksitas UI di porting awal ini.
+
+## 11. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -391,9 +458,16 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   `EventsOn`, dipakai server status di §8 dan terminal di §9), tinggal
   modul migrasi/instalasinya sendiri yang belum di-porting.
 - **activitylog** (audit trail tiap operasi).
-- Modul lain: files, services, cron, webserver/php/ssl/dns/email/ftp,
-  dbmanager (mysql/pg), docker, migration. Semua akan mengikuti pola
-  `servers/`/`terminal/` di atas satu per satu.
+- **`access`/sudo** (elevasi ke user lain di server target) — homepoin
+  punya modul terpisah untuk ini yang dipakai `files`/`dbmanager`/dll;
+  belum di-porting, jadi operasi file (§10) saat ini selalu jalan sebagai
+  user SSH yang login.
+- **Files lanjutan**: chmod, copy, search, editor teks in-app (baca/tulis
+  file kecil langsung di browser) — sengaja dipersempit dari homepoin di
+  porting pertama ini (lihat §10).
+- Modul lain: services, cron, webserver/php/ssl/dns/email/ftp, dbmanager
+  (mysql/pg), docker, migration. Semua akan mengikuti pola
+  `servers/`/`terminal/`/`files/` di atas satu per satu.
 - **Split-pane multi-terminal per tab** (>1 sesi shell dalam satu tab) —
   fondasinya sudah ada di backend (`TerminalRegistry` & `terminal.Service`
   sudah mendukung N sesi per tab, lihat §9), yang belum ada cuma UI-nya
@@ -402,7 +476,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 11. Menjalankan (development)
+## 12. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev

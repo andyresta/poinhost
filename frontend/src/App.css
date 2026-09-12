@@ -562,3 +562,123 @@
   font-size: 11px;
   opacity: 0.5;
 }
+
+/* Files panel */
+.files-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.files-panel__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.files-panel__bulk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.files-panel__breadcrumb {
+  font-size: 12px;
+  margin-bottom: 8px;
+  opacity: 0.8;
+}
+.files-panel__breadcrumb-item {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.files-panel__breadcrumb-item:hover {
+  text-decoration: underline;
+}
+.files-panel__breadcrumb-sep {
+  opacity: 0.4;
+  padding: 0 2px;
+}
+.files-panel__table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+  border: 1px solid #2b3a52;
+  border-radius: 6px;
+}
+.files-panel__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.files-panel__table th {
+  text-align: left;
+  padding: 8px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.5;
+  border-bottom: 1px solid #2b3a52;
+  position: sticky;
+  top: 0;
+  background: #1b2636;
+}
+.files-panel__table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #232f45;
+}
+.files-panel__row--selected {
+  background: #232f45;
+}
+.files-panel__name {
+  cursor: default;
+  white-space: nowrap;
+}
+.files-panel__icon {
+  margin-right: 6px;
+}
+.files-panel__col-check {
+  width: 24px;
+}
+.files-panel__col-actions {
+  width: 90px;
+}
+.files-panel__row-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  white-space: nowrap;
+}
+tr:hover .files-panel__row-actions {
+  opacity: 1;
+}
+.files-panel__row-actions button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.files-panel__row-actions button:hover {
+  opacity: 1;
+}
+.files-panel__empty {
+  text-align: center;
+  opacity: 0.5;
+  padding: 24px !important;
+}
+.files-panel__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(27, 38, 54, 0.6);
+  font-size: 12px;
+}

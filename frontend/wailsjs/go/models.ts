@@ -1,3 +1,138 @@
+export namespace files {
+	
+	export class CompressRequest {
+	    serverId: string;
+	    sources: string[];
+	    archivePath: string;
+	    format: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CompressRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.sources = source["sources"];
+	        this.archivePath = source["archivePath"];
+	        this.format = source["format"];
+	    }
+	}
+	export class CreateFileRequest {
+	    serverId: string;
+	    path: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateFileRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.path = source["path"];
+	        this.name = source["name"];
+	    }
+	}
+	export class DeleteRequest {
+	    serverId: string;
+	    paths: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DeleteRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.paths = source["paths"];
+	    }
+	}
+	export class ExtractRequest {
+	    serverId: string;
+	    archivePath: string;
+	    destPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ExtractRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.archivePath = source["archivePath"];
+	        this.destPath = source["destPath"];
+	    }
+	}
+	export class ListResult {
+	    path: string;
+	    parent: string;
+	    entries: sshpool.FileEntry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ListResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.parent = source["parent"];
+	        this.entries = this.convertValues(source["entries"], sshpool.FileEntry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class MkdirRequest {
+	    serverId: string;
+	    path: string;
+	    name: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MkdirRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.path = source["path"];
+	        this.name = source["name"];
+	    }
+	}
+	export class RenameRequest {
+	    serverId: string;
+	    oldPath: string;
+	    newPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RenameRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.oldPath = source["oldPath"];
+	        this.newPath = source["newPath"];
+	    }
+	}
+
+}
+
 export namespace servers {
 	
 	export class ConnectionTestResult {
@@ -217,6 +352,33 @@ export namespace session {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace sshpool {
+	
+	export class FileEntry {
+	    name: string;
+	    path: string;
+	    size: number;
+	    isDir: boolean;
+	    mode: string;
+	    modTime: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.size = source["size"];
+	        this.isDir = source["isDir"];
+	        this.mode = source["mode"];
+	        this.modTime = source["modTime"];
+	    }
 	}
 
 }

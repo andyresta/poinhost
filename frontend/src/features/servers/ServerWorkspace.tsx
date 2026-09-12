@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTabsStore } from '../../store/tabs';
 import { OverviewPanel } from './OverviewPanel';
 import { TerminalPanel } from './TerminalPanel';
+import { FilesPanel } from './FilesPanel';
 import type { session } from '../../../wailsjs/go/models';
 
 const MODULES = [
@@ -13,11 +14,12 @@ const MODULES = [
 ];
 
 // Modul yang punya koneksi/state nyata yang MAHAL untuk dibuang & dibuat
-// ulang (sesi shell PTY, nanti file listing/scroll position, dst) — begitu
-// pertama kali dikunjungi, panelnya tetap MOUNTED (di-toggle `hidden`, bukan
-// unmount) selama tab ini masih terbuka. Modul lain masih placeholder,
-// belum ada state yang perlu dipertahankan, jadi render sederhana saja.
-const STATEFUL_MODULES = new Set(['overview', 'terminal']);
+// ulang (sesi shell PTY, direktori & seleksi file yang sedang dibuka, dst)
+// — begitu pertama kali dikunjungi, panelnya tetap MOUNTED (di-toggle
+// `hidden`, bukan unmount) selama tab ini masih terbuka. Modul lain masih
+// placeholder, belum ada state yang perlu dipertahankan, jadi render
+// sederhana saja.
+const STATEFUL_MODULES = new Set(['overview', 'terminal', 'files']);
 
 // Isi satu tab: nav modul di kiri + panel konten modul aktif di kanan.
 // Modul files/services/docker di sini masih placeholder — akan di-porting
@@ -63,6 +65,12 @@ export function ServerWorkspace({ tab }: { tab: session.Tab }) {
         {visited.has('terminal') && (
           <div className="workspace__module" hidden={tab.activeModule !== 'terminal'}>
             <TerminalPanel tabId={tab.id} active={tab.activeModule === 'terminal'} />
+          </div>
+        )}
+
+        {visited.has('files') && (
+          <div className="workspace__module" hidden={tab.activeModule !== 'files'}>
+            <FilesPanel serverId={tab.serverId} />
           </div>
         )}
 
