@@ -61,6 +61,30 @@ func (s *Service) UnlinkDomainDatabase(serverID, domain, engine, dbName string) 
 	return nil
 }
 
+// ListAllDomainDatabases mengembalikan SEMUA tautan domain<->database di
+// SEMUA server (dipakai backup.Service untuk export — lihat
+// internal/core/backup).
+func (s *Service) ListAllDomainDatabases() ([]DomainDatabaseLink, error) {
+	rows, err := s.db.Query(`
+		SELECT server_id, domain, engine, db_name FROM website_domain_databases
+		ORDER BY server_id ASC, domain ASC
+	`)
+	if err != nil {
+		return nil, errFmt("baca semua tautan domain-database: %v", err)
+	}
+	defer rows.Close()
+
+	out := make([]DomainDatabaseLink, 0)
+	for rows.Next() {
+		var l DomainDatabaseLink
+		if err := rows.Scan(&l.ServerID, &l.Domain, &l.Engine, &l.Database); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
 // ListDomainDatabases daftar database yang ditautkan ke satu domain.
 func (s *Service) ListDomainDatabases(serverID, domain string) ([]DomainDatabaseLink, error) {
 	rows, err := s.db.Query(`

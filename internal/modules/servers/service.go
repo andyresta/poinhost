@@ -122,6 +122,34 @@ func (s *Service) Save(req SaveServerRequest) (*Server, error) {
 	return saved, nil
 }
 
+// UpsertFromBackup menulis satu server dari arsip backup (lihat
+// internal/core/backup) MEMPERTAHANKAN ID aslinya — beda dari Save (yang
+// SELALU generate ID baru kalau req.ID kosong, dan meng-update BUKAN
+// insert kalau ID sudah diisi): saat import ke perangkat baru, ID dari
+// arsip biasanya belum ada sama sekali di database lokal, jadi perlu
+// upsert eksplisit (insert kalau belum ada, update kalau sudah — mis.
+// import ulang arsip yang sama, atau restore ke mesin yang sama).
+func (s *Service) UpsertFromBackup(srv *Server, rawPassword string) error {
+	if srv.ID == "" {
+		srv.ID = uuid.NewString()
+	}
+	if _, err := s.repo.Get(srv.ID); err != nil {
+		if err := s.repo.Create(srv, rawPassword); err != nil {
+			return err
+		}
+	} else {
+		if err := s.repo.Update(srv, rawPassword); err != nil {
+			return err
+		}
+	}
+	saved, err := s.repo.Get(srv.ID)
+	if err != nil {
+		return err
+	}
+	s.registerToPool(saved)
+	return nil
+}
+
 // SudoPassword mengembalikan password SSH tersimpan untuk server — dipakai
 // files.Service saat butuh elevasi sudo ke user lain (`sudo -S`) pada server
 // yang auth-nya password (bukan key). Server yang login dengan SSH key

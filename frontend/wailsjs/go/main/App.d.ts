@@ -3,6 +3,7 @@
 import {files} from '../models';
 import {docker} from '../models';
 import {website} from '../models';
+import {backup} from '../models';
 import {servers} from '../models';
 import {session} from '../models';
 
@@ -66,6 +67,8 @@ export function EnableWebsiteSSL(arg1:string,arg2:string):Promise<website.SSLSta
 
 export function EnableWebsiteSSLAutoRenew(arg1:string,arg2:string):Promise<website.SSLStatus>;
 
+export function ExportBackup(arg1:string,arg2:boolean):Promise<string>;
+
 export function ExportWebsiteDNSZone(arg1:string,arg2:string):Promise<void>;
 
 export function ExtractArchive(arg1:files.ExtractRequest):Promise<void>;
@@ -87,6 +90,8 @@ export function GetWebsitePHPStatus(arg1:string,arg2:string):Promise<website.PHP
 export function GetWebsiteProxyStatus(arg1:string,arg2:string):Promise<website.ProxyStatus>;
 
 export function GetWebsiteSSLStatus(arg1:string,arg2:string):Promise<website.SSLStatus>;
+
+export function ImportBackup(arg1:string):Promise<backup.ImportSummary>;
 
 export function InspectDockerContainer(arg1:string,arg2:string):Promise<docker.ContainerInspectResponse>;
 

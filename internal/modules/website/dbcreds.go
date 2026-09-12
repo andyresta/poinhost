@@ -165,6 +165,38 @@ func (s *Service) getDBCredentialPassword(serverID, engine, username, host strin
 	return s.vault.Get(key)
 }
 
+// ListAllDBCredentials mengembalikan daftar kredensial tersimpan di SEMUA
+// server (bukan server_id, dipakai backup.Service untuk export — lihat
+// internal/core/backup).
+func (s *Service) ListAllDBCredentials() ([]DBCredentialInfo, error) {
+	rows, err := s.db.Query(`
+		SELECT server_id, engine, username, host, COALESCE(verified_at, ''), updated_at
+		FROM website_db_credentials ORDER BY server_id ASC, username ASC
+	`)
+	if err != nil {
+		return nil, errFmt("baca daftar kredensial: %v", err)
+	}
+	defer rows.Close()
+
+	out := make([]DBCredentialInfo, 0)
+	for rows.Next() {
+		var c DBCredentialInfo
+		if err := rows.Scan(&c.ServerID, &c.Engine, &c.Username, &c.Host, &c.VerifiedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// ExportCredentialPassword mengambil password dari vault lokal untuk
+// dipakai backup.Service saat menyusun arsip export — TIDAK dipakai jalur
+// lain mana pun (tidak diekspos sebagai binding Wails biasa), supaya
+// password mentah tidak "bocor" lewat API umum di luar alur backup.
+func (s *Service) ExportCredentialPassword(serverID, engine, username, host string) (string, bool, error) {
+	return s.getDBCredentialPassword(serverID, engine, username, host)
+}
+
 func nullIfEmpty(s string) interface{} {
 	if s == "" {
 		return nil

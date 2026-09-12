@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTabsStore } from '../../store/tabs';
 import { ServerFormModal } from './ServerFormModal';
+import { BackupModal } from './BackupModal';
 import { StatusDot } from './StatusDot';
 import type { servers } from '../../../wailsjs/go/models';
 
@@ -15,6 +16,7 @@ export function ServersPage() {
     null,
   );
   const [confirmDelete, setConfirmDelete] = useState<servers.Server | null>(null);
+  const [showBackup, setShowBackup] = useState(false);
 
   useEffect(() => {
     void loadServers();
@@ -33,6 +35,9 @@ export function ServersPage() {
     <div className="servers-page">
       <div className="servers-page__header">
         <h1>Servers</h1>
+        <button className="btn btn--sm" title="Export/Import data (pindah ke perangkat lain)" onClick={() => setShowBackup(true)}>
+          ⇄ Backup
+        </button>
         <button className="btn btn--primary btn--sm" onClick={() => setModal({ mode: 'create' })}>
           + Tambah
         </button>
@@ -102,6 +107,13 @@ export function ServersPage() {
 
       {modal && (
         <ServerFormModal mode={modal.mode} initial={modal.server} onClose={() => setModal(null)} />
+      )}
+
+      {showBackup && (
+        <BackupModal
+          onClose={() => setShowBackup(false)}
+          onImported={() => void loadServers()}
+        />
       )}
 
       {confirmDelete && (

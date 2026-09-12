@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/andyresta/poinhost/internal/core/backup"
 	"github.com/andyresta/poinhost/internal/core/config"
 	"github.com/andyresta/poinhost/internal/core/database"
 	"github.com/andyresta/poinhost/internal/core/secrets"
@@ -44,6 +45,7 @@ type App struct {
 	filesSvc    *files.Service
 	dockerSvc   *docker.Service
 	websiteSvc  *website.Service
+	backupSvc   *backup.Service
 
 	// streamMu/streams melacak stream Docker yang sedang berjalan (logs,
 	// stats, instalasi engine) supaya frontend bisa membatalkannya secara
@@ -93,6 +95,7 @@ func NewApp() *App {
 	dockerSvc := docker.NewService(serversSvc, executor, mutex)
 	vault := secrets.New(cfg.DataDir)
 	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault)
+	backupSvc := backup.NewService(serversSvc, websiteSvc)
 
 	return &App{
 		cfg:         cfg,
@@ -106,6 +109,7 @@ func NewApp() *App {
 		filesSvc:    filesSvc,
 		dockerSvc:   dockerSvc,
 		websiteSvc:  websiteSvc,
+		backupSvc:   backupSvc,
 		streams:     make(map[string]context.CancelFunc),
 	}
 }
@@ -1052,4 +1056,58 @@ func (a *App) UnlinkWebsiteDomainDatabase(serverID, domain, engine, dbName strin
 // ListWebsiteDomainDatabases daftar database yang ditautkan ke satu domain.
 func (a *App) ListWebsiteDomainDatabases(serverID, domain string) ([]website.DomainDatabaseLink, error) {
 	return a.websiteSvc.ListDomainDatabases(serverID, domain)
+}
+
+// --- Backup: export/import data via satu arsip terenkripsi passphrase ---
+//
+// Mekanisme pindah data antar perangkat TANPA akun/server/layanan pihak
+// ketiga — lihat internal/core/backup untuk rasional lengkapnya. Passphrase
+// TIDAK PERNAH disimpan di mana pun oleh poinhost; kalau lupa, arsipnya
+// tidak bisa didekripsi sama sekali (tidak ada "lupa passphrase" recovery).
+
+// ExportBackup membuka dialog "Simpan" native, membangun arsip (opsional
+// menyertakan isi file private key SSH), mengenkripsinya dengan passphrase,
+// lalu menulisnya ke lokasi yang dipilih user. Path kosong tanpa error
+// berarti user membatalkan dialog.
+func (a *App) ExportBackup(passphrase string, includeKeyFiles bool) (string, error) {
+	encrypted, err := a.backupSvc.Export(passphrase, includeKeyFiles)
+	if err != nil {
+		return "", err
+	}
+	defaultName := "poinhost-backup-" + time.Now().Format("2006-01-02") + ".poinhostbkp"
+	localPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Simpan arsip backup poinhost",
+		DefaultFilename: defaultName,
+	})
+	if err != nil {
+		return "", err
+	}
+	if localPath == "" {
+		return "", nil
+	}
+	if err := os.WriteFile(localPath, encrypted, 0o600); err != nil {
+		return "", err
+	}
+	return localPath, nil
+}
+
+// ImportBackup membuka dialog "Buka" native untuk memilih file arsip,
+// mendekripsinya dengan passphrase, lalu menuliskan isinya ke database +
+// vault lokal perangkat ini (aman dijalankan berulang untuk arsip yang
+// sama — lihat servers.Service.UpsertFromBackup).
+func (a *App) ImportBackup(passphrase string) (*backup.ImportSummary, error) {
+	localPath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Pilih arsip backup poinhost",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if localPath == "" {
+		return nil, nil
+	}
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		return nil, err
+	}
+	return a.backupSvc.Import(data, passphrase)
 }
