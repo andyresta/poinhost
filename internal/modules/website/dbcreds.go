@@ -1,0 +1,173 @@
+package website
+
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Kredensial database (password user MySQL) disimpan LOKAL di mesin user
+// lewat secrets.Vault (OS keychain, fallback file AES-256-GCM) — TIDAK
+// PERNAH ditulis ke server target, beda dari homepoin yang menaruh file JSON
+// terenkripsi DI server yang dikelola (lihat catatan di database.go & vault.go
+// untuk alasannya). Tabel website_db_credentials di SQLite lokal cuma
+// menyimpan METADATA (server/engine/username/host mana yang sudah tersimpan)
+// supaya UI bisa menampilkan daftarnya — isi passwordnya sendiri ada di vault.
+
+// DBCredentialInfo satu kredensial database yang sudah tersimpan di vault
+// lokal (dipakai untuk fitur Explore) — TIDAK PERNAH membawa password.
+type DBCredentialInfo struct {
+	ServerID   string `json:"serverId"`
+	Engine     string `json:"engine"`
+	Username   string `json:"username"`
+	Host       string `json:"host"`
+	VerifiedAt string `json:"verifiedAt,omitempty"`
+	UpdatedAt  string `json:"updatedAt"`
+}
+
+// SaveDBCredentialRequest menyimpan/memperbarui password satu user database
+// di vault lokal — dipanggil sesudah membuat user baru (opsional, lewat
+// centang "simpan untuk explore nanti"), atau manual untuk menghubungkan
+// user yang sudah ada di server (dibuat di luar poinhost) supaya bisa
+// di-explore juga.
+type SaveDBCredentialRequest struct {
+	ServerID string `json:"serverId"`
+	Engine   string `json:"engine"`
+	Username string `json:"username"`
+	Host     string `json:"host,omitempty"` // MySQL saja, default "%"
+	Password string `json:"password"`
+	// Verify: kalau true, coba benar-benar konek dulu sebelum menyimpan —
+	// supaya vault tidak pernah menyimpan password yang salah/basi. Hanya
+	// didukung untuk engine "mysql" (satu-satunya yang punya Explore asli
+	// lewat koneksi driver; lihat mysqlexplore.go).
+	Verify bool `json:"verify"`
+}
+
+func dbCredentialHost(engine, host string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		if engine == "mysql" {
+			return "%"
+		}
+		return "-"
+	}
+	return host
+}
+
+// vaultKeyForDBCredential membangun key deterministik di vault untuk satu
+// kredensial — tidak perlu kolom terpisah, cukup dihitung ulang dari
+// (server, engine, username, host) setiap kali.
+func vaultKeyForDBCredential(serverID, engine, username, host string) string {
+	return fmt.Sprintf("dbcred:%s:%s:%s:%s", serverID, engine, username, host)
+}
+
+// SaveDBCredential menyimpan password user database ke vault lokal + catat
+// metadatanya di SQLite. Kalau req.Verify true (dan engine mysql), coba
+// konek dulu — gagal auth berarti TIDAK disimpan, supaya vault tidak pernah
+// menyimpan kredensial yang salah.
+func (s *Service) SaveDBCredential(req SaveDBCredentialRequest) (*DBCredentialInfo, error) {
+	engine, err := normalizeDBEngine(req.Engine)
+	if err != nil {
+		return nil, err
+	}
+	username, err := normalizeDBUsername(req.Username)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(req.Password) == "" {
+		return nil, errFmt("password wajib diisi")
+	}
+	host := dbCredentialHost(engine, req.Host)
+
+	verifiedAt := ""
+	if req.Verify {
+		if engine != "mysql" {
+			return nil, errFmt("verifikasi koneksi langsung baru didukung untuk MySQL")
+		}
+		if err := s.verifyMySQLCredential(req.ServerID, username, host, req.Password); err != nil {
+			return nil, err
+		}
+		verifiedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	key := vaultKeyForDBCredential(req.ServerID, engine, username, host)
+	if err := s.vault.Set(key, req.Password); err != nil {
+		return nil, errFmt("simpan password ke vault lokal: %v", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err = s.db.Exec(`
+		INSERT INTO website_db_credentials (id, server_id, engine, username, host, verified_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(server_id, engine, username, host) DO UPDATE SET
+			verified_at = excluded.verified_at,
+			updated_at = excluded.updated_at
+	`, uuid.NewString(), req.ServerID, engine, username, host, nullIfEmpty(verifiedAt), now, now)
+	if err != nil {
+		return nil, errFmt("simpan metadata kredensial: %v", err)
+	}
+
+	return &DBCredentialInfo{
+		ServerID: req.ServerID, Engine: engine, Username: username, Host: host,
+		VerifiedAt: verifiedAt, UpdatedAt: now,
+	}, nil
+}
+
+// ForgetDBCredential menghapus password dari vault + metadatanya.
+func (s *Service) ForgetDBCredential(serverID, engine, username, host string) error {
+	engine, err := normalizeDBEngine(engine)
+	if err != nil {
+		return err
+	}
+	host = dbCredentialHost(engine, host)
+	key := vaultKeyForDBCredential(serverID, engine, username, host)
+	if err := s.vault.Delete(key); err != nil {
+		return errFmt("hapus password dari vault lokal: %v", err)
+	}
+	_, err = s.db.Exec(`DELETE FROM website_db_credentials WHERE server_id = ? AND engine = ? AND username = ? AND host = ?`,
+		serverID, engine, username, host)
+	if err != nil {
+		return errFmt("hapus metadata kredensial: %v", err)
+	}
+	return nil
+}
+
+// ListDBCredentials mengembalikan daftar kredensial yang sudah tersimpan
+// untuk satu server (tanpa password-nya).
+func (s *Service) ListDBCredentials(serverID string) ([]DBCredentialInfo, error) {
+	rows, err := s.db.Query(`
+		SELECT engine, username, host, COALESCE(verified_at, ''), updated_at
+		FROM website_db_credentials WHERE server_id = ? ORDER BY username ASC, host ASC
+	`, serverID)
+	if err != nil {
+		return nil, errFmt("baca daftar kredensial: %v", err)
+	}
+	defer rows.Close()
+
+	out := make([]DBCredentialInfo, 0)
+	for rows.Next() {
+		var c DBCredentialInfo
+		if err := rows.Scan(&c.Engine, &c.Username, &c.Host, &c.VerifiedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		c.ServerID = serverID
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// getDBCredentialPassword mengambil password dari vault lokal (dipakai
+// internal oleh mysqlexplore.go) — TIDAK PERNAH diekspos ke frontend.
+func (s *Service) getDBCredentialPassword(serverID, engine, username, host string) (string, bool, error) {
+	key := vaultKeyForDBCredential(serverID, engine, username, host)
+	return s.vault.Get(key)
+}
+
+func nullIfEmpty(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
+}

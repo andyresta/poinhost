@@ -85,6 +85,11 @@ type DBCreateUserRequest struct {
 	AllDBs     bool     `json:"allDbs"`
 	Databases  []string `json:"databases,omitempty"`
 	Privileges []string `json:"privileges"`
+	// SaveCredential: simpan password ini ke vault lokal sekalian (opsional,
+	// dicentang user) supaya user langsung bisa di-Explore tanpa masukkan
+	// ulang password — hanya berlaku untuk engine "mysql" (satu-satunya yang
+	// punya fitur Explore lewat koneksi driver, lihat mysqlexplore.go).
+	SaveCredential bool `json:"saveCredential,omitempty"`
 }
 
 // DBGrantsRequest menerapkan ulang grants untuk user yang sudah ada.
@@ -473,7 +478,19 @@ func (s *Service) DBCreateUser(req DBCreateUserRequest) error {
 			return err
 		}
 	}
-	return s.applyGrants(access, engine, username, req.Host, req.AllDBs, req.Databases, req.Privileges)
+	if err := s.applyGrants(access, engine, username, req.Host, req.AllDBs, req.Databases, req.Privileges); err != nil {
+		return err
+	}
+	if req.SaveCredential && engine == "mysql" {
+		// Best-effort — kegagalan simpan kredensial TIDAK membatalkan user
+		// yang sudah berhasil dibuat; user masih bisa simpan manual lewat
+		// SaveDBCredential nanti kalau ini gagal (mis. vault tidak siap).
+		_, _ = s.SaveDBCredential(SaveDBCredentialRequest{
+			ServerID: req.ServerID, Engine: engine, Username: username,
+			Host: req.Host, Password: req.Password, Verify: false,
+		})
+	}
+	return nil
 }
 
 // DBSetGrants menerapkan ulang grants untuk user yang sudah ada (tanpa mengubah password).

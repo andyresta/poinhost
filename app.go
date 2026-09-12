@@ -12,6 +12,7 @@ import (
 
 	"github.com/andyresta/poinhost/internal/core/config"
 	"github.com/andyresta/poinhost/internal/core/database"
+	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/andyresta/poinhost/internal/modules/docker"
 	"github.com/andyresta/poinhost/internal/modules/files"
@@ -90,7 +91,8 @@ func NewApp() *App {
 	filesSvc := files.NewService(sftpClient, executor, serversSvc)
 
 	dockerSvc := docker.NewService(serversSvc, executor, mutex)
-	websiteSvc := website.NewService(serversSvc, executor, mutex)
+	vault := secrets.New(cfg.DataDir)
+	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault)
 
 	return &App{
 		cfg:         cfg,
@@ -970,4 +972,84 @@ func (a *App) CreateWebsiteDatabaseUser(req website.DBCreateUserRequest) error {
 // SetWebsiteDatabaseGrants menerapkan ulang grants untuk user yang sudah ada.
 func (a *App) SetWebsiteDatabaseGrants(req website.DBGrantsRequest) error {
 	return a.websiteSvc.DBSetGrants(req)
+}
+
+// --- MySQL Manager: kredensial lokal (vault) + Explore koneksi driver asli ---
+
+// SaveWebsiteDBCredential menyimpan password satu user database ke vault
+// lokal (OS keychain / fallback file terenkripsi) — TIDAK PERNAH ditulis ke
+// server target. Dipakai untuk menghubungkan user yang sudah ada di server
+// (dibuat di luar poinhost) supaya bisa dipakai fitur Explore.
+func (a *App) SaveWebsiteDBCredential(req website.SaveDBCredentialRequest) (*website.DBCredentialInfo, error) {
+	return a.websiteSvc.SaveDBCredential(req)
+}
+
+// ForgetWebsiteDBCredential menghapus password tersimpan dari vault lokal.
+func (a *App) ForgetWebsiteDBCredential(serverID, engine, username, host string) error {
+	return a.websiteSvc.ForgetDBCredential(serverID, engine, username, host)
+}
+
+// ListWebsiteDBCredentials mengembalikan daftar kredensial yang sudah
+// tersimpan untuk satu server (tanpa password-nya).
+func (a *App) ListWebsiteDBCredentials(serverID string) ([]website.DBCredentialInfo, error) {
+	return a.websiteSvc.ListDBCredentials(serverID)
+}
+
+// MySQLExploreListDatabases daftar database yang bisa dilihat kredensial ini.
+func (a *App) MySQLExploreListDatabases(req website.MySQLExploreRequest) ([]string, error) {
+	return a.websiteSvc.MySQLExploreListDatabases(req)
+}
+
+// MySQLExploreListTables daftar tabel dalam satu database.
+func (a *App) MySQLExploreListTables(req website.MySQLExploreRequest, database string) ([]website.MySQLTableInfo, error) {
+	return a.websiteSvc.MySQLExploreListTables(req, database)
+}
+
+// MySQLExploreListColumns daftar kolom satu tabel.
+func (a *App) MySQLExploreListColumns(req website.MySQLExploreRequest, database, table string) ([]website.MySQLColumnInfo, error) {
+	return a.websiteSvc.MySQLExploreListColumns(req, database, table)
+}
+
+// MySQLExploreTableRows membaca satu halaman baris (via koneksi driver asli
+// yang ditunnel SSH — bukan exec CLI per halaman, supaya paginasi tabel
+// besar tetap cepat).
+func (a *App) MySQLExploreTableRows(req website.MySQLTableRowsRequest) (*website.MySQLTableRowsResult, error) {
+	return a.websiteSvc.MySQLExploreTableRows(req)
+}
+
+// MySQLExploreInsertRow menyisipkan satu baris baru.
+func (a *App) MySQLExploreInsertRow(req website.MySQLRowMutateRequest) error {
+	return a.websiteSvc.MySQLExploreInsertRow(req)
+}
+
+// MySQLExploreUpdateRow memperbarui satu baris yang cocok dengan req.Where.
+func (a *App) MySQLExploreUpdateRow(req website.MySQLRowMutateRequest) error {
+	return a.websiteSvc.MySQLExploreUpdateRow(req)
+}
+
+// MySQLExploreDeleteRow menghapus satu baris yang cocok dengan req.Where.
+func (a *App) MySQLExploreDeleteRow(req website.MySQLRowMutateRequest) error {
+	return a.websiteSvc.MySQLExploreDeleteRow(req)
+}
+
+// MySQLExploreExecuteQuery menjalankan satu statement SQL bebas (kotak query).
+func (a *App) MySQLExploreExecuteQuery(req website.MySQLQueryRequest) (*website.MySQLQueryResult, error) {
+	return a.websiteSvc.MySQLExploreExecuteQuery(req)
+}
+
+// --- Tautan domain<->database (kurasi lokal, lihat domaindb.go) ---
+
+// LinkWebsiteDomainDatabase menautkan satu database ke satu domain.
+func (a *App) LinkWebsiteDomainDatabase(serverID, domain, engine, dbName string) error {
+	return a.websiteSvc.LinkDomainDatabase(serverID, domain, engine, dbName)
+}
+
+// UnlinkWebsiteDomainDatabase melepas tautan domain<->database.
+func (a *App) UnlinkWebsiteDomainDatabase(serverID, domain, engine, dbName string) error {
+	return a.websiteSvc.UnlinkDomainDatabase(serverID, domain, engine, dbName)
+}
+
+// ListWebsiteDomainDatabases daftar database yang ditautkan ke satu domain.
+func (a *App) ListWebsiteDomainDatabases(serverID, domain string) ([]website.DomainDatabaseLink, error) {
+	return a.websiteSvc.ListDomainDatabases(serverID, domain)
 }

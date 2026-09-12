@@ -130,6 +130,10 @@ export function ExtractArchive(arg1) {
   return window['go']['main']['App']['ExtractArchive'](arg1);
 }
 
+export function ForgetWebsiteDBCredential(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ForgetWebsiteDBCredential'](arg1, arg2, arg3, arg4);
+}
+
 export function GetWebsiteDBPrivileges() {
   return window['go']['main']['App']['GetWebsiteDBPrivileges']();
 }
@@ -170,6 +174,10 @@ export function IssueWebsiteSSL(arg1) {
   return window['go']['main']['App']['IssueWebsiteSSL'](arg1);
 }
 
+export function LinkWebsiteDomainDatabase(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['LinkWebsiteDomainDatabase'](arg1, arg2, arg3, arg4);
+}
+
 export function ListDockerContainers(arg1) {
   return window['go']['main']['App']['ListDockerContainers'](arg1);
 }
@@ -202,6 +210,10 @@ export function ListWebsiteCronJobs(arg1, arg2) {
   return window['go']['main']['App']['ListWebsiteCronJobs'](arg1, arg2);
 }
 
+export function ListWebsiteDBCredentials(arg1) {
+  return window['go']['main']['App']['ListWebsiteDBCredentials'](arg1);
+}
+
 export function ListWebsiteDatabaseUsers(arg1, arg2) {
   return window['go']['main']['App']['ListWebsiteDatabaseUsers'](arg1, arg2);
 }
@@ -210,12 +222,48 @@ export function ListWebsiteDatabases(arg1, arg2) {
   return window['go']['main']['App']['ListWebsiteDatabases'](arg1, arg2);
 }
 
+export function ListWebsiteDomainDatabases(arg1, arg2) {
+  return window['go']['main']['App']['ListWebsiteDomainDatabases'](arg1, arg2);
+}
+
 export function ListWebsiteSFTPAccounts(arg1, arg2) {
   return window['go']['main']['App']['ListWebsiteSFTPAccounts'](arg1, arg2);
 }
 
 export function ListWebsites(arg1) {
   return window['go']['main']['App']['ListWebsites'](arg1);
+}
+
+export function MySQLExploreDeleteRow(arg1) {
+  return window['go']['main']['App']['MySQLExploreDeleteRow'](arg1);
+}
+
+export function MySQLExploreExecuteQuery(arg1) {
+  return window['go']['main']['App']['MySQLExploreExecuteQuery'](arg1);
+}
+
+export function MySQLExploreInsertRow(arg1) {
+  return window['go']['main']['App']['MySQLExploreInsertRow'](arg1);
+}
+
+export function MySQLExploreListColumns(arg1, arg2, arg3) {
+  return window['go']['main']['App']['MySQLExploreListColumns'](arg1, arg2, arg3);
+}
+
+export function MySQLExploreListDatabases(arg1) {
+  return window['go']['main']['App']['MySQLExploreListDatabases'](arg1);
+}
+
+export function MySQLExploreListTables(arg1, arg2) {
+  return window['go']['main']['App']['MySQLExploreListTables'](arg1, arg2);
+}
+
+export function MySQLExploreTableRows(arg1) {
+  return window['go']['main']['App']['MySQLExploreTableRows'](arg1);
+}
+
+export function MySQLExploreUpdateRow(arg1) {
+  return window['go']['main']['App']['MySQLExploreUpdateRow'](arg1);
 }
 
 export function OpenDockerExec(arg1, arg2, arg3) {
@@ -276,6 +324,10 @@ export function RestartDockerContainer(arg1, arg2) {
 
 export function SaveServer(arg1) {
   return window['go']['main']['App']['SaveServer'](arg1);
+}
+
+export function SaveWebsiteDBCredential(arg1) {
+  return window['go']['main']['App']['SaveWebsiteDBCredential'](arg1);
 }
 
 export function SearchFiles(arg1) {
@@ -360,6 +412,10 @@ export function ToggleWebsiteCronJob(arg1) {
 
 export function TrustServerHostKey(arg1) {
   return window['go']['main']['App']['TrustServerHostKey'](arg1);
+}
+
+export function UnlinkWebsiteDomainDatabase(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UnlinkWebsiteDomainDatabase'](arg1, arg2, arg3, arg4);
 }
 
 export function UpdateWebsiteCronJob(arg1) {
