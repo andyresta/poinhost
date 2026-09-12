@@ -100,6 +100,7 @@ export function MySQLExplorerModal({
   }, [serverId, username, host]);
 
   async function openDatabase(db: string) {
+    if (db === selectedDb) return; // sudah terbuka, tidak perlu ambil ulang daftar tabel
     setSelectedDb(db);
     setSelectedTable(null);
     setColumns([]);
@@ -112,26 +113,48 @@ export function MySQLExplorerModal({
     }
   }
 
-  async function openTable(table: string, targetPage = 0) {
+  // loadRows mengambil SATU halaman baris — dipakai untuk paginasi (skipTotal
+  // true: baris tidak berubah jumlahnya, tidak perlu SELECT COUNT(*) ulang
+  // yang mahal untuk tabel besar) dan sesudah edit/insert/delete satu baris
+  // (skipTotal sesuai apakah jumlah baris ikut berubah). SENGAJA tidak
+  // menyentuh kolom sama sekali — struktur tabel tidak berubah hanya karena
+  // pindah halaman atau edit satu baris.
+  async function loadRows(table: string, targetPage: number, opts: { skipTotal?: boolean } = {}) {
     if (!selectedDb) return;
-    setSelectedTable(table);
-    setPage(targetPage);
-    setEditingCell(null);
-    setShowInsertForm(false);
     setError(null);
     try {
-      const cols = await MySQLExploreListColumns(req, selectedDb, table);
-      setColumns(cols);
       const res = await MySQLExploreTableRows(
         new website.MySQLTableRowsRequest({
           serverId, username, host, database: selectedDb, table,
           limit: PAGE_SIZE, offset: targetPage * PAGE_SIZE,
+          skipTotal: opts.skipTotal ?? false,
         }),
       );
-      setRowsResult(res);
+      setPage(targetPage);
+      setRowsResult((prev) => (res.total < 0 && prev ? { ...res, total: prev.total } : res));
     } catch (e) {
       handleError(e);
     }
+  }
+
+  // openTable dipanggil HANYA saat benar-benar pindah ke tabel lain — inilah
+  // satu-satunya titik yang mengambil ulang struktur kolom + total baris
+  // (SELECT COUNT(*)), supaya paginasi/edit di dalam tabel yang sama
+  // (loadRows) tidak perlu mengulanginya lagi.
+  async function openTable(table: string) {
+    if (!selectedDb) return;
+    if (table === selectedTable) return; // sudah terbuka, tidak perlu ambil ulang struktur/total
+    setSelectedTable(table);
+    setEditingCell(null);
+    setShowInsertForm(false);
+    setError(null);
+    try {
+      setColumns(await MySQLExploreListColumns(req, selectedDb, table));
+    } catch (e) {
+      handleError(e);
+      return;
+    }
+    await loadRows(table, 0, { skipTotal: false });
   }
 
   function primaryKeyCols(): string[] {
@@ -163,7 +186,8 @@ export function MySQLExplorerModal({
           where,
         }),
       );
-      await openTable(selectedTable, page);
+      // Edit satu baris tidak mengubah jumlah total baris — skip COUNT(*).
+      await loadRows(selectedTable, page, { skipTotal: true });
     } catch (e) {
       handleError(e);
     } finally {
@@ -182,7 +206,8 @@ export function MySQLExplorerModal({
       await MySQLExploreDeleteRow(
         new website.MySQLRowMutateRequest({ serverId, username, host, database: selectedDb, table: selectedTable, where }),
       );
-      await openTable(selectedTable, page);
+      // Hapus baris MENGUBAH jumlah total — hitung ulang kali ini.
+      await loadRows(selectedTable, page, { skipTotal: false });
     } catch (e) {
       handleError(e);
     } finally {
@@ -205,7 +230,9 @@ export function MySQLExplorerModal({
       );
       setShowInsertForm(false);
       setInsertValues({});
-      await openTable(selectedTable, 0);
+      // Baris baru MENGUBAH jumlah total — hitung ulang, dan lompat ke
+      // halaman pertama supaya baris yang baru dibuat langsung terlihat.
+      await loadRows(selectedTable, 0, { skipTotal: false });
     } catch (e) {
       handleError(e);
     } finally {
@@ -273,7 +300,7 @@ export function MySQLExplorerModal({
                     <button
                       key={t.name}
                       className={`db-explorer__sidebar-item${selectedTable === t.name ? ' db-explorer__sidebar-item--active' : ''}`}
-                      onClick={() => void openTable(t.name, 0)}
+                      onClick={() => void openTable(t.name)}
                       title={`≈${t.approxRows} baris`}
                     >
                       {t.name}
@@ -335,6 +362,12 @@ export function MySQLExplorerModal({
                   <div className="db-explorer__toolbar">
                     <strong>{selectedTable}</strong>
                     <span style={{ opacity: 0.6 }}>{rowsResult.total} baris</span>
+                    <button
+                      title="Muat ulang halaman ini + hitung ulang total (data mungkin berubah dari tempat lain)"
+                      onClick={() => void loadRows(selectedTable, page, { skipTotal: false })}
+                    >
+                      ⟳
+                    </button>
                     <button className="btn btn--sm btn--primary" style={{ marginLeft: 'auto' }} onClick={() => setShowInsertForm((v) => !v)}>
                       + Baris
                     </button>
@@ -425,13 +458,17 @@ export function MySQLExplorerModal({
                   </div>
 
                   <div className="db-explorer__pagination">
-                    <button className="btn btn--sm" disabled={page <= 0} onClick={() => void openTable(selectedTable, page - 1)}>
+                    <button className="btn btn--sm" disabled={page <= 0} onClick={() => void loadRows(selectedTable, page - 1, { skipTotal: true })}>
                       ← Sebelumnya
                     </button>
                     <span>
                       Halaman {page + 1} / {totalPages}
                     </span>
-                    <button className="btn btn--sm" disabled={page + 1 >= totalPages} onClick={() => void openTable(selectedTable, page + 1)}>
+                    <button
+                      className="btn btn--sm"
+                      disabled={page + 1 >= totalPages}
+                      onClick={() => void loadRows(selectedTable, page + 1, { skipTotal: true })}
+                    >
                       Berikutnya →
                     </button>
                   </div>

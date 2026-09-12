@@ -1821,6 +1821,7 @@ export namespace website {
 	    offset: number;
 	    orderBy?: string;
 	    orderDir?: string;
+	    skipTotal?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new MySQLTableRowsRequest(source);
@@ -1837,6 +1838,7 @@ export namespace website {
 	        this.offset = source["offset"];
 	        this.orderBy = source["orderBy"];
 	        this.orderDir = source["orderDir"];
+	        this.skipTotal = source["skipTotal"];
 	    }
 	}
 	export class MySQLTableRowsResult {
