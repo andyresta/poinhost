@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"fmt"
 	"log"
 
 	"github.com/andyresta/poinhost/internal/core/config"
 	"github.com/andyresta/poinhost/internal/core/database"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
+	"github.com/andyresta/poinhost/internal/modules/files"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 	"github.com/andyresta/poinhost/internal/modules/terminal"
 	"github.com/andyresta/poinhost/internal/session"
@@ -31,6 +33,7 @@ type App struct {
 	sessionMgr  *session.Manager
 	terminals   *session.TerminalRegistry
 	terminalSvc *terminal.Service
+	filesSvc    *files.Service
 }
 
 // NewApp membuat instance App baru. Semua wiring dependency (config, db,
@@ -66,6 +69,9 @@ func NewApp() *App {
 	terminals := session.NewTerminalRegistry(pool)
 	terminalSvc := terminal.NewService(terminals)
 
+	sftpClient := sshpool.NewSFTPClient(pool)
+	filesSvc := files.NewService(sftpClient, executor)
+
 	return &App{
 		cfg:         cfg,
 		db:          db,
@@ -75,6 +81,7 @@ func NewApp() *App {
 		sessionMgr:  sessionMgr,
 		terminals:   terminals,
 		terminalSvc: terminalSvc,
+		filesSvc:    filesSvc,
 	}
 }
 
@@ -265,4 +272,82 @@ func (a *App) ResizeTerminal(sessionID string, cols, rows int) error {
 // v1, tapi binding-nya sudah tersedia untuk itu).
 func (a *App) CloseTerminal(sessionID string) {
 	a.terminalSvc.Close(sessionID)
+}
+
+// ---------------------------------------------------------------------
+// Bindings: Files (lihat internal/modules/files)
+// ---------------------------------------------------------------------
+
+// ListFiles menampilkan isi satu direktori remote.
+func (a *App) ListFiles(serverID, path string) (*files.ListResult, error) {
+	return a.filesSvc.List(a.ctx, serverID, path)
+}
+
+// CreateFolder membuat direktori baru.
+func (a *App) CreateFolder(req files.MkdirRequest) error {
+	return a.filesSvc.Mkdir(a.ctx, req)
+}
+
+// CreateFile membuat file kosong baru.
+func (a *App) CreateFile(req files.CreateFileRequest) error {
+	return a.filesSvc.CreateFile(a.ctx, req)
+}
+
+// RenameFile mengganti nama atau memindahkan file/direktori.
+func (a *App) RenameFile(req files.RenameRequest) error {
+	return a.filesSvc.Rename(a.ctx, req)
+}
+
+// DeleteFiles menghapus satu atau lebih file/direktori (rekursif untuk
+// direktori berisi).
+func (a *App) DeleteFiles(req files.DeleteRequest) error {
+	return a.filesSvc.Delete(a.ctx, req)
+}
+
+// CompressFiles mengarsipkan file/direktori terpilih jadi satu file zip
+// atau tar.gz.
+func (a *App) CompressFiles(req files.CompressRequest) error {
+	return a.filesSvc.Compress(a.ctx, req)
+}
+
+// ExtractArchive mengekstrak arsip zip/tar.gz ke direktori tujuan.
+func (a *App) ExtractArchive(req files.ExtractRequest) error {
+	return a.filesSvc.Extract(a.ctx, req)
+}
+
+// UploadFilesToServer membuka dialog pilih-file NATIVE OS (boleh pilih
+// lebih dari satu sekaligus), lalu meng-upload tiap file yang dipilih ke
+// remoteDir. Ini sengaja BUKAN <input type=file>+base64 ala aplikasi web —
+// dialog asli lebih natural untuk aplikasi desktop dan menghindari
+// menampung seluruh isi file di memori JS.
+func (a *App) UploadFilesToServer(serverID, remoteDir string) error {
+	localPaths, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Pilih file untuk diupload",
+	})
+	if err != nil {
+		return err
+	}
+	for _, localPath := range localPaths {
+		if err := a.filesSvc.UploadFromLocalPath(a.ctx, serverID, localPath, remoteDir); err != nil {
+			return fmt.Errorf("upload %s: %w", localPath, err)
+		}
+	}
+	return nil
+}
+
+// DownloadFileFromServer membuka dialog simpan NATIVE OS untuk memilih
+// lokasi tujuan di komputer lokal, lalu men-stream file remote langsung ke
+// sana. String path kosong (tanpa error) berarti user membatalkan dialog.
+func (a *App) DownloadFileFromServer(serverID, remotePath string) error {
+	localPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
+		Title:           "Simpan file",
+		DefaultFilename: files.BaseName(remotePath),
+	})
+	if err != nil {
+		return err
+	}
+	if localPath == "" {
+		return nil
+	}
+	return a.filesSvc.DownloadToLocalPath(a.ctx, serverID, remotePath, localPath)
 }
