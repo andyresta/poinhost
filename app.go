@@ -187,7 +187,7 @@ func (a *App) shutdown(ctx context.Context) {
 		cancel()
 	}
 	a.streamMu.Unlock()
-	a.websiteSvc.CloseAllMySQLConns()
+	a.websiteSvc.CloseAllDBConns()
 	a.pool.Close()
 	_ = a.db.Close()
 }
@@ -1040,6 +1040,50 @@ func (a *App) MySQLExploreDeleteRow(req website.MySQLRowMutateRequest) error {
 // MySQLExploreExecuteQuery menjalankan satu statement SQL bebas (kotak query).
 func (a *App) MySQLExploreExecuteQuery(req website.MySQLQueryRequest) (*website.MySQLQueryResult, error) {
 	return a.websiteSvc.MySQLExploreExecuteQuery(req)
+}
+
+// --- PostgreSQL Explore: koneksi driver asli, satu koneksi per database ---
+// (beda dari MySQL yang bisa lintas database dalam satu koneksi via USE,
+// lihat pgexplore.go)
+
+// PGExploreListDatabases daftar database yang bisa dilihat role ini.
+func (a *App) PGExploreListDatabases(req website.PGExploreRequest) ([]string, error) {
+	return a.websiteSvc.PGExploreListDatabases(req)
+}
+
+// PGExploreListTables daftar tabel dalam satu schema (default "public").
+func (a *App) PGExploreListTables(req website.PGTableRequest) ([]website.PGTableInfo, error) {
+	return a.websiteSvc.PGExploreListTables(req)
+}
+
+// PGExploreListColumns daftar kolom satu tabel.
+func (a *App) PGExploreListColumns(req website.PGTableRequest, table string) ([]website.PGColumnInfo, error) {
+	return a.websiteSvc.PGExploreListColumns(req, table)
+}
+
+// PGExploreTableRows membaca satu halaman baris.
+func (a *App) PGExploreTableRows(req website.PGTableRowsRequest) (*website.PGTableRowsResult, error) {
+	return a.websiteSvc.PGExploreTableRows(req)
+}
+
+// PGExploreInsertRow menyisipkan satu baris baru.
+func (a *App) PGExploreInsertRow(req website.PGRowMutateRequest) error {
+	return a.websiteSvc.PGExploreInsertRow(req)
+}
+
+// PGExploreUpdateRow memperbarui satu baris yang cocok dengan req.Where.
+func (a *App) PGExploreUpdateRow(req website.PGRowMutateRequest) error {
+	return a.websiteSvc.PGExploreUpdateRow(req)
+}
+
+// PGExploreDeleteRow menghapus satu baris yang cocok dengan req.Where.
+func (a *App) PGExploreDeleteRow(req website.PGRowMutateRequest) error {
+	return a.websiteSvc.PGExploreDeleteRow(req)
+}
+
+// PGExploreExecuteQuery menjalankan satu statement SQL bebas (kotak query).
+func (a *App) PGExploreExecuteQuery(req website.PGQueryRequest) (*website.PGQueryResult, error) {
+	return a.websiteSvc.PGExploreExecuteQuery(req)
 }
 
 // --- Tautan domain<->database (kurasi lokal, lihat domaindb.go) ---

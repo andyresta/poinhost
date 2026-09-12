@@ -8,13 +8,19 @@ import (
 	"github.com/google/uuid"
 )
 
-// Kredensial database (password user MySQL) disimpan LOKAL di mesin user
-// lewat secrets.Vault (OS keychain, fallback file AES-256-GCM) — TIDAK
-// PERNAH ditulis ke server target, beda dari homepoin yang menaruh file JSON
-// terenkripsi DI server yang dikelola (lihat catatan di database.go & vault.go
-// untuk alasannya). Tabel website_db_credentials di SQLite lokal cuma
-// menyimpan METADATA (server/engine/username/host mana yang sudah tersimpan)
-// supaya UI bisa menampilkan daftarnya — isi passwordnya sendiri ada di vault.
+// Kredensial database (password user MySQL/role PostgreSQL) disimpan LOKAL
+// di mesin user lewat secrets.Vault (OS keychain, fallback file AES-256-GCM)
+// — TIDAK PERNAH ditulis ke server target, beda dari homepoin yang menaruh
+// file JSON terenkripsi DI server yang dikelola (lihat catatan di
+// database.go & vault.go untuk alasannya). Tabel website_db_credentials di
+// SQLite lokal cuma menyimpan METADATA (server/engine/username/host mana
+// yang sudah tersimpan) supaya UI bisa menampilkan daftarnya — isi
+// passwordnya sendiri ada di vault.
+//
+// Kolom "host" berarti beda hal per engine: untuk MySQL itu grant host asli
+// (mis. "%", "localhost") — bagian dari identitas user MySQL. Untuk
+// PostgreSQL, role TIDAK terikat host (itu urusan pg_hba.conf, bukan
+// identitas role), jadi kolom ini selalu "-" (lihat dbCredentialHost).
 
 // DBCredentialInfo satu kredensial database yang sudah tersimpan di vault
 // lokal (dipakai untuk fitur Explore) — TIDAK PERNAH membawa password.
@@ -36,22 +42,26 @@ type SaveDBCredentialRequest struct {
 	ServerID string `json:"serverId"`
 	Engine   string `json:"engine"`
 	Username string `json:"username"`
-	Host     string `json:"host,omitempty"` // MySQL saja, default "%"
+	Host     string `json:"host,omitempty"` // MySQL saja, default "%" — diabaikan untuk PostgreSQL
 	Password string `json:"password"`
 	// Verify: kalau true, coba benar-benar konek dulu sebelum menyimpan —
-	// supaya vault tidak pernah menyimpan password yang salah/basi. Hanya
-	// didukung untuk engine "mysql" (satu-satunya yang punya Explore asli
-	// lewat koneksi driver; lihat mysqlexplore.go).
+	// supaya vault tidak pernah menyimpan password yang salah/basi. Untuk
+	// PostgreSQL, verifikasi konek ke database "postgres" (maintenance DB
+	// bawaan, sama seperti default runPostgres di database.go).
 	Verify bool `json:"verify"`
 }
 
+// dbCredentialHost menormalkan kolom "host" sesuai engine — MySQL benar-benar
+// punya konsep grant host (bagian dari identitas user), PostgreSQL TIDAK
+// (role tidak terikat host sama sekali, itu urusan pg_hba.conf) — jadi host
+// yang diberikan untuk PostgreSQL SELALU diabaikan, dipaksa "-".
 func dbCredentialHost(engine, host string) string {
+	if engine != "mysql" {
+		return "-"
+	}
 	host = strings.TrimSpace(host)
 	if host == "" {
-		if engine == "mysql" {
-			return "%"
-		}
-		return "-"
+		return "%"
 	}
 	return host
 }
@@ -82,21 +92,30 @@ func (s *Service) SaveDBCredential(req SaveDBCredentialRequest) (*DBCredentialIn
 	host := dbCredentialHost(engine, req.Host)
 
 	// Buang dulu koneksi Explore yang mungkin masih hidup di cache untuk
-	// kredensial ini (lihat mysqlexplore.go) — kalau tidak, operasi Explore
+	// kredensial ini (lihat dbconnpool.go) — kalau tidak, operasi Explore
 	// berikutnya bisa diam-diam tetap memakai koneksi lama yang sudah
 	// terautentikasi dengan password SEBELUMNYA, bukan yang baru saja
-	// disimpan di sini.
-	if engine == "mysql" {
-		s.evictMySQLConn(req.ServerID, username, host)
+	// disimpan di sini. PostgreSQL bisa punya BANYAK koneksi ter-cache
+	// sekaligus (satu per database yang pernah di-browse dengan role ini),
+	// jadi dibuang semuanya lewat prefix, bukan satu key spesifik.
+	switch engine {
+	case "mysql":
+		s.evictDBConn(mysqlConnCacheKey(req.ServerID, username, host))
+	case "postgresql":
+		s.evictDBConnsWithPrefix(dbConnCacheKeyPrefix("postgresql", req.ServerID, username))
 	}
 
 	verifiedAt := ""
 	if req.Verify {
-		if engine != "mysql" {
-			return nil, errFmt("verifikasi koneksi langsung baru didukung untuk MySQL")
+		var verifyErr error
+		switch engine {
+		case "mysql":
+			verifyErr = s.verifyMySQLCredential(req.ServerID, username, host, req.Password)
+		case "postgresql":
+			verifyErr = s.verifyPGCredential(req.ServerID, username, req.Password)
 		}
-		if err := s.verifyMySQLCredential(req.ServerID, username, host, req.Password); err != nil {
-			return nil, err
+		if verifyErr != nil {
+			return nil, verifyErr
 		}
 		verifiedAt = time.Now().UTC().Format(time.RFC3339)
 	}
@@ -140,8 +159,11 @@ func (s *Service) ForgetDBCredential(serverID, engine, username, host string) er
 	if err != nil {
 		return errFmt("hapus metadata kredensial: %v", err)
 	}
-	if engine == "mysql" {
-		s.evictMySQLConn(serverID, username, host)
+	switch engine {
+	case "mysql":
+		s.evictDBConn(mysqlConnCacheKey(serverID, username, host))
+	case "postgresql":
+		s.evictDBConnsWithPrefix(dbConnCacheKeyPrefix("postgresql", serverID, username))
 	}
 	return nil
 }

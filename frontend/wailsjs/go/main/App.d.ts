@@ -149,6 +149,22 @@ export function OpenServerTab(arg1:string,arg2:string):Promise<session.Tab>;
 
 export function OpenTerminal(arg1:string):Promise<string>;
 
+export function PGExploreDeleteRow(arg1:website.PGRowMutateRequest):Promise<void>;
+
+export function PGExploreExecuteQuery(arg1:website.PGQueryRequest):Promise<website.PGQueryResult>;
+
+export function PGExploreInsertRow(arg1:website.PGRowMutateRequest):Promise<void>;
+
+export function PGExploreListColumns(arg1:website.PGTableRequest,arg2:string):Promise<Array<website.PGColumnInfo>>;
+
+export function PGExploreListDatabases(arg1:website.PGExploreRequest):Promise<Array<string>>;
+
+export function PGExploreListTables(arg1:website.PGTableRequest):Promise<Array<website.PGTableInfo>>;
+
+export function PGExploreTableRows(arg1:website.PGTableRowsRequest):Promise<website.PGTableRowsResult>;
+
+export function PGExploreUpdateRow(arg1:website.PGRowMutateRequest):Promise<void>;
+
 export function ReadFileContent(arg1:string,arg2:string,arg3:string):Promise<files.ReadResult>;
 
 export function ReadWebsiteCronLog(arg1:website.CronLogRequest):Promise<website.CronLogResponse>;

@@ -53,30 +53,31 @@ type Service struct {
 	nginxCache  map[string]nginxStatusCacheEntry
 	domainCache map[string]domainListCacheEntry
 
-	// mysqlConnMu/mysqlConns menahan koneksi Explore MySQL AGAR HIDUP antar
-	// panggilan (lihat mysqlexplore.go) — sebelumnya tiap operasi membuka
-	// lalu langsung menutup koneksi baru, memicu handshake MySQL berulang
-	// di setiap klik (paginasi/edit sel/dst). Sekarang satu koneksi dipakai
-	// ulang selama credential (server+user+host) yang sama masih aktif
-	// dipakai, konsisten dengan filosofi "no unnecessary handshake" yang
-	// sudah dipakai di sshpool sejak awal proyek ini.
-	mysqlConnMu  sync.Mutex
-	mysqlConns   map[string]*mysqlConnCacheEntry
-	mysqlDialing map[string]*mysqlDialWaiter
+	// dbConnMu/dbConns menahan koneksi Explore (MySQL & PostgreSQL) AGAR
+	// HIDUP antar panggilan (lihat dbconnpool.go, mysqlexplore.go,
+	// pgexplore.go) — sebelumnya tiap operasi membuka lalu langsung
+	// menutup koneksi baru, memicu handshake berulang di setiap klik
+	// (paginasi/edit sel/dst). Sekarang satu koneksi dipakai ulang selama
+	// kredensial (engine+server+user+host-atau-database) yang sama masih
+	// aktif dipakai, konsisten dengan filosofi "no unnecessary handshake"
+	// yang sudah dipakai di sshpool sejak awal proyek ini.
+	dbConnMu  sync.Mutex
+	dbConns   map[string]*dbConnCacheEntry
+	dbDialing map[string]*dbDialWaiter
 }
 
 // NewService membuat service modul website baru.
 func NewService(serversSvc *servers.Service, executor *sshpool.Executor, mutex *sshpool.ServerMutexRegistry, db *sql.DB, vault secrets.Vault) *Service {
 	return &Service{
-		servers:      serversSvc,
-		executor:     executor,
-		mutex:        mutex,
-		db:           db,
-		vault:        vault,
-		nginxCache:   make(map[string]nginxStatusCacheEntry),
-		domainCache:  make(map[string]domainListCacheEntry),
-		mysqlConns:   make(map[string]*mysqlConnCacheEntry),
-		mysqlDialing: make(map[string]*mysqlDialWaiter),
+		servers:     serversSvc,
+		executor:    executor,
+		mutex:       mutex,
+		db:          db,
+		vault:       vault,
+		nginxCache:  make(map[string]nginxStatusCacheEntry),
+		domainCache: make(map[string]domainListCacheEntry),
+		dbConns:     make(map[string]*dbConnCacheEntry),
+		dbDialing:   make(map[string]*dbDialWaiter),
 	}
 }
 

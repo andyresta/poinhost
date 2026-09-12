@@ -1858,6 +1858,182 @@ export namespace website {
 	    }
 	}
 	
+	export class PGColumnInfo {
+	    name: string;
+	    type: string;
+	    nullable: boolean;
+	    key?: string;
+	    default?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PGColumnInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.nullable = source["nullable"];
+	        this.key = source["key"];
+	        this.default = source["default"];
+	    }
+	}
+	export class PGExploreRequest {
+	    serverId: string;
+	    username: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PGExploreRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.username = source["username"];
+	    }
+	}
+	export class PGQueryRequest {
+	    serverId: string;
+	    username: string;
+	    database: string;
+	    schema?: string;
+	    sql: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PGQueryRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.username = source["username"];
+	        this.database = source["database"];
+	        this.schema = source["schema"];
+	        this.sql = source["sql"];
+	    }
+	}
+	export class PGQueryResult {
+	    columns?: string[];
+	    rows?: string[][];
+	    rowsAffected: number;
+	    isSelect: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PGQueryResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.columns = source["columns"];
+	        this.rows = source["rows"];
+	        this.rowsAffected = source["rowsAffected"];
+	        this.isSelect = source["isSelect"];
+	    }
+	}
+	export class PGRowMutateRequest {
+	    serverId: string;
+	    username: string;
+	    database: string;
+	    schema?: string;
+	    table: string;
+	    values?: Record<string, string>;
+	    where?: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new PGRowMutateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.username = source["username"];
+	        this.database = source["database"];
+	        this.schema = source["schema"];
+	        this.table = source["table"];
+	        this.values = source["values"];
+	        this.where = source["where"];
+	    }
+	}
+	export class PGTableInfo {
+	    name: string;
+	    schema: string;
+	    approxRows: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PGTableInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.schema = source["schema"];
+	        this.approxRows = source["approxRows"];
+	    }
+	}
+	export class PGTableRequest {
+	    serverId: string;
+	    username: string;
+	    database: string;
+	    schema?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PGTableRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.username = source["username"];
+	        this.database = source["database"];
+	        this.schema = source["schema"];
+	    }
+	}
+	export class PGTableRowsRequest {
+	    serverId: string;
+	    username: string;
+	    database: string;
+	    schema?: string;
+	    table: string;
+	    limit: number;
+	    offset: number;
+	    orderBy?: string;
+	    orderDir?: string;
+	    skipTotal?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PGTableRowsRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.username = source["username"];
+	        this.database = source["database"];
+	        this.schema = source["schema"];
+	        this.table = source["table"];
+	        this.limit = source["limit"];
+	        this.offset = source["offset"];
+	        this.orderBy = source["orderBy"];
+	        this.orderDir = source["orderDir"];
+	        this.skipTotal = source["skipTotal"];
+	    }
+	}
+	export class PGTableRowsResult {
+	    columns: string[];
+	    rows: string[][];
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PGTableRowsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.columns = source["columns"];
+	        this.rows = source["rows"];
+	        this.total = source["total"];
+	    }
+	}
 	export class PHPSetDomainRequest {
 	    serverId: string;
 	    domain: string;

@@ -95,7 +95,7 @@ poinhost/
 │
 ├── internal/
 │   ├── core/                   # infra lintas-modul (setara internal/shared/ homepoin)
-│   │   ├── backup/             # export/import arsip terenkripsi passphrase (§16)
+│   │   ├── backup/             # export/import arsip terenkripsi passphrase (§15)
 │   │   ├── config/             # parameter runtime (trimmed — lihat §6 roadmap)
 │   │   ├── database/           # buka SQLite WAL, migration runner
 │   │   ├── secrets/            # vault password LOKAL: OS keychain + fallback file AES-GCM (§14)
@@ -148,7 +148,9 @@ poinhost/
 │           ├── cron.go            # job command/HTTP per domain, /etc/cron.d/poinhost
 │           ├── database.go        # provisioning MySQL/PostgreSQL (bukan browser tabel)
 │           ├── dbcreds.go         # simpan/lupa/list kredensial DB via vault lokal (§14)
-│           ├── mysqlexplore.go    # Explore: koneksi driver asli tunneled (§14)
+│           ├── dbconnpool.go      # cache koneksi Explore generik, dipakai MySQL & PostgreSQL (§14)
+│           ├── mysqlexplore.go    # Explore MySQL: koneksi driver asli tunneled (§14)
+│           ├── pgexplore.go       # Explore PostgreSQL: satu koneksi per database (§14)
 │           └── domaindb.go        # tautan domain<->database, kurasi lokal (§14)
 │
 ├── migrations/
@@ -167,7 +169,7 @@ poinhost/
     │   │   │                     # WebsitePanel, WebsiteEngineWizard, CreateWebsiteModal,
     │   │   │                     # SubdomainModal, DomainDetailModal (9 tab: PHP/SSL/
     │   │   │                     # Files/Logs/Proxy/DNS/SFTP/Cron/Database),
-    │   │   │                     # MySQLExplorerModal (§14), BackupModal (§16)
+    │   │   │                     # MySQLExplorerModal, PGExplorerModal (§14), BackupModal (§15)
     │   │   └── tabs/              # TabBar & TabContent (keep-alive per tab)
     │   └── App.tsx
     └── wailsjs/                  # auto-generated binding Go<->TS (`wails generate module`)
@@ -1003,12 +1005,14 @@ browser server-wide ala `mysqlmanager`/`pgmanager` homepoin (tabel/baris/
 query arbitrer) awalnya di luar scope bagian ini — kemudian dibangun
 khusus untuk MySQL dengan arsitektur berbeda, lihat §14.
 
-## 14. MySQL Manager: vault lokal + Explore koneksi driver asli + tautan domain
+## 14. Database Manager: vault lokal + Explore koneksi driver asli (MySQL & PostgreSQL) + tautan domain
 
 Homepoin punya fitur "MySQL Manager" (`mysqlmanager`) yang SEPENUHNYA
 terpisah dari tab Database per-domain (§13) — server-wide, tidak terkait
 domain/website apa pun. Riset mendalam atas fitur itu (lihat konteks di
-bawah) jadi dasar desain ulang berikut, bukan port apa adanya.
+bawah) jadi dasar desain ulang berikut, bukan port apa adanya. Fitur yang
+sama kemudian diminta juga untuk PostgreSQL — lihat subbagian PostgreSQL
+di bawah untuk apa yang beda dari MySQL dan kenapa.
 
 ### Temuan homepoin: koneksi asli + password terenkripsi DI SERVER TARGET
 
@@ -1191,31 +1195,85 @@ ditulis ke vault, supaya vault tidak pernah menyimpan kredensial salah.
 
 `domaindb.go` + tabel `website_domain_databases` (migrations) menautkan
 database ke domain — TAPI murni metadata kurasi di SQLite lokal poinhost,
-BUKAN scoping akses sungguhan (MySQL sendiri tetap server-wide, grants
-tidak berubah). Ini yang membuat tab Database poinhost benar-benar
+BUKAN scoping akses sungguhan (MySQL/PostgreSQL sendiri tetap
+server-wide, grants tidak berubah). Ini yang membuat tab Database poinhost benar-benar
 terelasi dengan Website: user bisa menandai "database X dipakai situs
 ini" dan tab Database domain tersebut menampilkannya balik — beda dari
 homepoin yang field `Domain`-nya di tab Database sekadar breadcrumb UI,
 tidak pernah dibaca ulang di mana pun (lihat §13).
 
+### PostgreSQL Explore: satu koneksi per DATABASE, bukan lintas database
+
+Fitur yang sama diminta untuk PostgreSQL (`pgexplore.go`) — sengaja BUKAN
+sekadar salin-tempel `mysqlexplore.go`, karena PostgreSQL punya satu
+perbedaan protokol yang mengubah desain cache-nya: **koneksi PostgreSQL
+SELALU terikat ke satu database saat connect**, tidak ada padanan `USE
+database` MySQL untuk pindah database di koneksi yang sama. Konsekuensinya:
+
+- **Key cache beda bentuk.** MySQL: `(server, user, host)` — satu koneksi
+  bisa melihat banyak database. PostgreSQL: `(server, role, DATABASE)` —
+  pindah database berarti membuka entry cache LAIN. Satu role bisa punya
+  BANYAK koneksi ter-cache sekaligus (satu per database yang pernah
+  di-browse). `evictDBConnsWithPrefix` (bukan `evictDBConn` biasa) dipakai
+  saat password berubah, supaya SEMUA koneksi role itu (lintas database)
+  ikut ditutup, bukan cuma satu.
+- **Placeholder `$1, $2, ...`**, bukan `?` — driver PostgreSQL (`pgx`,
+  lewat `pgx/v5/stdlib` supaya kompatibel `database/sql`) mensyaratkan
+  ini, beda dari `go-sql-driver/mysql`.
+  `buildPGSetClause`/`buildPGWhereClause` membangun placeholder
+  bernomor urut, bisa digabung (SET dulu, lalu WHERE lanjut nomornya)
+  dalam satu statement UPDATE.
+- **Tidak ada `UPDATE/DELETE ... LIMIT 1`** di PostgreSQL — `PGExploreUpdateRow`/
+  `PGExploreDeleteRow` memakai pola standar `WHERE ctid = (SELECT ctid
+  FROM ... WHERE <kondisi> LIMIT 1)` (`ctid` = pengenal fisik baris bawaan
+  PostgreSQL) supaya tetap kena PERSIS satu baris seperti versi MySQL.
+- **Schema, bukan cuma database** — PostgreSQL punya lapisan
+  `database > schema > tabel` (MySQL cuma `database > tabel`). Default
+  `"public"`, bisa diganti lewat input schema di sidebar
+  `PGExplorerModal.tsx`. Primary key dideteksi lewat join
+  `information_schema.table_constraints`+`key_column_usage` (MySQL:
+  `COLUMN_KEY` sudah tersedia langsung di `information_schema.columns`).
+- **`ExecuteQuery` pakai `SET search_path` (bukan `USE`) di koneksi FISIK
+  yang sama** (`db.Conn(ctx)`) — persis alasan yang sama dengan bug `USE`
+  MySQL yang sudah diperbaiki (lihat "Koreksi setelah audit ulang" di
+  atas): dua statement terpisah lewat `db.Exec`/`db.Query` biasa bisa
+  jatuh di koneksi fisik pool yang berbeda begitu `MaxOpenConns` > 1.
+
+**Yang SAMA persis dengan MySQL** (sengaja digeneralisasi, bukan
+diduplikasi): mekanisme cache-koneksi (reuse, idle sweep 5 menit, dedup
+dial bersamaan) sekarang satu implementasi generik di `dbconnpool.go`
+dipakai KEDUA engine — `getOrDialDBConn`/`putCachedDBConn`/`evictDBConn`/
+`CloseAllDBConns`, diuji di `dbconnpool_test.go` (lulus `-race`). Begitu
+juga penyimpanan kredensial (`dbcreds.go` — `SaveDBCredential`/
+`ForgetDBCredential`/vault lokal) dan tautan domain<->database
+(`domaindb.go`) — sudah engine-generic sejak awal, PostgreSQL tinggal
+pakai jalur yang sama tanpa perubahan (`dbCredentialHost` memaksa kolom
+host jadi `"-"` untuk PostgreSQL karena role tidak terikat host seperti
+user MySQL — itu urusan `pg_hba.conf`, bukan identitas role).
+`DBCreateUserRequest.SaveCredential` (centang "simpan untuk Explore
+nanti") tadinya cuma berlaku untuk MySQL, sekarang berlaku untuk
+PostgreSQL juga.
+
 ### Alur pemakaian end-to-end
 
-1. Buat user database baru lewat tab Database (§13) — centang opsional
-   "simpan untuk Explore nanti" (`DBCreateUserRequest.SaveCredential`)
-   supaya password yang sudah diketik user langsung tersimpan ke vault,
-   tanpa perlu diketik ulang.
-2. Untuk user yang sudah ada sebelumnya (dibuat di luar poinhost, atau
-   sebelum fitur ini ada): tombol "🔗 Hubungkan kredensial" — masukkan
-   password, diverifikasi dulu, baru disimpan.
+1. Buat user/role database baru lewat tab Database (§13) — centang
+   opsional "simpan untuk Explore nanti" (`DBCreateUserRequest.
+   SaveCredential`) supaya password yang sudah diketik user langsung
+   tersimpan ke vault, tanpa perlu diketik ulang. Berlaku untuk MySQL
+   maupun PostgreSQL.
+2. Untuk user/role yang sudah ada sebelumnya (dibuat di luar poinhost,
+   atau sebelum fitur ini ada): tombol "🔗 Hubungkan kredensial" —
+   masukkan password, diverifikasi dulu, baru disimpan.
 3. Tombol "🔍 Explore" muncul begitu kredensial tersimpan — membuka
-   `MySQLExplorerModal` (sidebar database/tabel, grid baris dengan edit
-   inline dobel-klik, insert/delete baris, kotak query bebas, paginasi).
+   `MySQLExplorerModal` atau `PGExplorerModal` (sidebar database/tabel,
+   grid baris dengan edit inline dobel-klik, insert/delete baris, kotak
+   query bebas, paginasi).
 4. Password basi terdeteksi otomatis lewat marker `AUTENTIKASI_GAGAL:`,
    modal menawarkan form simpan-ulang alih-alih gagal diam-diam.
 5. Database bisa ditautkan ke domain manapun lewat tombol "🔗 Tautkan" di
    tabel Database — murni kurasi, tidak mengubah akses.
 
-## 16. Backup: export/import data lintas perangkat (tanpa akun/server)
+## 15. Backup: export/import data lintas perangkat (tanpa akun/server)
 
 Latar belakang: user bertanya soal sign-in Google + sync otomatis antar
 perangkat. Itu diskusikan dulu (bukan langsung dibangun) karena berlawanan
@@ -1276,7 +1334,7 @@ DNS zone §13) — dialog OS asli, file tidak pernah "singgah" di memori JS.
 Import (passphrase + ringkasan hasil: jumlah server/kredensial/tautan yang
 berhasil masuk).
 
-## 17. Yang BELUM di-porting di skeleton ini (roadmap)
+## 16. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -1326,7 +1384,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 18. Menjalankan (development)
+## 17. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev

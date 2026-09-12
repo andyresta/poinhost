@@ -109,10 +109,10 @@ type MySQLQueryResult struct {
 	IsSelect     bool        `json:"isSelect"`
 }
 
-var mysqlIdentRE = regexp.MustCompile(`^[A-Za-z0-9_$]{1,64}$`)
+var sqlIdentRE = regexp.MustCompile(`^[A-Za-z0-9_$]{1,64}$`)
 
-func validateMySQLIdent(name string) error {
-	if !mysqlIdentRE.MatchString(name) {
+func validateSQLIdent(name string) error {
+	if !sqlIdentRE.MatchString(name) {
 		return errFmt("nama tidak valid: %q (huruf/angka/_ saja)", name)
 	}
 	return nil
@@ -152,87 +152,10 @@ func classifyMySQLConnError(err error) error {
 	return errFmt("koneksi ke MySQL gagal: %v", err)
 }
 
-// mysqlConnCacheEntry satu koneksi Explore yang ditahan hidup, dipakai
-// ulang oleh panggilan-panggilan berikutnya untuk kredensial yang sama.
-type mysqlConnCacheEntry struct {
-	db       *sql.DB
-	lastUsed time.Time
-}
-
-// mysqlDialWaiter menandai satu proses dial yang sedang berjalan untuk satu
-// key tertentu — kalau ada panggilan LAIN untuk key yang SAMA datang
-// selagi dial pertama masih berlangsung, panggilan itu menunggu hasil dial
-// yang sama alih-alih ikut membuka koneksi kedua (yang kalau dibiarkan,
-// salah satunya bakal langsung ditutup lagi oleh putCachedMySQLConn dan
-// menyebabkan panggilan yang kebagian koneksi "kalah" itu gagal dengan
-// "database is closed").
-type mysqlDialWaiter struct {
-	done chan struct{}
-	db   *sql.DB
-	err  error
-}
-
-// mysqlConnIdleTTL — koneksi yang tidak dipakai selama ini ditutup otomatis
-// (disapu lazy setiap ada akses baru) supaya tidak menahan koneksi MySQL ke
-// server yang sudah lama tidak di-browse. 5 menit cukup untuk satu sesi
-// klik-klik pindah tabel/halaman, tapi tidak menumpuk koneksi selamanya.
-const mysqlConnIdleTTL = 5 * time.Minute
-
+// mysqlConnCacheKey membangun key cache generik (lihat dbconnpool.go) untuk
+// satu kredensial MySQL.
 func mysqlConnCacheKey(serverID, username, host string) string {
-	return serverID + "\x00" + username + "\x00" + host
-}
-
-// sweepIdleMySQLConnsLocked menutup & membuang entry yang sudah idle lebih
-// dari mysqlConnIdleTTL. Dipanggil dengan mysqlConnMu SUDAH terkunci.
-func (s *Service) sweepIdleMySQLConnsLocked() {
-	now := time.Now()
-	for key, entry := range s.mysqlConns {
-		if now.Sub(entry.lastUsed) > mysqlConnIdleTTL {
-			_ = entry.db.Close()
-			delete(s.mysqlConns, key)
-		}
-	}
-}
-
-// putCachedMySQLConn menyimpan koneksi baru ke cache — menutup entry lama
-// untuk key yang sama dulu kalau ada, supaya tidak ada koneksi yang bocor
-// tak tertutup. Dipanggil HANYA dari jalur yang sudah dijamin tidak
-// tumpang tindih dial lain untuk key yang sama (verifyMySQLCredential, atau
-// dari dalam getOrDialMySQLExplore yang sudah diserialisasi lewat
-// mysqlDialing).
-func (s *Service) putCachedMySQLConn(key string, db *sql.DB) {
-	s.mysqlConnMu.Lock()
-	defer s.mysqlConnMu.Unlock()
-	if old, ok := s.mysqlConns[key]; ok {
-		_ = old.db.Close()
-	}
-	s.mysqlConns[key] = &mysqlConnCacheEntry{db: db, lastUsed: time.Now()}
-}
-
-// evictMySQLConn menutup & membuang koneksi cache untuk satu kredensial —
-// dipanggil saat password kredensial itu berubah (SaveDBCredential) atau
-// dilupakan (ForgetDBCredential), supaya tidak ada operasi Explore
-// berikutnya yang diam-diam masih memakai koneksi dari password lama.
-func (s *Service) evictMySQLConn(serverID, username, host string) {
-	key := mysqlConnCacheKey(serverID, username, host)
-	s.mysqlConnMu.Lock()
-	defer s.mysqlConnMu.Unlock()
-	if entry, ok := s.mysqlConns[key]; ok {
-		_ = entry.db.Close()
-		delete(s.mysqlConns, key)
-	}
-}
-
-// CloseAllMySQLConns menutup semua koneksi Explore yang masih tertahan di
-// cache — dipanggil saat aplikasi ditutup (lihat app.go: shutdown), sejalan
-// dengan pool.Close() untuk koneksi SSH.
-func (s *Service) CloseAllMySQLConns() {
-	s.mysqlConnMu.Lock()
-	defer s.mysqlConnMu.Unlock()
-	for key, entry := range s.mysqlConns {
-		_ = entry.db.Close()
-		delete(s.mysqlConns, key)
-	}
+	return dbConnCacheKey("mysql", serverID, username, host)
 }
 
 // dialMySQLExplore SELALU membuka koneksi BARU lewat tunnel SSH (dial+ping
@@ -290,45 +213,13 @@ func (s *Service) dialMySQLExplore(serverID, username, host, password string) (*
 // yang dipakai semua operasi Explore biasa (List*/TableRows/Insert/Update/
 // Delete/ExecuteQuery), sehingga handshake MySQL cuma terjadi SEKALI per
 // (server, user, host) yang sedang aktif di-browse, bukan sekali per
-// panggilan.
-//
-// Kalau dua panggilan datang BERSAMAAN untuk key yang sama saat belum ada
-// koneksi tercache (mis. dua tab dibuka nyaris bersamaan), panggilan kedua
-// menunggu hasil dial yang PERTAMA lewat mysqlDialing alih-alih ikut
-// membuka koneksi kedua — mencegah salah satu koneksi langsung ditutup lagi
-// oleh yang lain (race "database is closed").
+// panggilan. Mekanisme cache & dedup dial bersamaan-nya generik, lihat
+// dbconnpool.go.
 func (s *Service) getOrDialMySQLExplore(serverID, username, host, password string) (*sql.DB, error) {
 	key := mysqlConnCacheKey(serverID, username, host)
-
-	s.mysqlConnMu.Lock()
-	s.sweepIdleMySQLConnsLocked()
-	if entry, ok := s.mysqlConns[key]; ok {
-		entry.lastUsed = time.Now()
-		db := entry.db
-		s.mysqlConnMu.Unlock()
-		return db, nil
-	}
-	if w, ok := s.mysqlDialing[key]; ok {
-		s.mysqlConnMu.Unlock()
-		<-w.done
-		return w.db, w.err
-	}
-	w := &mysqlDialWaiter{done: make(chan struct{})}
-	s.mysqlDialing[key] = w
-	s.mysqlConnMu.Unlock()
-
-	db, err := s.dialMySQLExplore(serverID, username, host, password)
-	w.db, w.err = db, err
-	close(w.done)
-
-	s.mysqlConnMu.Lock()
-	delete(s.mysqlDialing, key)
-	if err == nil {
-		s.mysqlConns[key] = &mysqlConnCacheEntry{db: db, lastUsed: time.Now()}
-	}
-	s.mysqlConnMu.Unlock()
-
-	return db, err
+	return s.getOrDialDBConn(key, func() (*sql.DB, error) {
+		return s.dialMySQLExplore(serverID, username, host, password)
+	})
 }
 
 // verifyMySQLCredential dipakai SaveDBCredential (opsi Verify) — memastikan
@@ -340,7 +231,7 @@ func (s *Service) verifyMySQLCredential(serverID, username, host, password strin
 	if err != nil {
 		return err
 	}
-	s.putCachedMySQLConn(mysqlConnCacheKey(serverID, username, host), db)
+	s.putCachedDBConn(mysqlConnCacheKey(serverID, username, host), db)
 	return nil
 }
 
@@ -396,7 +287,7 @@ func (s *Service) MySQLExploreListDatabases(req MySQLExploreRequest) ([]string, 
 
 // MySQLExploreListTables daftar tabel dalam satu database.
 func (s *Service) MySQLExploreListTables(req MySQLExploreRequest, database string) ([]MySQLTableInfo, error) {
-	if err := validateMySQLIdent(database); err != nil {
+	if err := validateSQLIdent(database); err != nil {
 		return nil, err
 	}
 	db, _, _, err := s.openMySQLExploreStored(req)
@@ -425,10 +316,10 @@ func (s *Service) MySQLExploreListTables(req MySQLExploreRequest, database strin
 
 // MySQLExploreListColumns daftar kolom satu tabel.
 func (s *Service) MySQLExploreListColumns(req MySQLExploreRequest, database, table string) ([]MySQLColumnInfo, error) {
-	if err := validateMySQLIdent(database); err != nil {
+	if err := validateSQLIdent(database); err != nil {
 		return nil, err
 	}
-	if err := validateMySQLIdent(table); err != nil {
+	if err := validateSQLIdent(table); err != nil {
 		return nil, err
 	}
 	db, _, _, err := s.openMySQLExploreStored(req)
@@ -462,10 +353,10 @@ func (s *Service) MySQLExploreListColumns(req MySQLExploreRequest, database, tab
 // driver asli, bukan re-exec CLI per halaman — inilah yang bikin geser
 // halaman tabel besar tetap cepat).
 func (s *Service) MySQLExploreTableRows(req MySQLTableRowsRequest) (*MySQLTableRowsResult, error) {
-	if err := validateMySQLIdent(req.Database); err != nil {
+	if err := validateSQLIdent(req.Database); err != nil {
 		return nil, err
 	}
-	if err := validateMySQLIdent(req.Table); err != nil {
+	if err := validateSQLIdent(req.Table); err != nil {
 		return nil, err
 	}
 	limit := req.Limit
@@ -493,7 +384,7 @@ func (s *Service) MySQLExploreTableRows(req MySQLTableRowsRequest) (*MySQLTableR
 
 	orderClause := ""
 	if req.OrderBy != "" {
-		if err := validateMySQLIdent(req.OrderBy); err != nil {
+		if err := validateSQLIdent(req.OrderBy); err != nil {
 			return nil, err
 		}
 		dir := "ASC"
@@ -552,7 +443,7 @@ func buildMySQLWhereClause(where map[string]*string) (string, []interface{}, err
 	parts := make([]string, 0, len(keys))
 	args := make([]interface{}, 0, len(keys))
 	for _, col := range keys {
-		if err := validateMySQLIdent(col); err != nil {
+		if err := validateSQLIdent(col); err != nil {
 			return "", nil, err
 		}
 		val := where[col]
@@ -568,10 +459,10 @@ func buildMySQLWhereClause(where map[string]*string) (string, []interface{}, err
 
 // MySQLExploreInsertRow menyisipkan satu baris baru.
 func (s *Service) MySQLExploreInsertRow(req MySQLRowMutateRequest) error {
-	if err := validateMySQLIdent(req.Database); err != nil {
+	if err := validateSQLIdent(req.Database); err != nil {
 		return err
 	}
-	if err := validateMySQLIdent(req.Table); err != nil {
+	if err := validateSQLIdent(req.Table); err != nil {
 		return err
 	}
 	if len(req.Values) == 0 {
@@ -588,7 +479,7 @@ func (s *Service) MySQLExploreInsertRow(req MySQLRowMutateRequest) error {
 	placeholders := make([]string, 0, len(cols))
 	args := make([]interface{}, 0, len(cols))
 	for _, col := range cols {
-		if err := validateMySQLIdent(col); err != nil {
+		if err := validateSQLIdent(col); err != nil {
 			return err
 		}
 		quotedCols = append(quotedCols, quoteMySQLIdent(col))
@@ -615,10 +506,10 @@ func (s *Service) MySQLExploreInsertRow(req MySQLRowMutateRequest) error {
 
 // MySQLExploreUpdateRow memperbarui satu baris yang cocok dengan req.Where.
 func (s *Service) MySQLExploreUpdateRow(req MySQLRowMutateRequest) error {
-	if err := validateMySQLIdent(req.Database); err != nil {
+	if err := validateSQLIdent(req.Database); err != nil {
 		return err
 	}
-	if err := validateMySQLIdent(req.Table); err != nil {
+	if err := validateSQLIdent(req.Table); err != nil {
 		return err
 	}
 	if len(req.Values) == 0 {
@@ -634,7 +525,7 @@ func (s *Service) MySQLExploreUpdateRow(req MySQLRowMutateRequest) error {
 	setParts := make([]string, 0, len(setCols))
 	args := make([]interface{}, 0, len(setCols))
 	for _, col := range setCols {
-		if err := validateMySQLIdent(col); err != nil {
+		if err := validateSQLIdent(col); err != nil {
 			return err
 		}
 		setParts = append(setParts, quoteMySQLIdent(col)+" = ?")
@@ -671,10 +562,10 @@ func (s *Service) MySQLExploreUpdateRow(req MySQLRowMutateRequest) error {
 
 // MySQLExploreDeleteRow menghapus satu baris yang cocok dengan req.Where.
 func (s *Service) MySQLExploreDeleteRow(req MySQLRowMutateRequest) error {
-	if err := validateMySQLIdent(req.Database); err != nil {
+	if err := validateSQLIdent(req.Database); err != nil {
 		return err
 	}
-	if err := validateMySQLIdent(req.Table); err != nil {
+	if err := validateSQLIdent(req.Table); err != nil {
 		return err
 	}
 	whereClause, whereArgs, err := buildMySQLWhereClause(req.Where)
@@ -704,7 +595,7 @@ func (s *Service) MySQLExploreDeleteRow(req MySQLRowMutateRequest) error {
 // query) — dibatasi SATU statement per eksekusi (guard sederhana, tidak
 // mengizinkan multi-statement lewat ";").
 func (s *Service) MySQLExploreExecuteQuery(req MySQLQueryRequest) (*MySQLQueryResult, error) {
-	if err := validateMySQLIdent(req.Database); err != nil {
+	if err := validateSQLIdent(req.Database); err != nil {
 		return nil, err
 	}
 	sqlText := strings.TrimSpace(req.SQL)
