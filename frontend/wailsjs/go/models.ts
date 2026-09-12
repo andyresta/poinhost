@@ -952,3 +952,414 @@ export namespace sshpool {
 
 }
 
+export namespace website {
+	
+	export class CreateSubdomainRequest {
+	    serverId: string;
+	    parent: string;
+	    subdomain: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateSubdomainRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.parent = source["parent"];
+	        this.subdomain = source["subdomain"];
+	    }
+	}
+	export class CreateWebsiteRequest {
+	    serverId: string;
+	    domain: string;
+	    phpVersion?: string;
+	    enableSsl: boolean;
+	    sslEmail?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateWebsiteRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.phpVersion = source["phpVersion"];
+	        this.enableSsl = source["enableSsl"];
+	        this.sslEmail = source["sslEmail"];
+	    }
+	}
+	export class ProxyRule {
+	    path: string;
+	    target: string;
+	    webSocket?: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxyRule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.target = source["target"];
+	        this.webSocket = source["webSocket"];
+	    }
+	}
+	export class DomainInfo {
+	    domain: string;
+	    parent?: string;
+	    isSubdomain: boolean;
+	    serverNames: string;
+	    root: string;
+	    configPath: string;
+	    enabled: boolean;
+	    phpVersion?: string;
+	    phpEnabled: boolean;
+	    proxyTarget?: string;
+	    proxyRules?: ProxyRule[];
+	    sslEnabled: boolean;
+	    sslCertificate?: string;
+	    sslCertificateKey?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DomainInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.parent = source["parent"];
+	        this.isSubdomain = source["isSubdomain"];
+	        this.serverNames = source["serverNames"];
+	        this.root = source["root"];
+	        this.configPath = source["configPath"];
+	        this.enabled = source["enabled"];
+	        this.phpVersion = source["phpVersion"];
+	        this.phpEnabled = source["phpEnabled"];
+	        this.proxyTarget = source["proxyTarget"];
+	        this.proxyRules = this.convertValues(source["proxyRules"], ProxyRule);
+	        this.sslEnabled = source["sslEnabled"];
+	        this.sslCertificate = source["sslCertificate"];
+	        this.sslCertificateKey = source["sslCertificateKey"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CreateWebsiteResult {
+	    domain: DomainInfo;
+	    warnings?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new CreateWebsiteResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = this.convertValues(source["domain"], DomainInfo);
+	        this.warnings = source["warnings"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class DeleteDomainRequest {
+	    serverId: string;
+	    domain: string;
+	    removeRoot: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DeleteDomainRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.removeRoot = source["removeRoot"];
+	    }
+	}
+	
+	export class NginxStatus {
+	    installed: boolean;
+	    version?: string;
+	    active: boolean;
+	    enabled: boolean;
+	    distroId?: string;
+	    distroName?: string;
+	    packageManager?: string;
+	    canInstall: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new NginxStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.version = source["version"];
+	        this.active = source["active"];
+	        this.enabled = source["enabled"];
+	        this.distroId = source["distroId"];
+	        this.distroName = source["distroName"];
+	        this.packageManager = source["packageManager"];
+	        this.canInstall = source["canInstall"];
+	    }
+	}
+	export class ListResponse {
+	    nginx: NginxStatus;
+	    domains: DomainInfo[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ListResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.nginx = this.convertValues(source["nginx"], NginxStatus);
+	        this.domains = this.convertValues(source["domains"], DomainInfo);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class PHPSetDomainRequest {
+	    serverId: string;
+	    domain: string;
+	    version: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PHPSetDomainRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.version = source["version"];
+	    }
+	}
+	export class PHPVersionInfo {
+	    version: string;
+	    socket: string;
+	    active: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PHPVersionInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.version = source["version"];
+	        this.socket = source["socket"];
+	        this.active = source["active"];
+	    }
+	}
+	export class PHPStatus {
+	    installed: boolean;
+	    repoConfigured: boolean;
+	    distroId?: string;
+	    distroName?: string;
+	    packageManager?: string;
+	    canInstall: boolean;
+	    versions: PHPVersionInfo[];
+	    available: string[];
+	    domainVersion?: string;
+	    domainEnabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PHPStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.repoConfigured = source["repoConfigured"];
+	        this.distroId = source["distroId"];
+	        this.distroName = source["distroName"];
+	        this.packageManager = source["packageManager"];
+	        this.canInstall = source["canInstall"];
+	        this.versions = this.convertValues(source["versions"], PHPVersionInfo);
+	        this.available = source["available"];
+	        this.domainVersion = source["domainVersion"];
+	        this.domainEnabled = source["domainEnabled"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	export class SSLCertificateInfo {
+	    domains?: string[];
+	    notAfter?: string;
+	    certPath?: string;
+	    keyPath?: string;
+	    exists: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SSLCertificateInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domains = source["domains"];
+	        this.notAfter = source["notAfter"];
+	        this.certPath = source["certPath"];
+	        this.keyPath = source["keyPath"];
+	        this.exists = source["exists"];
+	    }
+	}
+	export class SSLIssueRequest {
+	    serverId: string;
+	    domain: string;
+	    email: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SSLIssueRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.email = source["email"];
+	    }
+	}
+	export class SSLStatus {
+	    domain: string;
+	    isParent: boolean;
+	    certbotInstalled: boolean;
+	    canInstall: boolean;
+	    distroId?: string;
+	    distroName?: string;
+	    packageManager?: string;
+	    sslEnabled: boolean;
+	    canIssue: boolean;
+	    canEnable: boolean;
+	    sans?: string[];
+	    certificate: SSLCertificateInfo;
+	    nginxInstalled: boolean;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SSLStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.isParent = source["isParent"];
+	        this.certbotInstalled = source["certbotInstalled"];
+	        this.canInstall = source["canInstall"];
+	        this.distroId = source["distroId"];
+	        this.distroName = source["distroName"];
+	        this.packageManager = source["packageManager"];
+	        this.sslEnabled = source["sslEnabled"];
+	        this.canIssue = source["canIssue"];
+	        this.canEnable = source["canEnable"];
+	        this.sans = source["sans"];
+	        this.certificate = this.convertValues(source["certificate"], SSLCertificateInfo);
+	        this.nginxInstalled = source["nginxInstalled"];
+	        this.message = source["message"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SetEnabledRequest {
+	    serverId: string;
+	    domain: string;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SetEnabledRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.enabled = source["enabled"];
+	    }
+	}
+
+}
+
