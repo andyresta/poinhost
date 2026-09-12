@@ -168,6 +168,7 @@ type SSLStatus struct {
 	SANs             []string           `json:"sans,omitempty"`
 	Certificate      SSLCertificateInfo `json:"certificate"`
 	NginxInstalled   bool               `json:"nginxInstalled"`
+	AutoRenewEnabled bool               `json:"autoRenewEnabled"`
 	Message          string             `json:"message,omitempty"`
 }
 

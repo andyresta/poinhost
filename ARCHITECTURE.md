@@ -832,6 +832,41 @@ lewat `rewriteVhost` masing-masing. `Issue` TIDAK otomatis mengaktifkan
 SSL di vhost (`Enable` terpisah) — supaya user bisa pastikan sertifikat
 berhasil terbit dulu sebelum situs production ikut pindah ke HTTPS.
 
+### SSL — auto-renew: deploy-hook reload Nginx + cron jaring pengaman
+
+Sertifikat Let's Encrypt kedaluwarsa tiap ~90 hari. homepoin (dicek lewat
+riset) sama sekali TIDAK punya mekanisme perpanjangan otomatis — cuma
+tombol "Renew" manual. Root cause sebenarnya bukan soal *penjadwalan*
+perpanjangan (paket OS certbot biasanya sudah membawa systemd
+timer/cron sendiri untuk itu), tapi soal **Nginx tidak pernah reload**
+setelah sertifikat baru ditulis ke disk — worker process Nginx terus
+menyajikan sertifikat LAMA dari memori sampai ada reload eksplisit,
+jadi auto-renew tanpa hook reload sebenarnya percuma. Ditambah lagi tidak
+semua distro menjamin timer/cron OS-level itu ada/aktif.
+
+`ensureAutoRenew` (`ssl.go`) memasang DUA lapis, keduanya idempotent lewat
+SATU round-trip:
+
+1. **Deploy-hook** di
+   `/etc/letsencrypt/renewal-hooks/deploy/poinhost-reload-nginx.sh` —
+   dipanggil OTOMATIS oleh certbot sendiri setelah PERPANJANGAN BERHASIL
+   apa pun sumbernya (timer/cron bawaan OS, atau tombol "Perbarui
+   sertifikat" manual di poinhost), menjalankan `nginx -t` lalu reload.
+2. **Cron jaring pengaman** di `/etc/cron.d/poinhost-certbot-renew`
+   (`certbot renew --quiet` tiap hari jam 03:12) — aman dijalankan harian
+   karena certbot sendiri cuma benar-benar memperbarui sertifikat yang
+   mendekati kedaluwarsa (<30 hari); ini jaminan untuk distro yang tidak
+   punya timer/cron bawaan certbot.
+
+`ensureAutoRenew` dipanggil best-effort (kegagalan tidak membatalkan
+operasi utama) di akhir `SSLIssue` dan `SSLEnable`, jadi otomatis
+terpasang begitu SSL pertama kali diterbitkan/diaktifkan lewat poinhost.
+Untuk sertifikat yang sudah ada SEBELUM fitur ini ditambahkan (mis.
+diterbitkan manual via SSH), ada binding eksplisit
+`EnableWebsiteSSLAutoRenew` + tombol "Pasang auto-renew" di tab SSL,
+muncul kalau `SSLStatus.autoRenewEnabled` terbaca `false` untuk sertifikat
+yang sudah ada.
+
 ### UX: alur "Buat Website" gabungan, bukan 3 halaman terpisah
 
 Di homepoin, membuat situs baru + PHP + SSL adalah TIGA kunjungan halaman

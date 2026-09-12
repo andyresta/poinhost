@@ -64,6 +64,8 @@ export function DownloadFileFromServer(arg1:string,arg2:string,arg3:string):Prom
 
 export function EnableWebsiteSSL(arg1:string,arg2:string):Promise<website.SSLStatus>;
 
+export function EnableWebsiteSSLAutoRenew(arg1:string,arg2:string):Promise<website.SSLStatus>;
+
 export function ExportWebsiteDNSZone(arg1:string,arg2:string):Promise<void>;
 
 export function ExtractArchive(arg1:files.ExtractRequest):Promise<void>;

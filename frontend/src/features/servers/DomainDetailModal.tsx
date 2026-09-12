@@ -8,6 +8,7 @@ import {
   EnableWebsiteSSL,
   DisableWebsiteSSL,
   RenewWebsiteSSL,
+  EnableWebsiteSSLAutoRenew,
   StreamWebsiteInstall,
   StopDockerStream,
 } from '../../../wailsjs/go/main/App';
@@ -292,6 +293,19 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
     }
   }
 
+  async function enableAutoRenew() {
+    setBusy(true);
+    setError(null);
+    try {
+      await EnableWebsiteSSLAutoRenew(serverId, domain);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function installCertbot() {
     setInstalling(true);
     setLines([]);
@@ -349,6 +363,20 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
         <p className="chmod-path">Mencakup: {status.sans.join(', ')}</p>
       )}
       {status.certificate.notAfter && <p className="chmod-path">Berlaku sampai: {status.certificate.notAfter}</p>}
+
+      {status.certificate.exists && (
+        <p>
+          Auto-renew:{' '}
+          <span className={`docker-badge ${status.autoRenewEnabled ? 'docker-badge--running' : 'docker-badge--stopped'}`}>
+            {status.autoRenewEnabled ? 'Aktif (cek harian jam 03:12, reload Nginx otomatis)' : 'Belum terpasang'}
+          </span>
+          {!status.autoRenewEnabled && (
+            <button className="btn btn--sm" style={{ marginLeft: 8 }} disabled={busy} onClick={() => void enableAutoRenew()}>
+              Pasang auto-renew
+            </button>
+          )}
+        </p>
+      )}
 
       {!status.certificate.exists && (
         <>

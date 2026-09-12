@@ -1919,6 +1919,7 @@ export namespace website {
 	    sans?: string[];
 	    certificate: SSLCertificateInfo;
 	    nginxInstalled: boolean;
+	    autoRenewEnabled: boolean;
 	    message?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1940,6 +1941,7 @@ export namespace website {
 	        this.sans = source["sans"];
 	        this.certificate = this.convertValues(source["certificate"], SSLCertificateInfo);
 	        this.nginxInstalled = source["nginxInstalled"];
+	        this.autoRenewEnabled = source["autoRenewEnabled"];
 	        this.message = source["message"];
 	    }
 	

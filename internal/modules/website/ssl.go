@@ -1,6 +1,7 @@
 package website
 
 import (
+	"encoding/base64"
 	"strings"
 	"time"
 )
@@ -90,6 +91,79 @@ else
 fi`
 }
 
+// certbotDeployHookPath adalah hook yang dipanggil certbot OTOMATIS setiap
+// kali sertifikat apa pun di server ini benar-benar diperbarui — dari
+// SUMBER manapun (timer/cron bawaan paket certbot, cron jaring pengaman
+// poinhost sendiri di bawah, atau tombol Renew manual) — bukan sesuatu
+// yang poinhost panggil sendiri. Ini mengisi celah nyata di homepoin:
+// sertifikat BISA saja sudah diperbarui otomatis oleh OS, tapi file
+// sertifikat baru di disk tidak pernah membuat Nginx reload — worker
+// process Nginx tetap memakai bytes sertifikat LAMA di memori sampai ada
+// reload eksplisit, jadi auto-renewal tanpa hook ini efektif tidak
+// berguna kalau tidak ada yang reload Nginx sesudahnya.
+const certbotDeployHookPath = "/etc/letsencrypt/renewal-hooks/deploy/poinhost-reload-nginx.sh"
+
+// certbotRenewCronPath adalah jaring pengaman: paket certbot dari apt/dnf
+// BIASANYA sudah memasang systemd timer/cron sendiri (mis. `certbot.timer`
+// di Debian/Ubuntu), tapi ini tidak dijamin ada/aktif di semua distro atau
+// image minimal — cron eksplisit ini memastikan pengecekan renewal tetap
+// jalan tanpa bergantung pada perilaku default paket OS. `certbot renew`
+// sendiri cuma benar-benar memperbarui sertifikat yang mendekati
+// kedaluwarsa (<30 hari), jadi aman dijalankan setiap hari tanpa efek
+// samping untuk sertifikat yang belum perlu diperbarui.
+const certbotRenewCronPath = "/etc/cron.d/poinhost-certbot-renew"
+
+const certbotDeployHookScript = `#!/bin/sh
+# Dikelola poinhost — reload Nginx setiap kali certbot berhasil memperbarui
+# sertifikat apa pun di server ini (dipanggil OTOMATIS oleh certbot sendiri,
+# baik dari timer/cron bawaan OS maupun tombol Renew manual di poinhost).
+nginx -t && (systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || service nginx reload 2>/dev/null || service nginx restart 2>/dev/null)
+`
+
+const certbotRenewCronContent = `# Dikelola poinhost — jangan edit manual.
+# Jaring pengaman auto-renew Let's Encrypt: certbot cuma benar-benar
+# memperbarui sertifikat yang mendekati kedaluwarsa (<30 hari), jadi aman
+# dijalankan tiap hari. Reload Nginx ditangani otomatis lewat deploy-hook
+# di /etc/letsencrypt/renewal-hooks/deploy/, BUKAN di baris ini.
+12 3 * * * root certbot renew --quiet
+`
+
+const autoRenewCheckScript = `if [ -f ` + certbotRenewCronPath + ` ]; then echo "AUTORENEW=1"; else echo "AUTORENEW=0"; fi`
+
+// ensureAutoRenew memasang deploy-hook + cron jaring pengaman dalam SATU
+// round-trip SSH — idempotent (aman dipanggil berkali-kali, isinya selalu
+// ditimpa dengan konten yang sama).
+func (s *Service) ensureAutoRenew(access *websiteAccess) error {
+	hookB64 := base64.StdEncoding.EncodeToString([]byte(certbotDeployHookScript))
+	cronB64 := base64.StdEncoding.EncodeToString([]byte(certbotRenewCronContent))
+	script := `set -e
+mkdir -p /etc/letsencrypt/renewal-hooks/deploy
+echo ` + shellQuote(hookB64) + ` | base64 -d > ` + certbotDeployHookPath + `
+chmod 0755 ` + certbotDeployHookPath + `
+echo ` + shellQuote(cronB64) + ` | base64 -d > ` + certbotRenewCronPath + `
+chmod 0644 ` + certbotRenewCronPath + `
+`
+	_, err := s.run(access, script, 15*time.Second)
+	return err
+}
+
+// EnableSSLAutoRenew memasang ulang mekanisme auto-renew secara eksplisit —
+// dipakai tombol manual di UI untuk sertifikat yang sudah diterbitkan
+// SEBELUM fitur ini ada, atau kalau pemasangan otomatis saat SSLIssue
+// gagal karena sebab lain (auto-renew berlaku untuk SELURUH server, bukan
+// per-domain, tapi menerima `domain` supaya bisa langsung mengembalikan
+// SSLStatus domain yang sedang dibuka di UI).
+func (s *Service) EnableSSLAutoRenew(serverID, domain string) (*SSLStatus, error) {
+	access, err := s.resolveAccess(serverID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.ensureAutoRenew(access); err != nil {
+		return nil, err
+	}
+	return s.SSLStatus(serverID, domain)
+}
+
 // SSLStatus membaca status SSL untuk satu domain parent — certbot-detect +
 // cert-exists digabung jadi SATU round-trip SSH (bukan dua panggilan
 // terpisah seperti homepoin), plus sanTargets yang sekarang murah (lihat
@@ -120,7 +194,7 @@ func (s *Service) SSLStatus(serverID, domain string) (*SSLStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	res, err := s.run(access, detectCertbotScript+"\n"+certExistsScript(domain), 15*time.Second)
+	res, err := s.run(access, detectCertbotScript+"\n"+certExistsScript(domain)+"\n"+autoRenewCheckScript, 15*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -148,6 +222,8 @@ func (s *Service) SSLStatus(serverID, domain string) (*SSLStatus, error) {
 			st.Certificate.KeyPath = strings.TrimPrefix(line, "KEY_PATH=")
 		case strings.HasPrefix(line, "NOT_AFTER="):
 			st.Certificate.NotAfter = strings.TrimSpace(strings.TrimPrefix(line, "NOT_AFTER="))
+		case line == "AUTORENEW=1":
+			st.AutoRenewEnabled = true
 		}
 	}
 
@@ -240,6 +316,12 @@ func (s *Service) SSLIssue(req SSLIssueRequest) (*SSLStatus, error) {
 		return nil, mapWebsiteError(errFmt("%s", msg))
 	}
 
+	// Best-effort — kegagalan di sini TIDAK membatalkan penerbitan sertifikat
+	// yang sudah berhasil di atas; kalau gagal, AutoRenewEnabled di status
+	// hasil cuma akan terbaca false, dan user masih bisa memasangnya manual
+	// lewat EnableSSLAutoRenew.
+	_ = s.ensureAutoRenew(access)
+
 	return s.SSLStatus(req.ServerID, domain)
 }
 
@@ -280,6 +362,10 @@ func (s *Service) SSLEnable(serverID, domain string) (*SSLStatus, error) {
 			return nil, errFmt("gagal menerapkan SSL ke %s: %w", member.Domain, err)
 		}
 	}
+	// Best-effort, sama seperti di SSLIssue — mencakup kasus sertifikat yang
+	// sudah ada sebelum SSL diaktifkan lewat poinhost (mis. diterbitkan
+	// manual via SSH sebelumnya).
+	_ = s.ensureAutoRenew(access)
 	return s.SSLStatus(serverID, domain)
 }
 

@@ -789,6 +789,14 @@ func (a *App) RenewWebsiteSSL(serverID, domain string) (*website.SSLStatus, erro
 	return a.websiteSvc.SSLRenew(serverID, domain)
 }
 
+// EnableWebsiteSSLAutoRenew memasang ulang mekanisme auto-renew (deploy-hook
+// reload Nginx + cron jaring pengaman) — dipasang otomatis setiap kali SSL
+// diterbitkan/diaktifkan, binding ini untuk sertifikat yang sudah ada
+// SEBELUM fitur ini ditambahkan (atau kalau pemasangan otomatisnya gagal).
+func (a *App) EnableWebsiteSSLAutoRenew(serverID, domain string) (*website.SSLStatus, error) {
+	return a.websiteSvc.EnableSSLAutoRenew(serverID, domain)
+}
+
 // GetWebsiteDomainRoot mengembalikan document root satu domain — dipakai
 // tab Files untuk mengunci FilesPanel ke root itu.
 func (a *App) GetWebsiteDomainRoot(serverID, domain string) (string, error) {
