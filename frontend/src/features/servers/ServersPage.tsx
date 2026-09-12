@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTabsStore } from '../../store/tabs';
 import { ServerFormModal } from './ServerFormModal';
+import { StatusDot } from './StatusDot';
 import type { servers } from '../../../wailsjs/go/models';
 
 // Panel kiri: kartu server (bukan daftar teks polos seperti homepoin) +
@@ -8,7 +9,8 @@ import type { servers } from '../../../wailsjs/go/models';
 // & hapus baru muncul saat kartu di-hover supaya daftar tetap ringkas saat
 // mengelola banyak server sekaligus.
 export function ServersPage() {
-  const { servers: list, tabs, loadServers, openTab, setActiveTab, deleteServer } = useTabsStore();
+  const { servers: list, tabs, statuses, loadServers, openTab, setActiveTab, deleteServer } =
+    useTabsStore();
   const [modal, setModal] = useState<{ mode: 'create' | 'edit'; server?: servers.Server } | null>(
     null,
   );
@@ -47,7 +49,10 @@ export function ServersPage() {
               onClick={() => openOrFocus(server)}
             >
               <div className="server-card__main">
-                <div className="server-card__name">{server.name}</div>
+                <div className="server-card__name">
+                  <StatusDot connection={statuses[server.id]?.connection} />
+                  {server.name}
+                </div>
                 <div className="server-card__host">
                   {server.username}@{server.host}:{server.port}
                 </div>

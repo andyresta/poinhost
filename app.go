@@ -9,6 +9,7 @@ import (
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 	"github.com/andyresta/poinhost/internal/session"
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"database/sql"
 )
@@ -19,11 +20,12 @@ import (
 type App struct {
 	ctx context.Context
 
-	cfg *config.Config
-	db  *sql.DB
+	cfg  *config.Config
+	db   *sql.DB
 	pool *sshpool.Pool
 
 	serversSvc *servers.Service
+	collector  *servers.Collector
 	sessionMgr *session.Manager
 	terminals  *session.TerminalRegistry
 }
@@ -50,9 +52,12 @@ func NewApp() *App {
 
 	knownHosts := sshpool.NewKnownHostsStore(cfg.KnownHostsPath())
 	pool := sshpool.NewPool(cfg.SSH, knownHosts)
+	mutex := sshpool.NewServerMutexRegistry()
+	executor := sshpool.NewExecutor(pool, mutex, cfg.Executor)
 
 	serversRepo := servers.NewRepository(db)
-	serversSvc := servers.NewService(serversRepo, pool)
+	serversSvc := servers.NewService(serversRepo, pool, executor)
+	collector := servers.NewCollector(serversSvc)
 
 	sessionMgr := session.NewManager(db)
 	terminals := session.NewTerminalRegistry(pool)
@@ -62,6 +67,7 @@ func NewApp() *App {
 		db:         db,
 		pool:       pool,
 		serversSvc: serversSvc,
+		collector:  collector,
 		sessionMgr: sessionMgr,
 		terminals:  terminals,
 	}
@@ -75,15 +81,30 @@ func (a *App) startup(ctx context.Context) {
 	if err := a.serversSvc.Bootstrap(ctx); err != nil {
 		log.Printf("bootstrap servers: %v", err)
 	}
-	if _, err := a.sessionMgr.LoadPersisted(); err != nil {
+
+	tabs, err := a.sessionMgr.LoadPersisted()
+	if err != nil {
 		log.Printf("load tab layout: %v", err)
 	}
+	// Tab yang direstore dari sesi sebelumnya dianggap "sedang diperhatikan"
+	// lagi begitu app dibuka — subscribe status collector-nya supaya
+	// server-server itu langsung dicek pada interval cepat (bukan menunggu
+	// user klik ulang satu-satu untuk menaikkan prioritasnya).
+	for _, t := range tabs {
+		a.collector.Subscribe(t.ServerID)
+	}
+
+	a.collector.SetEmitter(func(st servers.ServerStatus) {
+		runtime.EventsEmit(ctx, "server:status", st)
+	})
+	a.collector.Start()
 }
 
-// shutdown dipanggil Wails saat aplikasi ditutup — tutup semua koneksi SSH
-// & database dengan rapi (setara graceful shutdown homepoin, tanpa perlu
-// timeout HTTP server karena tidak ada server HTTP di sini).
+// shutdown dipanggil Wails saat aplikasi ditutup — hentikan collector dulu
+// (supaya tidak ada goroutine background yang masih mencoba pakai pool/db
+// setelah keduanya ditutup), baru tutup koneksi SSH & database.
 func (a *App) shutdown(ctx context.Context) {
+	a.collector.Stop()
 	a.pool.Close()
 	_ = a.db.Close()
 }
@@ -104,7 +125,11 @@ func (a *App) SaveServer(req servers.SaveServerRequest) (*servers.Server, error)
 
 // DeleteServer menghapus server (dan seluruh tab yang menunjuk ke sana).
 func (a *App) DeleteServer(id string) error {
-	return a.serversSvc.Delete(id)
+	if err := a.serversSvc.Delete(id); err != nil {
+		return err
+	}
+	a.collector.Forget(id)
+	return nil
 }
 
 // TestServerConnection menguji kredensial SSH sebelum server disimpan.
@@ -122,19 +147,53 @@ func (a *App) TrustServerHostKey(req servers.SaveServerRequest) error {
 }
 
 // ---------------------------------------------------------------------
+// Bindings: Server status (lihat internal/modules/servers/collector.go)
+// ---------------------------------------------------------------------
+
+// ListServerStatuses mengembalikan snapshot status terakhir SEMUA server —
+// dipanggil sekali saat frontend mount untuk mengisi state awal; update
+// selanjutnya datang lewat event "server:status" (lihat startup()), bukan
+// polling berulang dari frontend.
+func (a *App) ListServerStatuses() []servers.ServerStatus {
+	return a.collector.Snapshot()
+}
+
+// RefreshServerStatus memaksa pengambilan metrik satu server SEKARANG,
+// dipakai tombol "Refresh" manual di panel Overview.
+func (a *App) RefreshServerStatus(serverID string) (servers.ServerStatus, error) {
+	return a.collector.RefreshNow(a.ctx, serverID)
+}
+
+// ---------------------------------------------------------------------
 // Bindings: Tabs (multi-tab session)
 // ---------------------------------------------------------------------
 
-// OpenServerTab membuka tab baru menunjuk ke satu server.
+// OpenServerTab membuka tab baru menunjuk ke satu server, dan menaikkan
+// prioritas status collector untuk server itu (dicek lebih sering selama
+// ada tab yang membukanya — lihat Collector.Subscribe).
 func (a *App) OpenServerTab(serverID, title string) (*session.Tab, error) {
-	return a.sessionMgr.OpenTab(serverID, title)
+	tab, err := a.sessionMgr.OpenTab(serverID, title)
+	if err != nil {
+		return nil, err
+	}
+	a.collector.Subscribe(serverID)
+	return tab, nil
 }
 
 // CloseServerTab menutup tab: semua sesi terminal dedicated milik tab ini
-// ditutup lebih dulu, baru tab-nya sendiri dihapus dari registry.
+// ditutup lebih dulu, baru tab-nya sendiri dihapus dari registry — dan
+// prioritas status collector untuk server itu diturunkan (Unsubscribe).
 func (a *App) CloseServerTab(tabID string) error {
+	tab, err := a.sessionMgr.GetTab(tabID)
+	if err != nil {
+		return err
+	}
 	a.terminals.CloseAllForTab(tabID)
-	return a.sessionMgr.CloseTab(tabID)
+	if err := a.sessionMgr.CloseTab(tabID); err != nil {
+		return err
+	}
+	a.collector.Unsubscribe(tab.ServerID)
+	return nil
 }
 
 // ListServerTabs mengembalikan semua tab yang sedang terbuka, terurut.

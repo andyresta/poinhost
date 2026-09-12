@@ -10,13 +10,14 @@ import (
 
 // Service mengorkestrasi CRUD server + daftar/lepas dari sshpool.Pool.
 type Service struct {
-	repo *Repository
-	pool *sshpool.Pool
+	repo     *Repository
+	pool     *sshpool.Pool
+	executor *sshpool.Executor
 }
 
 // NewService membuat servers.Service baru.
-func NewService(repo *Repository, pool *sshpool.Pool) *Service {
-	return &Service{repo: repo, pool: pool}
+func NewService(repo *Repository, pool *sshpool.Pool, executor *sshpool.Executor) *Service {
+	return &Service{repo: repo, pool: pool, executor: executor}
 }
 
 // Bootstrap memuat semua server dari DB dan mendaftarkannya ke pool +

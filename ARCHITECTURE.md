@@ -212,7 +212,93 @@ Konsekuensinya:
   dari homepoin punya — akan dibahas ulang saat kebutuhannya benar-benar ada,
   bukan diasumsikan dari awal.
 
-## 8. Yang BELUM di-porting di skeleton ini (roadmap)
+## 8. Status Server: arsitektur untuk skala banyak server
+
+### Cara homepoin
+
+Satu goroutine (`Monitor.runOnce`) jalan tiap `HeartbeatInterval` (default
+30 detik) dan memeriksa **SEMUA** server aktif **serentak** dalam satu
+"gelombang" — dibatasi worker pool (`HeartbeatWorkers`, default 8), tapi
+tidak ada stagger sama sekali: kalau ada 100 server, tiap 30 detik persis
+ada lonjakan ~100 percobaan SSH yang mengantre di 8 worker itu. Status
+"up/down" juga digabung dengan pengambilan metrik: satu-satunya cara
+homepoin tahu server "up" adalah kalau script metrik (yang menjalankan
+`top -bn1`, perlu ~1 detik sampling) berhasil — jadi mengetahui "hidup atau
+tidak" selalu ikut membayar biaya penuh pengambilan metrik.
+
+### Cara poinhost — dua tingkat, terpisah total
+
+**Tingkat 1 — status koneksi (`ServerStatus.Connection`): GRATIS.**
+`Service.ConnectionStatus` (`status.go`) cuma baca `sshpool.Pool.Status(id)`
+— nilai yang SUDAH dijaga hidup oleh mekanisme keepalive pool (§3) yang
+berjalan independen dari fitur status ini. Tidak ada SSH round-trip
+tambahan sama sekali. `Collector.connectionLoop` (`collector.go`) membaca
+ini untuk semua server tiap `DefaultConnectionPoll` (4 detik) dan HANYA
+emit event kalau nilainya berubah. Biayanya O(N) pembacaan map per tick —
+bahkan untuk ribuan server ini masih dalam orde microsecond, jauh di bawah
+biaya satu SSH round-trip.
+
+**Tingkat 2 — metrik (CPU/RAM/disk/OS/hostname/uptime): worker pool +
+stagger + prioritas.** `Collector.metricsSchedulerLoop` + `metricsWorker`:
+
+- **Worker pool dibatasi** (`DefaultMetricsWorkers = 6`) — jumlah percobaan
+  SSH metrik yang berjalan bersamaan tidak pernah lebih dari ini, berapa
+  pun jumlah server.
+- **Di-stagger**: kunjungan pertama tiap server dijadwalkan pada waktu
+  ACAK di dalam satu window interval (`enqueueDue`), bukan semua di t=0 —
+  menghindari lonjakan periodik yang persis sama tiap tick.
+- **Prioritas berbasis perhatian** (`Subscribe`/`Unsubscribe`): server
+  dengan tab terbuka dicek tiap `DefaultActiveInterval` (15 detik); server
+  yang cuma nongkrong di sidebar tanpa tab dicek tiap `DefaultIdleInterval`
+  (90 detik). `App.OpenServerTab`/`CloseServerTab` (app.go) memanggil ini
+  otomatis — bukan sesuatu yang perlu diatur manual dari UI. Tab yang
+  direstore saat startup ikut di-subscribe (lihat `startup()`), supaya
+  server yang "biasa dikelola" langsung dapat prioritas tanpa perlu diklik
+  ulang satu-satu.
+- **Skip kalau sudah tahu offline**: `enqueueDue` cek cache Tingkat 1 dulu
+  — kalau statusnya `offline`, jadwal metrik cuma digeser mundur, TIDAK
+  mencoba `top -bn1` yang sudah pasti timeout (menghemat waktu worker dan
+  file descriptor untuk server yang memang sedang mati).
+- **Non-blocking**: kalau worker pool penuh saat suatu server jatuh tempo,
+  server itu dilewati tick ini (dicoba lagi tick berikutnya), TIDAK
+  menumpuk di channel — mencegah antrean membengkak tanpa batas kalau
+  jumlah server jauh melebihi kapasitas worker.
+- **Cache-first + refresh manual**: nilai terakhir yang berhasil selalu
+  disimpan (`Collector.cache`) dan langsung ditampilkan; kalau percobaan
+  berikutnya gagal, `MetricsStale=true` + `MetricsError` diisi TAPI angka
+  lama tetap ditampilkan (tidak tiba-tiba kosong). `RefreshServerStatus`
+  (binding) memanggil `RefreshNow` yang melewati jadwal sepenuhnya — dipakai
+  tombol "↻ Refresh" di panel Overview.
+- **Slot SSH terpisah**: metrik jalan di `SlotMetrics` (dedicated per
+  server), bukan `SlotShared` — supaya heartbeat tidak pernah mengantre di
+  belakang operasi berat modul lain (files/docker) ke server yang sama,
+  dan sebaliknya operasi modul lain tidak menunggu heartbeat selesai dulu.
+
+**Push, bukan poll, ke frontend**: `Collector.SetEmitter` dihubungkan ke
+`runtime.EventsEmit` Wails di `startup()`. Frontend pasang SATU listener
+`EventsOn('server:status', …)` di root (`App.tsx`) yang update Zustand
+store — tidak ada frontend yang polling binding berulang-ulang, dan tidak
+perlu WebSocket broadcaster custom + reconnect-backoff seperti homepoin
+(`ServersStatusBC`), karena Wails cuma punya satu window untuk di-fan-out,
+bukan banyak client browser.
+
+**Kenapa ini "teroptimal" untuk banyak server**: biaya Tingkat 1 (status
+hidup/mati, yang paling sering dibutuhkan untuk titik di sidebar) TIDAK
+bertambah sama sekali seiring N membesar — murni pembacaan memori. Biaya
+Tingkat 2 (metrik berat) dibatasi di angka tetap (worker pool) berapa pun N,
+dan makin kecil per-server rata-rata seiring N membesar karena mayoritas
+server (yang tidak punya tab terbuka) otomatis turun ke interval yang 6x
+lebih jarang.
+
+**Belum dikerjakan (kalau nanti fleet-nya ratusan+)**: saat ini metrik
+Tingkat 2 tetap dijadwalkan untuk SEMUA server aktif, bukan hanya yang
+sedang terlihat di sidebar (yang bisa di-scroll/dipaging) — untuk instalasi
+puluhan server ini tidak masalah, tapi kalau nanti benar-benar sampai
+ratusan/ribuan, langkah lanjut yang wajar adalah menambah "visible in
+viewport" sebagai syarat subscribe tambahan (mirip virtualized list),
+bukan cuma "punya tab terbuka".
+
+## 9. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -238,7 +324,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 9. Menjalankan (development)
+## 10. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev

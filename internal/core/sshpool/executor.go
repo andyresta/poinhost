@@ -44,6 +44,18 @@ func NewExecutor(pool *Pool, mutex *ServerMutexRegistry, cfg config.ExecutorConf
 // Exec menjalankan perintah dengan kategori timeout dan opsi retry, memakai
 // slot shared (multiplexed, dipakai bersama semua tab ke server yang sama).
 func (e *Executor) Exec(ctx context.Context, serverID string, timeout time.Duration, cmd string, destructive bool) (*ExecResult, error) {
+	return e.exec(ctx, serverID, SlotShared, timeout, cmd, destructive)
+}
+
+// ExecMetrics menjalankan perintah pengambilan metrik (CPU/RAM/disk/dst) pada
+// slot dedicated `SlotMetrics` — SENGAJA terpisah dari slot shared, supaya
+// heartbeat status server tidak pernah ikut antre di belakang operasi berat
+// modul lain (files/docker/dbmanager) ke server yang sama, dan sebaliknya.
+func (e *Executor) ExecMetrics(ctx context.Context, serverID string, timeout time.Duration, cmd string) (*ExecResult, error) {
+	return e.exec(ctx, serverID, SlotMetrics, timeout, cmd, false)
+}
+
+func (e *Executor) exec(ctx context.Context, serverID string, slot SlotType, timeout time.Duration, cmd string, destructive bool) (*ExecResult, error) {
 	var lastErr error
 	attempts := 1
 	if !destructive {
@@ -60,7 +72,7 @@ func (e *Executor) Exec(ctx context.Context, serverID string, timeout time.Durat
 			}
 		}
 
-		conn, err := e.pool.Acquire(ctx, serverID, SlotShared)
+		conn, err := e.pool.Acquire(ctx, serverID, slot)
 		if err != nil {
 			lastErr = err
 			if !destructive && ClassifyError(err) == ErrTransient {
@@ -70,7 +82,7 @@ func (e *Executor) Exec(ctx context.Context, serverID string, timeout time.Durat
 		}
 
 		result, execErr := e.execOnce(ctx, conn, timeout, cmd)
-		e.pool.Release(serverID, SlotShared, conn)
+		e.pool.Release(serverID, slot, conn)
 
 		if execErr == nil {
 			return result, nil
