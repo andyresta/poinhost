@@ -1017,6 +1017,7 @@ export namespace website {
 	    phpVersion?: string;
 	    phpEnabled: boolean;
 	    proxyTarget?: string;
+	    proxyWebSocket?: boolean;
 	    proxyRules?: ProxyRule[];
 	    sslEnabled: boolean;
 	    sslCertificate?: string;
@@ -1038,6 +1039,7 @@ export namespace website {
 	        this.phpVersion = source["phpVersion"];
 	        this.phpEnabled = source["phpEnabled"];
 	        this.proxyTarget = source["proxyTarget"];
+	        this.proxyWebSocket = source["proxyWebSocket"];
 	        this.proxyRules = this.convertValues(source["proxyRules"], ProxyRule);
 	        this.sslEnabled = source["sslEnabled"];
 	        this.sslCertificate = source["sslCertificate"];
@@ -1094,6 +1096,429 @@ export namespace website {
 		    return a;
 		}
 	}
+	export class CronHeader {
+	    name: string;
+	    value: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CronHeader(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.value = source["value"];
+	    }
+	}
+	export class CronJobInfo {
+	    id: string;
+	    domain: string;
+	    taskType: string;
+	    schedule: string;
+	    scheduleText: string;
+	    command?: string;
+	    url?: string;
+	    method?: string;
+	    payload?: string;
+	    headers?: CronHeader[];
+	    description?: string;
+	    enabled: boolean;
+	    actionSummary: string;
+	    logPath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CronJobInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.domain = source["domain"];
+	        this.taskType = source["taskType"];
+	        this.schedule = source["schedule"];
+	        this.scheduleText = source["scheduleText"];
+	        this.command = source["command"];
+	        this.url = source["url"];
+	        this.method = source["method"];
+	        this.payload = source["payload"];
+	        this.headers = this.convertValues(source["headers"], CronHeader);
+	        this.description = source["description"];
+	        this.enabled = source["enabled"];
+	        this.actionSummary = source["actionSummary"];
+	        this.logPath = source["logPath"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CronJobRequest {
+	    serverId: string;
+	    domain: string;
+	    id?: string;
+	    taskType: string;
+	    schedule: string;
+	    command?: string;
+	    url?: string;
+	    method?: string;
+	    payload?: string;
+	    headers?: CronHeader[];
+	    description?: string;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new CronJobRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.id = source["id"];
+	        this.taskType = source["taskType"];
+	        this.schedule = source["schedule"];
+	        this.command = source["command"];
+	        this.url = source["url"];
+	        this.method = source["method"];
+	        this.payload = source["payload"];
+	        this.headers = this.convertValues(source["headers"], CronHeader);
+	        this.description = source["description"];
+	        this.enabled = source["enabled"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CronListResponse {
+	    domain: string;
+	    domainRoot: string;
+	    jobs: CronJobInfo[];
+	    active: number;
+	    inactive: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CronListResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.domainRoot = source["domainRoot"];
+	        this.jobs = this.convertValues(source["jobs"], CronJobInfo);
+	        this.active = source["active"];
+	        this.inactive = source["inactive"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CronLogRequest {
+	    serverId: string;
+	    domain: string;
+	    id: string;
+	    lines: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CronLogRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.id = source["id"];
+	        this.lines = source["lines"];
+	    }
+	}
+	export class CronLogResponse {
+	    id: string;
+	    domain: string;
+	    path: string;
+	    content: string;
+	    exists: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new CronLogResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.domain = source["domain"];
+	        this.path = source["path"];
+	        this.content = source["content"];
+	        this.exists = source["exists"];
+	    }
+	}
+	export class CronToggleRequest {
+	    serverId: string;
+	    domain: string;
+	    id: string;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new CronToggleRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.id = source["id"];
+	        this.enabled = source["enabled"];
+	    }
+	}
+	export class DBCreateDatabaseRequest {
+	    serverId: string;
+	    engine: string;
+	    domain?: string;
+	    name: string;
+	    encoding?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DBCreateDatabaseRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.engine = source["engine"];
+	        this.domain = source["domain"];
+	        this.name = source["name"];
+	        this.encoding = source["encoding"];
+	    }
+	}
+	export class DBCreateUserRequest {
+	    serverId: string;
+	    engine: string;
+	    domain?: string;
+	    username: string;
+	    password: string;
+	    host?: string;
+	    allDbs: boolean;
+	    databases?: string[];
+	    privileges: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DBCreateUserRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.engine = source["engine"];
+	        this.domain = source["domain"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.host = source["host"];
+	        this.allDbs = source["allDbs"];
+	        this.databases = source["databases"];
+	        this.privileges = source["privileges"];
+	    }
+	}
+	export class DBDatabaseInfo {
+	    name: string;
+	    charset?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DBDatabaseInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.charset = source["charset"];
+	    }
+	}
+	export class DBEngineStatus {
+	    engine: string;
+	    installed: boolean;
+	    active: boolean;
+	    enabled: boolean;
+	    version?: string;
+	    distroId?: string;
+	    distroName?: string;
+	    packageManager?: string;
+	    canInstall: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DBEngineStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.engine = source["engine"];
+	        this.installed = source["installed"];
+	        this.active = source["active"];
+	        this.enabled = source["enabled"];
+	        this.version = source["version"];
+	        this.distroId = source["distroId"];
+	        this.distroName = source["distroName"];
+	        this.packageManager = source["packageManager"];
+	        this.canInstall = source["canInstall"];
+	    }
+	}
+	export class DBGrantsRequest {
+	    serverId: string;
+	    engine: string;
+	    username: string;
+	    host?: string;
+	    allDbs: boolean;
+	    databases?: string[];
+	    privileges: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DBGrantsRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.engine = source["engine"];
+	        this.username = source["username"];
+	        this.host = source["host"];
+	        this.allDbs = source["allDbs"];
+	        this.databases = source["databases"];
+	        this.privileges = source["privileges"];
+	    }
+	}
+	export class DBPrivilegeOption {
+	    key: string;
+	    label: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DBPrivilegeOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.label = source["label"];
+	    }
+	}
+	export class DBUserInfo {
+	    username: string;
+	    host?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DBUserInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.username = source["username"];
+	        this.host = source["host"];
+	    }
+	}
+	export class DNSRecord {
+	    type: string;
+	    name: string;
+	    content: string;
+	    ttl: number;
+	    note?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DNSRecord(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.type = source["type"];
+	        this.name = source["name"];
+	        this.content = source["content"];
+	        this.ttl = source["ttl"];
+	        this.note = source["note"];
+	    }
+	}
+	export class DNSPreviewResponse {
+	    domain: string;
+	    serverHost: string;
+	    hostValid: boolean;
+	    ipKind: string;
+	    ttl: number;
+	    records: DNSRecord[];
+	    zoneText: string;
+	    filename: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DNSPreviewResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.serverHost = source["serverHost"];
+	        this.hostValid = source["hostValid"];
+	        this.ipKind = source["ipKind"];
+	        this.ttl = source["ttl"];
+	        this.records = this.convertValues(source["records"], DNSRecord);
+	        this.zoneText = source["zoneText"];
+	        this.filename = source["filename"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class DeleteDomainRequest {
 	    serverId: string;
 	    domain: string;
@@ -1168,6 +1593,44 @@ export namespace website {
 		    }
 		    return a;
 		}
+	}
+	export class LogReadRequest {
+	    serverId: string;
+	    domain: string;
+	    logType: string;
+	    lines: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogReadRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.logType = source["logType"];
+	        this.lines = source["lines"];
+	    }
+	}
+	export class LogReadResponse {
+	    domain: string;
+	    logType: string;
+	    path: string;
+	    content: string;
+	    exists: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new LogReadResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.logType = source["logType"];
+	        this.path = source["path"];
+	        this.content = source["content"];
+	        this.exists = source["exists"];
+	    }
 	}
 	
 	export class PHPSetDomainRequest {
@@ -1252,6 +1715,160 @@ export namespace website {
 	}
 	
 	
+	export class ProxyRuleRequest {
+	    serverId: string;
+	    domain: string;
+	    path: string;
+	    target: string;
+	    webSocket: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxyRuleRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.path = source["path"];
+	        this.target = source["target"];
+	        this.webSocket = source["webSocket"];
+	    }
+	}
+	export class ProxySetDomainRequest {
+	    serverId: string;
+	    domain: string;
+	    target: string;
+	    webSocket: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxySetDomainRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.target = source["target"];
+	        this.webSocket = source["webSocket"];
+	    }
+	}
+	export class ProxyStatus {
+	    domain: string;
+	    mode: string;
+	    proxyTarget?: string;
+	    proxyRules: ProxyRule[];
+	    phpEnabled: boolean;
+	    phpVersion?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ProxyStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.mode = source["mode"];
+	        this.proxyTarget = source["proxyTarget"];
+	        this.proxyRules = this.convertValues(source["proxyRules"], ProxyRule);
+	        this.phpEnabled = source["phpEnabled"];
+	        this.phpVersion = source["phpVersion"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class SFTPAccountInfo {
+	    username: string;
+	    domain: string;
+	    chroot: string;
+	    homeDir: string;
+	    enabled: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SFTPAccountInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.username = source["username"];
+	        this.domain = source["domain"];
+	        this.chroot = source["chroot"];
+	        this.homeDir = source["homeDir"];
+	        this.enabled = source["enabled"];
+	    }
+	}
+	export class SFTPCreateAccountRequest {
+	    serverId: string;
+	    domain: string;
+	    username: string;
+	    password: string;
+	    chroot?: string;
+	    homeDir?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SFTPCreateAccountRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.username = source["username"];
+	        this.password = source["password"];
+	        this.chroot = source["chroot"];
+	        this.homeDir = source["homeDir"];
+	    }
+	}
+	export class SFTPListResponse {
+	    domain: string;
+	    domainRoot: string;
+	    accounts: SFTPAccountInfo[];
+	
+	    static createFrom(source: any = {}) {
+	        return new SFTPListResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.domainRoot = source["domainRoot"];
+	        this.accounts = this.convertValues(source["accounts"], SFTPAccountInfo);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class SSLCertificateInfo {
 	    domains?: string[];
 	    notAfter?: string;

@@ -22,8 +22,9 @@ type DomainInfo struct {
 	PHPVersion string `json:"phpVersion,omitempty"`
 	PHPEnabled bool   `json:"phpEnabled"`
 
-	ProxyTarget string      `json:"proxyTarget,omitempty"`
-	ProxyRules  []ProxyRule `json:"proxyRules,omitempty"`
+	ProxyTarget    string      `json:"proxyTarget,omitempty"`
+	ProxyWebSocket bool        `json:"proxyWebSocket,omitempty"`
+	ProxyRules     []ProxyRule `json:"proxyRules,omitempty"`
 
 	SSLEnabled        bool   `json:"sslEnabled"`
 	SSLCertificate    string `json:"sslCertificate,omitempty"`

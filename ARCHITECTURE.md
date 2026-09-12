@@ -129,7 +129,7 @@ poinhost/
 │       │   ├── service_config.go  # InspectContainer/RecreateContainer
 │       │   ├── install.go         # detect distro + install/start Docker engine
 │       │   └── exec.go            # BuildExecCommand (dipakai terminal.OpenCommand)
-│       └── website/               # domain/vhost Nginx + PHP-FPM + SSL (lihat §12)
+│       └── website/               # domain/vhost Nginx + PHP-FPM + SSL + 7 tab (§12-§13)
 │           ├── dto.go
 │           ├── access.go          # websiteAccess/resolveAccess/wrap (selalu butuh root)
 │           ├── parse.go           # NormalizeDomain, shellQuote, util kecil
@@ -138,7 +138,13 @@ poinhost/
 │           ├── vhost.go           # builder vhost gabungan (static/PHP/proxy) + webroot
 │           ├── domains.go         # List SATU round-trip, Create/Delete/SetEnabled/CreateWebsite
 │           ├── php.go             # status/install repo+versi/switch per domain
-│           └── ssl.go             # status/issue/enable/disable/renew via certbot
+│           ├── ssl.go             # status/issue/enable/disable/renew via certbot
+│           ├── dns.go             # preview/export zona BIND (tanpa exec SSH)
+│           ├── logs.go            # snapshot + stream access/error log per domain
+│           ├── proxy.go           # edit ProxyTarget/ProxyRules vhost (whole-domain + per-path)
+│           ├── sftp.go            # akun Linux ter-chroot per domain (useradd + sshd_config.d)
+│           ├── cron.go            # job command/HTTP per domain, /etc/cron.d/poinhost
+│           └── database.go        # provisioning MySQL/PostgreSQL (bukan browser tabel)
 │
 ├── migrations/
 │   └── 001_core.sql             # servers, app_settings, activity_logs, ui_tabs
@@ -153,7 +159,8 @@ poinhost/
     │   │   │                     # DockerPanel, NetworksPanel, EngineInstallWizard,
     │   │   │                     # ContainerLogsModal/StatsModal/ExecModal, RecreateContainerModal,
     │   │   │                     # WebsitePanel, WebsiteEngineWizard, CreateWebsiteModal,
-    │   │   │                     # SubdomainModal, DomainDetailModal (tab PHP/SSL)
+    │   │   │                     # SubdomainModal, DomainDetailModal (9 tab: PHP/SSL/
+    │   │   │                     # Files/Logs/Proxy/DNS/SFTP/Cron/Database)
     │   │   └── tabs/              # TabBar & TabContent (keep-alive per tab)
     │   └── App.tsx
     └── wailsjs/                  # auto-generated binding Go<->TS (`wails generate module`)
@@ -846,7 +853,114 @@ bukan dibuat baru khusus Website), mengikuti homepoin yang juga memakai
 SATU handler WS untuk semua jenis instalasi hosting (bukan endpoint
 terpisah per jenis).
 
-## 13. Yang BELUM di-porting di skeleton ini (roadmap)
+## 13. Website — 7 tab per-domain: Files, Logs, Proxy, DNS, SFTP, Cron, Database
+
+Melengkapi seluruh menu Website (§12) — 7 tab yang tadinya placeholder di
+`DomainDetailModal.tsx` sekarang semua fungsional. Semuanya memanfaatkan
+`getDomain`/`listDomains` yang SUDAH ter-cache & O(1) round-trip (§12) —
+riset homepoin menemukan tab-tab ini (khususnya Cron dan SSL/domain
+lainnya) memanggil ulang resolusi vhost per operasi (`domains.ResolveRoot`)
+yang di homepoin sendiri N+1; di poinhost bug itu otomatis tidak ada sejak
+awal karena `getDomain` sudah diperbaiki di §12, bukan perbaikan baru
+per-tab.
+
+### DNS — generator zona BIND, TANPA exec SSH sama sekali
+
+Temuan riset paling mengejutkan: homepoin **tidak menjalankan DNS server
+apa pun** di VPS untuk fitur ini — ini murni kalkulator/generator file
+zona BIND untuk di-import manual ke provider DNS (mis. Cloudflare).
+`website.DNSPreview` (`dns.go`) menghitung record A/AAAA (apex + tiap
+subdomain, dari `listDomains`) dan CNAME (`www`) mengarah ke `Server.Host`
+— seluruhnya komputasi Go murni, nol SSH. Export memakai dialog "Simpan"
+native (`ExportWebsiteDNSZone`, pola sama dengan Upload/Download di
+Files), bukan trik Blob/`<a download>` ala browser.
+
+### Logs — snapshot + stream, path ikut vhost yang sesungguhnya
+
+`domainLogPath` (`logs.go`) memakai path yang SAMA dengan `access_log`/
+`error_log` yang ditulis `buildVhostConfig` (§12) — tidak ada konvensi
+path terpisah yang bisa drift dari vhost aslinya. Snapshot (`tail -n`) +
+stream realtime (`tail -f` via `ExecStreamDedicated`, event
+`website:logs:<streamId>`) — pola identik dengan log container Docker
+(§11).
+
+### Proxy — mengedit field vhost yang SUDAH ada, bukan mekanisme baru
+
+Tab ini cuma UI+API untuk field `ProxyTarget`/`ProxyWebSocket`/`ProxyRules`
+di `DomainInfo` yang sudah ada sejak §12 (dipakai juga oleh PHP/SSL) —
+`ProxySetDomain`/`ProxySetRule`/dst (`proxy.go`) semuanya lewat
+`rewriteVhost` yang sama. Proxy whole-domain SELALU menang atas PHP di
+`buildLocationBlocks`; proxy per-path bisa hidup berdampingan dengan
+PHP/static di path lain. Reverse-proxy port-forward SERVER-WIDE (menu
+"Reverse Proxy" terpisah di homepoin, tidak terikat satu domain) SENGAJA
+tidak ikut di-porting — itu bukan bagian dari menu Website.
+
+### Files — reuse penuh modul Files yang sudah ada, bukan file manager baru
+
+`DomainFilesTab.tsx` cuma resolve document root domain (`GetWebsiteDomainRoot`,
+1x panggilan `getDomain` yang sudah cache) lalu merender ULANG
+`FilesPanel` yang sama dipakai modul Files server-wide (§10), dengan prop
+baru `rootPath` yang mengunci navigasi (tombol "Naik" & breadcrumb
+berhenti di root domain, tidak bisa naik ke direktori lain atau file
+sistem). Backend `files.Service` TIDAK disentuh sama sekali — jail-nya
+murni di lapisan UI (poinhost aplikasi desktop single-user memakai
+kredensial SSH miliknya sendiri, beda dari homepoin yang perlu
+memisahkan akses antar pelanggan di backend multi-tenant-nya).
+
+### SFTP — akun Linux ter-chroot sungguhan, bukan reuse user SSH
+
+`sftp.go` mem-porting mekanisme homepoin apa adanya: `useradd -M -s
+/usr/sbin/nologin` (tanpa home dir, tanpa shell login) + drop-in
+`/etc/ssh/sshd_config.d/poinhost-sftp-<user>.conf` yang mengatur
+`Match User` + `ChrootDirectory` + `ForceCommand internal-sftp`. Titik
+kritis yang dipertahankan: **chroot default ke folder INDUK
+document root** (`domainBaseFromRoot`, biasanya satu tingkat di atas
+`public_html`), BUKAN document root itu sendiri — sshd mewajibkan
+`ChrootDirectory` (dan semua leluhurnya sampai `/`) dimiliki `root:root`
+& tidak bisa ditulis group/other, padahal `public_html` sengaja dimiliki
+grup web (§12) supaya PHP-FPM & SFTP bisa sama-sama menulis. Beda dari
+homepoin (~9 exec berurutan untuk satu pembuatan akun): SEMUA langkah —
+dedupe/cleanup akun yatim, rantai kepemilikan chroot, `useradd`,
+`chpasswd`, kepemilikan home dir, tulis config, `sshd -t` + reload — jadi
+SATU script/round-trip dengan `trap ... ERR` untuk rollback.
+
+### Cron — file tunggal `/etc/cron.d/poinhost`, format self-describing
+
+Sama seperti homepoin: SATU file untuk semua job semua domain (bukan
+`crontab -e` per user, bukan systemd timer), dibedakan lewat baris
+komentar metadata. Beda desain dari homepoin: setiap field (schedule,
+command/url/method/payload/headers, deskripsi) disimpan **base64 penuh di
+baris metadata**, bukan di-infer balik dari baris cron mentahnya —
+`buildCronLine` SELALU menulis ulang baris eksekusi dari metadata saat
+serialisasi, baris itu sendiri tidak pernah dibaca balik oleh parser.
+Ini menghilangkan seluruh kelas bug parsing (spasi/kutip aneh di command)
+yang harus diwaspadai kalau mencoba round-trip lewat sintaks shell
+mentah. Baris non-poinhost (kalau admin server menambah entri manual di
+file yang sama) dipertahankan apa adanya. Perbaikan performa: homepoin
+me-resolve root SETIAP domain berbeda yang muncul di file cron per
+operasi tulis (N+1 di atas N+1 — lihat riset); poinhost cukup satu
+`listDomains()` (sudah cache) untuk membangun peta domain→root sekali per
+operasi.
+
+### Database — TERNYATA bukan benar-benar domain-scoped (sama seperti homepoin)
+
+Temuan riset: tab "Database" di bawah satu domain di homepoin ternyata
+**tidak pernah memfilter apa pun berdasarkan domain** — field `Domain` di
+request cuma dibawa sebagai breadcrumb UI. Ini murni utilitas provisioning
+ringan (status/install MySQL atau PostgreSQL, buat database, buat user +
+grants) yang kebetulan bisa dibuka dari tab manapun. `database.go`
+mem-porting itu apa adanya (privilege 6-kategori tetap: read/write/
+create/alter/drop/execute, dipetakan ke grant SQL konkret berbeda per
+engine). **Perbedaan besar dari homepoin**: karena semua perintah SQL di
+sini dieksekusi via SSH LANGSUNG di server target (bukan tunnel TCP dari
+proses homepoin yang terpisah), poinhost SAMA SEKALI TIDAK PERLU membuka
+akses remote database (bind ke `0.0.0.0`, edit `pg_hba.conf`, buka
+firewall) yang dilakukan homepoin — jauh lebih sederhana dan tidak
+memperluas permukaan serangan server target tanpa alasan. Database
+browser server-wide (tabel/baris/query arbitrer — modul `mysqlmanager`/
+`pgmanager` terpisah di homepoin, jauh lebih besar) TETAP di luar scope.
+
+## 14. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -879,14 +993,14 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
 - Docker (§11): Containers & Networks sudah penuh. Images/Volumes/Compose
   masih placeholder — **sama seperti di homepoin sendiri**, bukan utang
   porting sepihak poinhost (lihat §11).
-- Website (§12): domain/vhost Nginx + PHP-FPM + SSL sudah penuh. Yang
-  masih placeholder — Files/Logs/Proxy/Database(per-domain)/Cron/DNS/
-  SFTP per domain — **SUDAH ada dan jalan di homepoin**, cuma belum
-  sempat di-porting tahap ini (lihat §12, beda dari placeholder Docker
-  yang memang belum pernah ada di homepoin).
-- Modul lain: services, cron, dbmanager (mysql/pg), migration, email/ftp
-  server-wide. Semua akan mengikuti pola
-  `servers/`/`terminal/`/`files/`/`docker/`/`website/` di atas satu per satu.
+- Website (§12-§13): domain/vhost Nginx + PHP-FPM + SSL + seluruh 7 tab
+  per-domain (Files/Logs/Proxy/DNS/SFTP/Cron/Database) sudah penuh — menu
+  Website homepoin sudah selesai di-porting semuanya.
+- Modul lain: services, dbmanager browser server-wide (mysql/pg, tabel/
+  baris/query — beda dari provisioning ringan di §13), migration,
+  reverse-proxy port-forward server-wide, email/ftp server-wide. Semua
+  akan mengikuti pola `servers/`/`terminal/`/`files/`/`docker/`/`website/`
+  di atas satu per satu.
 - **Split-pane multi-terminal per tab** (>1 sesi shell dalam satu tab) —
   fondasinya sudah ada di backend (`TerminalRegistry` & `terminal.Service`
   sudah mendukung N sesi per tab, lihat §9), yang belum ada cuma UI-nya
@@ -895,7 +1009,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 14. Menjalankan (development)
+## 15. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev

@@ -18,6 +18,11 @@ func parseExitCode(s string) (int, error) {
 	return strconv.Atoi(strings.TrimSpace(s))
 }
 
+// itoa singkatan strconv.Itoa dipakai di banyak file untuk membangun skrip shell.
+func itoa(n int) string {
+	return strconv.Itoa(n)
+}
+
 // shellQuote membungkus argumen shell dengan kutip tunggal aman.
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"

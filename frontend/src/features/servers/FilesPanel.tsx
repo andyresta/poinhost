@@ -46,13 +46,15 @@ function formatDate(modTime: string): string {
   return Number.isNaN(d.getTime()) ? modTime : d.toLocaleString();
 }
 
-function breadcrumbParts(p: string): { label: string; path: string }[] {
-  if (p === '/') return [{ label: '/', path: '/' }];
-  const segs = p.split('/').filter(Boolean);
-  const parts = [{ label: '/', path: '/' }];
-  let acc = '';
+function breadcrumbParts(p: string, root: string): { label: string; path: string }[] {
+  const rootLabel = root === '/' ? '/' : (root.split('/').filter(Boolean).pop() ?? root);
+  if (p === root) return [{ label: rootLabel, path: root }];
+  const rest = p.startsWith(root === '/' ? '/' : root + '/') ? p.slice(root === '/' ? 1 : root.length + 1) : p;
+  const segs = rest.split('/').filter(Boolean);
+  const parts = [{ label: rootLabel, path: root }];
+  let acc = root;
   for (const seg of segs) {
-    acc += '/' + seg;
+    acc = acc === '/' ? `/${seg}` : `${acc}/${seg}`;
     parts.push({ label: seg, path: acc });
   }
   return parts;
@@ -62,10 +64,15 @@ function breadcrumbParts(p: string): { label: string; path: string }[] {
 // Terminal, komponen ini di-keep-alive (hidden, bukan unmount) selama tab
 // masih terbuka — lihat ServerWorkspace.tsx — jadi direktori & seleksi yang
 // sedang dibuka tidak hilang saat user pindah ke modul lain lalu balik lagi.
-export function FilesPanel({ serverId }: { serverId: string }) {
+//
+// `rootPath` (opsional) mengunci navigasi tidak bisa naik di atasnya —
+// dipakai tab Files milik satu domain di menu Website (dikunci ke document
+// root domain itu, lihat DomainFilesTab.tsx), kosongkan untuk modul Files
+// biasa (root filesystem penuh, mulai dari "/").
+export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; rootPath?: string }) {
   const server = useTabsStore((s) => s.servers.find((x) => x.id === serverId));
 
-  const [path, setPath] = useState('/');
+  const [path, setPath] = useState(rootPath);
   const [result, setResult] = useState<files.ListResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,9 +111,9 @@ export function FilesPanel({ serverId }: { serverId: string }) {
   );
 
   useEffect(() => {
-    void load('/');
+    void load(rootPath);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverId]);
+  }, [serverId, rootPath]);
 
   // Ganti "jalankan sebagai" -> muat ulang direktori yang sama sebagai user
   // baru (bisa jadi kelihatan berbeda isinya kalau permission direktori
@@ -195,7 +202,7 @@ export function FilesPanel({ serverId }: { serverId: string }) {
   return (
     <div className="files-panel">
       <div className="files-panel__toolbar">
-        <button className="btn btn--sm" disabled={path === '/' || loading} onClick={() => void load(result?.parent ?? '/')}>
+        <button className="btn btn--sm" disabled={path === rootPath || loading} onClick={() => void load(result?.parent ?? rootPath)}>
           ⬆ Naik
         </button>
         <button className="btn btn--sm" disabled={busy} onClick={() => setModal('newFolder')}>
@@ -257,7 +264,7 @@ export function FilesPanel({ serverId }: { serverId: string }) {
       </div>
 
       <div className="files-panel__breadcrumb">
-        {breadcrumbParts(path).map((part, i) => (
+        {breadcrumbParts(path, rootPath).map((part, i) => (
           <span key={part.path}>
             {i > 0 && <span className="files-panel__breadcrumb-sep">/</span>}
             <button className="files-panel__breadcrumb-item" onClick={() => void load(part.path)}>

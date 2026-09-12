@@ -118,6 +118,8 @@ func (s *Service) StreamInstall(ctx context.Context, serverID, kind, param strin
 		script, ok = phpInstallVersionScript(distro.PackageManager, param)
 	case "certbot":
 		script, ok = installCertbotScript(distro.PackageManager)
+	case "mysql", "postgresql":
+		script, ok = dbInstallScript(kind, distro.PackageManager)
 	default:
 		return errFmt("jenis instalasi %q tidak dikenal", kind)
 	}

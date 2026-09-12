@@ -47,8 +47,9 @@ type vhostOptions struct {
 	PHPVersion    string
 	FastCGISocket string
 
-	ProxyTarget string
-	ProxyRules  []ProxyRule
+	ProxyTarget    string
+	ProxyWebSocket bool
+	ProxyRules     []ProxyRule
 
 	SSLEnabled        bool
 	SSLCertificate    string
@@ -73,6 +74,9 @@ func buildMetaComment(o *vhostOptions) string {
 	}
 	if o.ProxyTarget != "" {
 		line += " proxy=" + o.ProxyTarget
+		if o.ProxyWebSocket {
+			line += " proxy_ws=1"
+		}
 	}
 	if o.SSLEnabled {
 		line += " ssl=on"
@@ -131,7 +135,7 @@ func buildLocationBlocks(o *vhostOptions) string {
 	}
 
 	if o.ProxyTarget != "" {
-		b.WriteString(buildProxyLocationBlock(ProxyRule{Path: "/", Target: o.ProxyTarget}))
+		b.WriteString(buildProxyLocationBlock(ProxyRule{Path: "/", Target: o.ProxyTarget, WebSocket: o.ProxyWebSocket}))
 		return b.String()
 	}
 
@@ -246,23 +250,12 @@ func parseVhostFile(path, content string, enabled bool) (DomainInfo, bool) {
 		switch {
 		case strings.HasPrefix(line, "# poinhost-managed domain:"):
 			info.Domain = strings.TrimSpace(strings.TrimPrefix(line, "# poinhost-managed domain:"))
-			info.Domain, info.PHPVersion, info.ProxyTarget, info.SSLEnabled, info.SSLCertificate, info.SSLCertificateKey =
+			info.Domain, info.PHPVersion, info.ProxyTarget, info.ProxyWebSocket, info.SSLEnabled, info.SSLCertificate, info.SSLCertificateKey =
 				splitMetaFields(info.Domain)
 		case strings.HasPrefix(line, "# poinhost-managed subdomain:"):
 			info.IsSubdomain = true
 			rest := strings.TrimSpace(strings.TrimPrefix(line, "# poinhost-managed subdomain:"))
-			var domain string
-			domain, info.PHPVersion, info.ProxyTarget, info.SSLEnabled, info.SSLCertificate, info.SSLCertificateKey = splitMetaFields(rest)
-			// domain field mungkin masih mengandung "parent=..." — pisahkan.
-			parts := strings.Fields(domain)
-			if len(parts) > 0 {
-				info.Domain = parts[0]
-			}
-			for _, p := range parts[1:] {
-				if v, ok := strings.CutPrefix(p, "parent="); ok {
-					info.Parent = v
-				}
-			}
+			info.Domain, info.PHPVersion, info.ProxyTarget, info.ProxyWebSocket, info.SSLEnabled, info.SSLCertificate, info.SSLCertificateKey, info.Parent = splitMetaFieldsSub(rest)
 		case strings.HasPrefix(line, "# poinhost-proxy "):
 			rule := ProxyRule{}
 			for _, tok := range strings.Fields(strings.TrimPrefix(line, "# poinhost-proxy ")) {
@@ -293,10 +286,10 @@ func parseVhostFile(path, content string, enabled bool) (DomainInfo, bool) {
 
 // splitMetaFields memisahkan "example.com php=8.3 ssl=on ssl_cert=... ssl_key=..."
 // jadi domain + field-field metadata.
-func splitMetaFields(raw string) (domain, phpVersion, proxyTarget string, sslEnabled bool, sslCert, sslKey string) {
+func splitMetaFields(raw string) (domain, phpVersion, proxyTarget string, proxyWebSocket bool, sslEnabled bool, sslCert, sslKey string) {
 	fields := strings.Fields(raw)
 	if len(fields) == 0 {
-		return "", "", "", false, "", ""
+		return "", "", "", false, false, "", ""
 	}
 	domain = fields[0]
 	for _, f := range fields[1:] {
@@ -305,6 +298,8 @@ func splitMetaFields(raw string) (domain, phpVersion, proxyTarget string, sslEna
 			phpVersion = strings.TrimPrefix(f, "php=")
 		case strings.HasPrefix(f, "proxy="):
 			proxyTarget = strings.TrimPrefix(f, "proxy=")
+		case f == "proxy_ws=1":
+			proxyWebSocket = true
 		case f == "ssl=on":
 			sslEnabled = true
 		case strings.HasPrefix(f, "ssl_cert="):
@@ -313,7 +308,36 @@ func splitMetaFields(raw string) (domain, phpVersion, proxyTarget string, sslEna
 			sslKey = strings.TrimPrefix(f, "ssl_key=")
 		}
 	}
-	return domain, phpVersion, proxyTarget, sslEnabled, sslCert, sslKey
+	return domain, phpVersion, proxyTarget, proxyWebSocket, sslEnabled, sslCert, sslKey
+}
+
+// splitMetaFieldsSub sama seperti splitMetaFields, plus field "parent=" yang
+// cuma ada di baris metadata subdomain.
+func splitMetaFieldsSub(raw string) (domain, phpVersion, proxyTarget string, proxyWebSocket, sslEnabled bool, sslCert, sslKey, parent string) {
+	fields := strings.Fields(raw)
+	if len(fields) == 0 {
+		return "", "", "", false, false, "", "", ""
+	}
+	domain = fields[0]
+	for _, f := range fields[1:] {
+		switch {
+		case strings.HasPrefix(f, "parent="):
+			parent = strings.TrimPrefix(f, "parent=")
+		case strings.HasPrefix(f, "php="):
+			phpVersion = strings.TrimPrefix(f, "php=")
+		case strings.HasPrefix(f, "proxy="):
+			proxyTarget = strings.TrimPrefix(f, "proxy=")
+		case f == "proxy_ws=1":
+			proxyWebSocket = true
+		case f == "ssl=on":
+			sslEnabled = true
+		case strings.HasPrefix(f, "ssl_cert="):
+			sslCert = strings.TrimPrefix(f, "ssl_cert=")
+		case strings.HasPrefix(f, "ssl_key="):
+			sslKey = strings.TrimPrefix(f, "ssl_key=")
+		}
+	}
+	return domain, phpVersion, proxyTarget, proxyWebSocket, sslEnabled, sslCert, sslKey, parent
 }
 
 // prepareWebRootScript menyiapkan document root: buat direktori, atur
