@@ -9,10 +9,19 @@ import {
   ExtractArchive,
   UploadFilesToServer,
   DownloadFileFromServer,
+  ChmodFile,
 } from '../../../wailsjs/go/main/App';
 import { files, sshpool } from '../../../wailsjs/go/models';
 import { PromptModal } from './PromptModal';
 import { CompressModal } from './CompressModal';
+import { ChmodModal } from './ChmodModal';
+import { EditFileModal } from './EditFileModal';
+
+// File > 512KB tidak ditawari untuk diedit sebagai teks — kemungkinan besar
+// biner atau terlalu besar untuk nyaman diedit di aplikasi (backend sendiri
+// masih menolak sampai batas lebih longgar, 2MB, ini cuma sinyal UI supaya
+// tombol Edit tidak muncul untuk file yang jelas bukan konfigurasi/skrip).
+const EDITABLE_SIZE_HINT = 512 * 1024;
 
 const ARCHIVE_RE = /\.(zip|tar\.gz|tgz)$/i;
 
@@ -57,6 +66,8 @@ export function FilesPanel({ serverId }: { serverId: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<'newFolder' | 'newFile' | 'compress' | null>(null);
   const [renameTarget, setRenameTarget] = useState<sshpool.FileEntry | null>(null);
+  const [editTarget, setEditTarget] = useState<sshpool.FileEntry | null>(null);
+  const [chmodTarget, setChmodTarget] = useState<sshpool.FileEntry | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(
@@ -224,11 +235,19 @@ export function FilesPanel({ serverId }: { serverId: string }) {
                       ⬇
                     </button>
                   )}
+                  {!entry.isDir && entry.size <= EDITABLE_SIZE_HINT && (
+                    <button title="Edit isi file" onClick={() => setEditTarget(entry)}>
+                      📝
+                    </button>
+                  )}
                   {!entry.isDir && ARCHIVE_RE.test(entry.name) && (
                     <button title="Ekstrak di sini" onClick={() => void handleExtract(entry)}>
                       📦
                     </button>
                   )}
+                  <button title="Ubah permission" onClick={() => setChmodTarget(entry)}>
+                    🔒
+                  </button>
                   <button title="Rename" onClick={() => setRenameTarget(entry)}>
                     ✎
                   </button>
@@ -311,6 +330,22 @@ export function FilesPanel({ serverId }: { serverId: string }) {
             await load(path);
           }}
         />
+      )}
+
+      {chmodTarget && (
+        <ChmodModal
+          path={chmodTarget.path}
+          currentMode={chmodTarget.mode}
+          onClose={() => setChmodTarget(null)}
+          onConfirm={async (mode) => {
+            await ChmodFile(new files.ChmodRequest({ serverId, path: chmodTarget.path, mode }));
+            await load(path);
+          }}
+        />
+      )}
+
+      {editTarget && (
+        <EditFileModal serverId={serverId} path={editTarget.path} onClose={() => setEditTarget(null)} />
       )}
     </div>
   );

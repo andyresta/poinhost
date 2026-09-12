@@ -1,5 +1,21 @@
 export namespace files {
 	
+	export class ChmodRequest {
+	    serverId: string;
+	    path: string;
+	    mode: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ChmodRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.path = source["path"];
+	        this.mode = source["mode"];
+	    }
+	}
 	export class CompressRequest {
 	    serverId: string;
 	    sources: string[];
@@ -114,6 +130,22 @@ export namespace files {
 	        this.name = source["name"];
 	    }
 	}
+	export class ReadResult {
+	    path: string;
+	    content: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new ReadResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.content = source["content"];
+	        this.size = source["size"];
+	    }
+	}
 	export class RenameRequest {
 	    serverId: string;
 	    oldPath: string;
@@ -128,6 +160,22 @@ export namespace files {
 	        this.serverId = source["serverId"];
 	        this.oldPath = source["oldPath"];
 	        this.newPath = source["newPath"];
+	    }
+	}
+	export class WriteFileRequest {
+	    serverId: string;
+	    path: string;
+	    content: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new WriteFileRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.path = source["path"];
+	        this.content = source["content"];
 	    }
 	}
 

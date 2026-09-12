@@ -418,15 +418,52 @@ coba SFTP `Remove` dulu, fallback `rm -rf` via exec kalau direktori tidak
 kosong), kompres (`.zip` dengan fallback Python3 kalau binary `zip`/`unzip`
 tidak terpasang — dipertahankan dari `archive_cmd.go` homepoin yang sudah
 teruji; `.tar.gz` via `tar`), ekstrak (deteksi format dari ekstensi nama
-arsip, tujuan default = direktori yang sedang dibuka).
+arsip, tujuan default = direktori yang sedang dibuka), **edit isi file teks**
+dan **ubah permission (chmod)**.
 
 Konsisten dengan §3: operasi file lewat `sshpool.SFTPClient`/`Executor.Exec`
 yang keduanya jalan di slot `SlotShared` — pindah dari tab Files ke tab
 Terminal (atau ke server lain) TIDAK memicu dial SSH baru, koneksi shared
 yang sama (sudah dipanaskan sejak startup) dipakai bersama.
 
-**Sengaja BELUM ada** (dipersempit dari homepoin untuk porting awal ini):
-`chmod`, `copy`, `search` file, dan elevasi `asUser`/sudo (homepoin punya
+### Edit file teks — CodeMirror 6, bukan Monaco
+
+Tombol 📝 (muncul untuk file ≤512KB) membuka `EditFileModal`, isi file
+diambil `ReadFileContent` (backend menolak file >2MB, sama seperti batas
+homepoin — mencegah UI membeku menampung file besar) dan disimpan lewat
+`WriteFileContent` (overwrite penuh, bukan patch).
+
+**CodeMirror 6** (`@uiw/react-codemirror`) dipilih di atas Monaco Editor:
+
+- Monaco butuh web worker terpisah per bahasa (setup lebih rumit di Vite,
+  dan startup app jadi lebih berat) — CodeMirror jalan di satu thread,
+  lebih cocok untuk aplikasi desktop yang harus terasa instan dibuka.
+- `@uiw/codemirror-extensions-langs` memetakan puluhan bahasa **langsung
+  dari ekstensi file** (`langs.sh`, `langs.yaml`, `langs.json`, dst) — tidak
+  perlu tabel mapping manual per bahasa seperti biasanya dibutuhkan Monaco;
+  `detectLanguage()` di `EditFileModal.tsx` cuma mengecek apakah ekstensi
+  file ada di `langNames`, dengan alias kecil untuk beberapa ekstensi umum
+  yang tidak match langsung (`.conf`→cfg, `.env`→sh, `.yaml`→yml).
+- Trade-off yang jujur: paket ini memuat SEMUA bahasa sekaligus (bukan
+  lazy per-bahasa), jadi bundle JS naik cukup besar (~600KB → ~2.2MB
+  minified). Untuk aplikasi desktop dengan aset ter-embed di binary (dimuat
+  sekali dari disk lokal, bukan di-fetch tiap kali seperti web), ini bukan
+  masalah nyata — cuma dicatat di sini kalau nanti mau dioptimalkan
+  (code-splitting per-bahasa via `import()` dinamis).
+- Tutup modal saat ada perubahan belum disimpan meminta konfirmasi
+  (`confirm()`, pola yang sama dipakai `handleDelete` di `FilesPanel`).
+
+### Chmod — grid checkbox, bukan kotak teks oktal
+
+`ChmodModal.tsx` mem-parsing string mode Unix dari `FileEntry.mode` (mis.
+`"-rw-r--r--"`) jadi grid checkbox Read/Write/Execute × Owner/Group/Other,
+menampilkan angka oktal hasilnya secara live — lebih enak dipakai daripada
+kotak teks oktal polos (yang tetap ditampilkan sebagai output, untuk yang
+sudah hafal angka seperti "755"/"644"). `Service.Chmod` mem-parsing oktal
+ini balik jadi `os.FileMode` lalu panggil `sftp.Chmod`.
+
+**Masih sengaja BELUM ada** (dipersempit dari homepoin untuk porting awal
+ini): `copy`, `search` file, dan elevasi `asUser`/sudo (homepoin punya
 modul `access` terpisah untuk switch user efektif — belum di-porting ke
 poinhost sama sekali, lihat §11). Semua operasi file saat ini jalan sebagai
 user SSH yang login, apa adanya.
@@ -434,11 +471,12 @@ user SSH yang login, apa adanya.
 Frontend (`FilesPanel.tsx`) di-keep-alive per tab sama seperti Overview &
 Terminal (§9) — direktori yang sedang dibuka & seleksi file tidak hilang
 saat pindah ke modul lain lalu balik lagi. Modal kecil (`PromptModal`,
-`CompressModal`) dipakai untuk nama folder/file/rename/kompres, bukan
-`window.prompt()` (dukungannya tidak konsisten lintas WebView platform).
-Interaksi per-baris pakai tombol yang muncul saat hover (pola yang sama
-dengan `ServersPage`), bukan context-menu klik-kanan kustom — pilihan
-sadar untuk mengurangi kompleksitas UI di porting awal ini.
+`CompressModal`, `ChmodModal`, `EditFileModal`) dipakai untuk semua input
+folder/file/rename/kompres/chmod/edit, bukan `window.prompt()` (dukungannya
+tidak konsisten lintas WebView platform). Interaksi per-baris pakai tombol
+yang muncul saat hover (pola yang sama dengan `ServersPage`), bukan
+context-menu klik-kanan kustom — pilihan sadar untuk mengurangi
+kompleksitas UI di porting awal ini.
 
 ## 11. Yang BELUM di-porting di skeleton ini (roadmap)
 
@@ -462,9 +500,8 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   punya modul terpisah untuk ini yang dipakai `files`/`dbmanager`/dll;
   belum di-porting, jadi operasi file (§10) saat ini selalu jalan sebagai
   user SSH yang login.
-- **Files lanjutan**: chmod, copy, search, editor teks in-app (baca/tulis
-  file kecil langsung di browser) — sengaja dipersempit dari homepoin di
-  porting pertama ini (lihat §10).
+- **Files lanjutan**: copy, search file — sengaja dipersempit dari homepoin
+  di porting pertama ini (lihat §10). Chmod & edit isi file teks sudah ada.
 - Modul lain: services, cron, webserver/php/ssl/dns/email/ftp, dbmanager
   (mysql/pg), docker, migration. Semua akan mengikuti pola
   `servers/`/`terminal/`/`files/` di atas satu per satu.
