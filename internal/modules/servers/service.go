@@ -92,6 +92,7 @@ func (s *Service) Save(req SaveServerRequest) (*Server, error) {
 		Tags:     req.Tags,
 		Color:    req.Color,
 		Notes:    req.Notes,
+		UseSudo:  req.UseSudo,
 		IsActive: true,
 	}
 
@@ -127,20 +128,10 @@ func (s *Service) Delete(id string) error {
 }
 
 // TestConnection menguji koneksi SSH ke konfigurasi yang diberikan TANPA
-// menyimpan atau mendaftarkannya ke pool — dipakai form "Test" sebelum Save.
+// menyimpan atau mendaftarkannya ke pool — dipakai tombol "Tes Koneksi" di
+// form tambah/edit server, SEBELUM server itu disimpan.
 func (s *Service) TestConnection(req SaveServerRequest) (*ConnectionTestResult, error) {
-	cfg := sshpool.ServerConfig{
-		ID:       "probe-" + uuid.NewString(),
-		Host:     req.Host,
-		Port:     req.Port,
-		Username: req.Username,
-		AuthType: req.AuthType,
-		KeyPath:  req.KeyPath,
-		Password: req.Password,
-	}
-	if cfg.Port == 0 {
-		cfg.Port = 22
-	}
+	cfg := s.probeConfig(req)
 
 	ctx, cancel := sshpool.NewProbeContext(s.pool.DialTimeout())
 	defer cancel()
@@ -157,25 +148,50 @@ func (s *Service) TestConnection(req SaveServerRequest) (*ConnectionTestResult, 
 	}, nil
 }
 
-// TrustHostKey menyimpan fingerprint host key baru (dipanggil setelah user
-// mengonfirmasi fingerprint yang ditampilkan, mis. setelah VPS di-rebuild).
-func (s *Service) TrustHostKey(id string) error {
-	srv, err := s.repo.Get(id)
-	if err != nil {
-		return err
-	}
-	password, _ := s.repo.GetPassword(id)
+// TrustHostKey menyimpan fingerprint host key baru yang ditampilkan ke user
+// (mis. host key baru dari VPS yang barusan di-rebuild, atau server yang
+// belum pernah disambungkan sama sekali). Sengaja menerima SaveServerRequest
+// penuh (bukan hanya ID) — supaya bisa dipanggil SEBELUM server disimpan,
+// persis di tengah alur tambah server saat probe pertama kali menemukan host
+// key baru. Kalau req.ID sudah ada, itu jalur "trust ulang" untuk server yang
+// sudah tersimpan (mis. setelah VPS di-rebuild).
+func (s *Service) TrustHostKey(req SaveServerRequest) error {
+	cfg := s.probeConfig(req)
 
 	ctx, cancel := sshpool.NewProbeContext(s.pool.DialTimeout())
 	defer cancel()
 
-	return s.pool.TrustHostKey(ctx, sshpool.ServerConfig{
-		ID:       srv.ID,
-		Host:     srv.Host,
-		Port:     srv.Port,
-		Username: srv.Username,
-		AuthType: srv.AuthType,
-		KeyPath:  srv.KeyPath,
+	return s.pool.TrustHostKey(ctx, cfg)
+}
+
+// probeConfig membangun sshpool.ServerConfig dari request form. Kalau field
+// password dikosongkan TAPI request punya ID (form edit, bukan tambah baru)
+// dan auth type-nya "password", pakai password yang sudah tersimpan —
+// frontend tidak pernah menampilkan/mengirim ulang password lama, jadi kosong
+// di sini berarti "belum diganti", bukan "hapus password".
+func (s *Service) probeConfig(req SaveServerRequest) sshpool.ServerConfig {
+	password := req.Password
+	if password == "" && req.ID != "" && req.AuthType == "password" {
+		password, _ = s.repo.GetPassword(req.ID)
+	}
+
+	id := req.ID
+	if id == "" {
+		id = "probe-" + uuid.NewString()
+	}
+
+	port := req.Port
+	if port == 0 {
+		port = 22
+	}
+
+	return sshpool.ServerConfig{
+		ID:       id,
+		Host:     req.Host,
+		Port:     port,
+		Username: req.Username,
+		AuthType: req.AuthType,
+		KeyPath:  req.KeyPath,
 		Password: password,
-	})
+	}
 }

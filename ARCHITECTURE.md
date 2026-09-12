@@ -144,7 +144,49 @@ Konvensi modul vertical-slice dipertahankan dari homepoin (`dto.go`,
    sebelumnya, koneksi shared itu KEMUNGKINAN BESAR sudah hangat (warmed
    saat startup + health-check-skip 30 detik), jadi tidak ada dial ulang.
 
-## 6. Login/register homepoin: DIHAPUS, bukan sekadar belum di-porting
+## 6. Tambah/Edit Server: beda UX dari homepoin
+
+homepoin: satu form modal datar (semua field satu kolom), tombol Simpan
+**disembunyikan** sampai Tes Koneksi lolos — berlaku sama untuk tambah server
+baru MAUPUN edit server yang sudah ada (ganti nama/catatan sekalipun tetap
+wajib tes ulang koneksi SSH). Tidak ada indikator status koneksi selain teks
+polos, dan tidak ada tags/warna yang benar-benar terpakai di form meski ada
+di schema.
+
+poinhost (`ServerFormModal.tsx`, `ServersPage.tsx`):
+
+- **Form dikelompokkan per section** (Koneksi / Autentikasi / Tampilan &
+  catatan) alih-alih satu kolom panjang — lebih mudah dipindai.
+- **Toggle key/password pakai segmented control**, bukan `<select>` — dan
+  field yang relevan (path kunci vs password) langsung berubah tanpa reload.
+- **Status koneksi berupa chip berwarna** (abu "menguji…", hijau "Terhubung ·
+  42ms", merah pesan error) — bukan sekadar teks.
+- **Trust host-key terintegrasi di alur yang sama**: kalau status `unknown`/
+  `mismatch`, chip berubah jadi banner kuning menampilkan fingerprint
+  lama-vs-baru + tombol "Percayai Host Key" — dan ini jalan bahkan untuk
+  server yang BELUM disimpan — `servers.Service.TrustHostKey` menerima
+  `SaveServerRequest` penuh, bukan cuma ID, sebuah perbaikan dari desain awal
+  skeleton ini yang keliru mengasumsikan server harus sudah tersimpan dulu.
+- **Simpan hanya digembok tes-koneksi untuk server BARU** (`mode==='create'`).
+  Edit server yang sudah ada & terbukti jalan (ganti warna, tag, catatan,
+  nama) tidak perlu tes ulang SSH — keputusan sadar untuk mengurangi friksi,
+  beda dari homepoin yang menggembok Simpan di kedua mode tanpa pandang bulu.
+  Mengubah field koneksi (host/port/username/authType/keyPath/password)
+  otomatis me-reset status tes ke `idle` supaya user tidak bisa diam-diam
+  menyimpan kredensial baru yang belum pernah dicoba.
+- **Tags & warna dipakai nyata**: warna jadi accent kiri kartu server + titik
+  di tab bar (bukan cuma kolom schema yang tak terlihat), tags jadi chip yang
+  bisa ditambah/dihapus dan tampil di kartu (berguna untuk mengelompokkan
+  banyak server — mis. per lingkungan/lokasi — sesuai tujuan multi-server).
+- **Server list jadi kartu**, bukan `<li>` polos: accent warna, tag pill,
+  indikator jumlah tab yang sedang terbuka ke server itu, aksi Edit/Hapus
+  muncul saat hover (bukan selalu tampil, supaya daftar tetap ringkas).
+- **Hapus server** dulu menutup semua tab yang menunjuk ke sana (lewat
+  `closeTab` yang sudah membersihkan `TerminalRegistry` per tab) SEBELUM
+  memanggil `DeleteServer` — supaya tidak ada bookkeeping sesi terminal yang
+  nyangkut setelah `Pool.UnregisterServer` menutup koneksinya di level pool.
+
+## 7. Login/register homepoin: DIHAPUS, bukan sekadar belum di-porting
 
 homepoin butuh master password + TOTP karena dia jalan sebagai **web server**
 (`127.0.0.1:7070`) — siapa pun yang bisa mengirim request ke port itu (proses
@@ -170,7 +212,7 @@ Konsekuensinya:
   dari homepoin punya — akan dibahas ulang saat kebutuhannya benar-benar ada,
   bukan diasumsikan dari awal.
 
-## 7. Yang BELUM di-porting di skeleton ini (roadmap)
+## 8. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -196,7 +238,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 7. Menjalankan (development)
+## 9. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev

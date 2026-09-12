@@ -59,7 +59,15 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     await get().loadServers();
   },
 
+  // Tutup dulu semua tab yang menunjuk ke server ini (lewat closeTab, BUKAN
+  // langsung hapus dari state) supaya sesi terminal dedicated-nya dibersihkan
+  // rapi lewat TerminalRegistry.CloseAllForTab di backend sebelum koneksi
+  // server itu sendiri ditutup total oleh Pool.UnregisterServer.
   deleteServer: async (id) => {
+    const staleTabIds = get().tabs.filter((t) => t.serverId === id).map((t) => t.id);
+    for (const tabId of staleTabIds) {
+      await get().closeTab(tabId);
+    }
     await DeleteServer(id);
     await get().loadServers();
   },

@@ -14,6 +14,7 @@ type Server struct {
 	Tags      []string  `json:"tags"`
 	Color     string    `json:"color"`
 	Notes     string    `json:"notes"`
+	UseSudo   bool      `json:"useSudo"`
 	IsActive  bool      `json:"isActive"`
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
@@ -34,6 +35,7 @@ type SaveServerRequest struct {
 	Tags     []string `json:"tags"`
 	Color    string   `json:"color"`
 	Notes    string   `json:"notes"`
+	UseSudo  bool     `json:"useSudo"`
 }
 
 // ConnectionTestResult adalah hasil uji koneksi SSH ke server.
