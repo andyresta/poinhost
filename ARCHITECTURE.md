@@ -144,16 +144,45 @@ Konvensi modul vertical-slice dipertahankan dari homepoin (`dto.go`,
    sebelumnya, koneksi shared itu KEMUNGKINAN BESAR sudah hangat (warmed
    saat startup + health-check-skip 30 detik), jadi tidak ada dial ulang.
 
-## 6. Yang BELUM di-porting di skeleton ini (roadmap)
+## 6. Login/register homepoin: DIHAPUS, bukan sekadar belum di-porting
+
+homepoin butuh master password + TOTP karena dia jalan sebagai **web server**
+(`127.0.0.1:7070`) — siapa pun yang bisa mengirim request ke port itu (proses
+lain di mesin yang sama, atau siapa pun yang tunneling ke port itu) harus
+melewati login dulu. Itu batas keamanan yang masuk akal untuk model
+client-server.
+
+poinhost **bukan** web server — dia aplikasi desktop native (Wails: WebView
+di window sendiri, tidak bind ke port yang bisa diakses proses lain). Batas
+aksesnya sudah dijamin di layer OS: siapa pun yang bisa membuka aplikasi ini
+sudah harus login ke akun desktop (Windows/macOS/Linux) di mesin itu duluan.
+Menambah login/TOTP di atasnya cuma menambah friksi tanpa menutup celah
+keamanan baru — makanya **keputusan desainnya adalah TIDAK mengimplementasikan
+mekanisme register/login sama sekali**, bukan "belum sempat di-porting".
+Konsekuensinya:
+
+- Tidak ada `internal/core/auth`, tidak ada halaman `/setup` atau `/login`,
+  tidak ada session cookie/JWT, tidak ada TOTP.
+- App langsung menampilkan daftar server begitu dibuka (lihat `app.go` —
+  `startup()` langsung `Bootstrap()` servers, tidak ada auth gate).
+- Kalau nanti ada kebutuhan "banyak orang pakai satu instal poinhost yang
+  sama" (multi-user di satu mesin/akun OS yang sama), itu kasus yang beda
+  dari homepoin punya — akan dibahas ulang saat kebutuhannya benar-benar ada,
+  bukan diasumsikan dari awal.
+
+## 7. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
 
-- **Auth & enkripsi kredensial** (`internal/core/auth` — master password,
-  TOTP, AES-256-GCM). **Password server saat ini disimpan APA ADANYA** di
-  kolom `servers.password_enc` (lihat komentar TODO di
-  `repository.go`) — pakai auth key-based untuk sekarang, jangan simpan
-  password produksi sampai modul auth di-porting.
+- **Enkripsi kredensial saat disimpan** (AES-256-GCM untuk password SSH/DB/
+  token DNS di SQLite — bagian `crypto.go` homepoin, TERPISAH dari
+  login/TOTP yang di atas sudah diputuskan tidak ikut). **Password server
+  saat ini disimpan APA ADANYA** di kolom `servers.password_enc` (lihat
+  komentar TODO di `repository.go`) — pakai auth key-based untuk sekarang,
+  jangan simpan password produksi sampai ini di-porting. Ini tetap relevan
+  walau tanpa login, karena melindungi isi file `poinhost.db` kalau
+  di-copy/dicuri, bukan melindungi akses ke aplikasi.
 - **Jobs & event bus** — homepoin pakai WebSocket broadcaster custom;
   poinhost akan pakai `runtime.EventsEmit`/`EventsOn` bawaan Wails (lebih
   simpel, tidak perlu reconnect logic sendiri).
