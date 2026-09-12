@@ -29,7 +29,7 @@ wails generate module
 ```
 internal/core/      infra lintas-modul: config, database, sshpool
 internal/session/   tab manager (BARU — lihat ARCHITECTURE.md §3)
-internal/modules/    vertical slice per fitur (servers sudah ada, sisanya menyusul)
-frontend/            React + TypeScript + Vite + Zustand
+internal/modules/    vertical slice per fitur (servers + terminal sudah ada, sisanya menyusul)
+frontend/            React + TypeScript + Vite + Zustand + xterm.js
 migrations/          schema SQLite (idempotent, jalan tiap startup)
 ```

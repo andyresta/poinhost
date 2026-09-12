@@ -5,6 +5,8 @@ import {session} from '../models';
 
 export function CloseServerTab(arg1:string):Promise<void>;
 
+export function CloseTerminal(arg1:string):Promise<void>;
+
 export function DeleteServer(arg1:string):Promise<void>;
 
 export function ListServerStatuses():Promise<Array<servers.ServerStatus>>;
@@ -15,9 +17,13 @@ export function ListServers():Promise<Array<servers.Server>>;
 
 export function OpenServerTab(arg1:string,arg2:string):Promise<session.Tab>;
 
+export function OpenTerminal(arg1:string):Promise<string>;
+
 export function RefreshServerStatus(arg1:string):Promise<servers.ServerStatus>;
 
 export function ReorderServerTabs(arg1:Array<string>):Promise<void>;
+
+export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function SaveServer(arg1:servers.SaveServerRequest):Promise<servers.Server>;
 
@@ -26,3 +32,5 @@ export function SetTabActiveModule(arg1:string,arg2:string):Promise<void>;
 export function TestServerConnection(arg1:servers.SaveServerRequest):Promise<servers.ConnectionTestResult>;
 
 export function TrustServerHostKey(arg1:servers.SaveServerRequest):Promise<void>;
+
+export function WriteTerminal(arg1:string,arg2:string):Promise<void>;
