@@ -1342,6 +1342,7 @@ export namespace website {
 	    allDbs: boolean;
 	    databases?: string[];
 	    privileges: string[];
+	    saveCredential?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new DBCreateUserRequest(source);
@@ -1358,6 +1359,29 @@ export namespace website {
 	        this.allDbs = source["allDbs"];
 	        this.databases = source["databases"];
 	        this.privileges = source["privileges"];
+	        this.saveCredential = source["saveCredential"];
+	    }
+	}
+	export class DBCredentialInfo {
+	    serverId: string;
+	    engine: string;
+	    username: string;
+	    host: string;
+	    verifiedAt?: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DBCredentialInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.engine = source["engine"];
+	        this.username = source["username"];
+	        this.host = source["host"];
+	        this.verifiedAt = source["verifiedAt"];
+	        this.updatedAt = source["updatedAt"];
 	    }
 	}
 	export class DBDatabaseInfo {
@@ -1535,6 +1559,24 @@ export namespace website {
 	        this.removeRoot = source["removeRoot"];
 	    }
 	}
+	export class DomainDatabaseLink {
+	    serverId: string;
+	    domain: string;
+	    engine: string;
+	    database: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DomainDatabaseLink(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.engine = source["engine"];
+	        this.database = source["database"];
+	    }
+	}
 	
 	export class NginxStatus {
 	    installed: boolean;
@@ -1630,6 +1672,166 @@ export namespace website {
 	        this.path = source["path"];
 	        this.content = source["content"];
 	        this.exists = source["exists"];
+	    }
+	}
+	export class MySQLColumnInfo {
+	    name: string;
+	    type: string;
+	    nullable: boolean;
+	    key?: string;
+	    default?: string;
+	    extra?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MySQLColumnInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.type = source["type"];
+	        this.nullable = source["nullable"];
+	        this.key = source["key"];
+	        this.default = source["default"];
+	        this.extra = source["extra"];
+	    }
+	}
+	export class MySQLExploreRequest {
+	    serverId: string;
+	    username: string;
+	    host?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MySQLExploreRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.username = source["username"];
+	        this.host = source["host"];
+	    }
+	}
+	export class MySQLQueryRequest {
+	    serverId: string;
+	    username: string;
+	    host?: string;
+	    database: string;
+	    sql: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MySQLQueryRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.username = source["username"];
+	        this.host = source["host"];
+	        this.database = source["database"];
+	        this.sql = source["sql"];
+	    }
+	}
+	export class MySQLQueryResult {
+	    columns?: string[];
+	    rows?: string[][];
+	    rowsAffected: number;
+	    isSelect: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new MySQLQueryResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.columns = source["columns"];
+	        this.rows = source["rows"];
+	        this.rowsAffected = source["rowsAffected"];
+	        this.isSelect = source["isSelect"];
+	    }
+	}
+	export class MySQLRowMutateRequest {
+	    serverId: string;
+	    username: string;
+	    host?: string;
+	    database: string;
+	    table: string;
+	    values?: Record<string, string>;
+	    where?: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new MySQLRowMutateRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.username = source["username"];
+	        this.host = source["host"];
+	        this.database = source["database"];
+	        this.table = source["table"];
+	        this.values = source["values"];
+	        this.where = source["where"];
+	    }
+	}
+	export class MySQLTableInfo {
+	    name: string;
+	    approxRows: number;
+	    engine?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MySQLTableInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.approxRows = source["approxRows"];
+	        this.engine = source["engine"];
+	    }
+	}
+	export class MySQLTableRowsRequest {
+	    serverId: string;
+	    username: string;
+	    host?: string;
+	    database: string;
+	    table: string;
+	    limit: number;
+	    offset: number;
+	    orderBy?: string;
+	    orderDir?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MySQLTableRowsRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.username = source["username"];
+	        this.host = source["host"];
+	        this.database = source["database"];
+	        this.table = source["table"];
+	        this.limit = source["limit"];
+	        this.offset = source["offset"];
+	        this.orderBy = source["orderBy"];
+	        this.orderDir = source["orderDir"];
+	    }
+	}
+	export class MySQLTableRowsResult {
+	    columns: string[];
+	    rows: string[][];
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new MySQLTableRowsResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.columns = source["columns"];
+	        this.rows = source["rows"];
+	        this.total = source["total"];
 	    }
 	}
 	
@@ -1962,6 +2164,28 @@ export namespace website {
 		    }
 		    return a;
 		}
+	}
+	export class SaveDBCredentialRequest {
+	    serverId: string;
+	    engine: string;
+	    username: string;
+	    host?: string;
+	    password: string;
+	    verify: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SaveDBCredentialRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.engine = source["engine"];
+	        this.username = source["username"];
+	        this.host = source["host"];
+	        this.password = source["password"];
+	        this.verify = source["verify"];
+	    }
 	}
 	export class SetEnabledRequest {
 	    serverId: string;

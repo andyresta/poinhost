@@ -2,10 +2,12 @@ package website
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 )
@@ -40,17 +42,26 @@ type Service struct {
 	executor *sshpool.Executor
 	mutex    *sshpool.ServerMutexRegistry
 
+	// db menyimpan metadata LOKAL milik modul ini (metadata kredensial
+	// database yang sudah tersimpan di vault, tautan domain<->database) —
+	// bukan koneksi ke database di server target, itu selalu dibuka ad-hoc
+	// lewat DialTunnel/exec, lihat dbcreds.go & mysqlexplore.go.
+	db    *sql.DB
+	vault secrets.Vault
+
 	cacheMu     sync.Mutex
 	nginxCache  map[string]nginxStatusCacheEntry
 	domainCache map[string]domainListCacheEntry
 }
 
 // NewService membuat service modul website baru.
-func NewService(serversSvc *servers.Service, executor *sshpool.Executor, mutex *sshpool.ServerMutexRegistry) *Service {
+func NewService(serversSvc *servers.Service, executor *sshpool.Executor, mutex *sshpool.ServerMutexRegistry, db *sql.DB, vault secrets.Vault) *Service {
 	return &Service{
 		servers:     serversSvc,
 		executor:    executor,
 		mutex:       mutex,
+		db:          db,
+		vault:       vault,
 		nginxCache:  make(map[string]nginxStatusCacheEntry),
 		domainCache: make(map[string]domainListCacheEntry),
 	}

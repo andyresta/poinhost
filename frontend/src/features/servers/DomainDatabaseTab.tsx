@@ -10,9 +10,16 @@ import {
   CreateWebsiteDatabaseUser,
   SetWebsiteDatabaseGrants,
   GetWebsiteDBPrivileges,
+  ListWebsiteDBCredentials,
+  SaveWebsiteDBCredential,
+  ForgetWebsiteDBCredential,
+  ListWebsiteDomainDatabases,
+  LinkWebsiteDomainDatabase,
+  UnlinkWebsiteDomainDatabase,
 } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { MySQLExplorerModal } from './MySQLExplorerModal';
 
 interface StreamLineEvent {
   type: 'line' | 'end' | 'error';
@@ -20,12 +27,15 @@ interface StreamLineEvent {
   message?: string;
 }
 
-// Tab Database — TERNYATA (sama seperti homepoin) bukan benar-benar
-// domain-scoped: ini utilitas provisioning MySQL/PostgreSQL ringan
-// (database/user/grants), kebetulan bisa dibuka dari tab satu domain untuk
-// kenyamanan, terpisah total dari database browser server-wide (di luar
-// scope port ini).
-export function DomainDatabaseTab({ serverId }: { serverId: string; domain: string }) {
+// Tab Database — utilitas provisioning MySQL/PostgreSQL ringan
+// (database/user/grants), sama seperti fondasinya di homepoin. Beda dari
+// homepoin: (1) user MySQL bisa dihubungkan ke fitur Explore (koneksi driver
+// asli, lihat MySQLExplorerModal) dengan password disimpan LOKAL di vault
+// mesin ini — TIDAK ditulis ke server target; (2) database bisa ditautkan
+// ke domain ini secara eksplisit (kurasi lokal poinhost, murni organisatoris
+// — MySQL sendiri tetap server-wide), beda dari field Domain homepoin yang
+// cuma hiasan UI tak terpakai backend.
+export function DomainDatabaseTab({ serverId, domain }: { serverId: string; domain: string }) {
   const [engine, setEngine] = useState<'mysql' | 'postgresql'>('mysql');
   const [status, setStatus] = useState<website.DBEngineStatus | null>(null);
   const [databases, setDatabases] = useState<website.DBDatabaseInfo[]>([]);
@@ -45,6 +55,13 @@ export function DomainDatabaseTab({ serverId }: { serverId: string; domain: stri
   const [allDbs, setAllDbs] = useState(true);
   const [selectedDbs, setSelectedDbs] = useState<string[]>([]);
   const [selectedPrivs, setSelectedPrivs] = useState<string[]>(['read', 'write']);
+  const [saveCredential, setSaveCredential] = useState(true);
+
+  const [credentials, setCredentials] = useState<website.DBCredentialInfo[]>([]);
+  const [linkedDbs, setLinkedDbs] = useState<string[]>([]);
+  const [linkingUser, setLinkingUser] = useState<website.DBUserInfo | null>(null);
+  const [linkPassword, setLinkPassword] = useState('');
+  const [exploreTarget, setExploreTarget] = useState<{ username: string; host: string } | null>(null);
 
   useEffect(() => {
     GetWebsiteDBPrivileges().then(setPrivileges).catch(() => setPrivileges([]));
@@ -59,6 +76,11 @@ export function DomainDatabaseTab({ serverId }: { serverId: string; domain: stri
         setDatabases(await ListWebsiteDatabases(serverId, engine));
         setUsers(await ListWebsiteDatabaseUsers(serverId, engine));
       }
+      if (engine === 'mysql') {
+        setCredentials(await ListWebsiteDBCredentials(serverId));
+        const links = await ListWebsiteDomainDatabases(serverId, domain);
+        setLinkedDbs(links.filter((l) => l.engine === 'mysql').map((l) => l.database));
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -70,7 +92,61 @@ export function DomainDatabaseTab({ serverId }: { serverId: string; domain: stri
       if (streamIdRef.current) void StopDockerStream(streamIdRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverId, engine]);
+  }, [serverId, engine, domain]);
+
+  function credentialFor(username: string, host: string) {
+    return credentials.find((c) => c.username === username && c.host === (host || '%'));
+  }
+
+  async function handleLinkCredential() {
+    if (!linkingUser || !linkPassword.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await SaveWebsiteDBCredential(
+        new website.SaveDBCredentialRequest({
+          serverId, engine: 'mysql', username: linkingUser.username, host: linkingUser.host, password: linkPassword, verify: true,
+        }),
+      );
+      setLinkingUser(null);
+      setLinkPassword('');
+      await load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleForgetCredential(username: string, host: string) {
+    if (!confirm(`Lupakan password tersimpan untuk ${username}@${host}?`)) return;
+    setBusy(true);
+    try {
+      await ForgetWebsiteDBCredential(serverId, 'mysql', username, host);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleToggleDomainLink(dbName: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      if (linkedDbs.includes(dbName)) {
+        await UnlinkWebsiteDomainDatabase(serverId, domain, 'mysql', dbName);
+      } else {
+        await LinkWebsiteDomainDatabase(serverId, domain, 'mysql', dbName);
+      }
+      await load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleStart() {
     setBusy(true);
@@ -137,6 +213,7 @@ export function DomainDatabaseTab({ serverId }: { serverId: string; domain: stri
           allDbs: allDbs,
           databases: allDbs ? [] : selectedDbs,
           privileges: selectedPrivs,
+          saveCredential: engine === 'mysql' && saveCredential,
         }),
       );
       setNewUser('');
@@ -236,6 +313,17 @@ export function DomainDatabaseTab({ serverId }: { serverId: string; domain: stri
                 {databases.map((d) => (
                   <tr key={d.name}>
                     <td>{d.name}</td>
+                    {engine === 'mysql' && (
+                      <td className="files-panel__row-actions">
+                        <button
+                          title={linkedDbs.includes(d.name) ? 'Tertaut ke situs ini — klik untuk lepas' : 'Tautkan database ini ke situs ini (kurasi lokal saja)'}
+                          disabled={busy}
+                          onClick={() => void handleToggleDomainLink(d.name)}
+                        >
+                          {linkedDbs.includes(d.name) ? '🔗 Tertaut' : '🔗 Tautkan'}
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {databases.length === 0 && (
@@ -245,6 +333,9 @@ export function DomainDatabaseTab({ serverId }: { serverId: string; domain: stri
                 )}
               </tbody>
             </table>
+            {engine === 'mysql' && linkedDbs.length > 0 && (
+              <p className="chmod-path">Database yang dipakai situs ini: {linkedDbs.join(', ')}</p>
+            )}
           </section>
 
           <section>
@@ -284,6 +375,12 @@ export function DomainDatabaseTab({ serverId }: { serverId: string; domain: stri
                     </label>
                   ))}
                 </div>
+                {engine === 'mysql' && (
+                  <label className="form-check">
+                    <input type="checkbox" checked={saveCredential} onChange={(e) => setSaveCredential(e.target.checked)} />
+                    <span>Simpan password untuk Explore nanti (lokal, tidak dikirim ke server)</span>
+                  </label>
+                )}
                 <button className="btn btn--sm btn--primary" disabled={busy || !newUser.trim() || !newPassword.trim()} onClick={() => void handleCreateUser()}>
                   Buat User
                 </button>
@@ -299,17 +396,35 @@ export function DomainDatabaseTab({ serverId }: { serverId: string; domain: stri
                 </tr>
               </thead>
               <tbody>
-                {users.map((u) => (
-                  <tr key={u.username + (u.host ?? '')}>
-                    <td>{u.username}</td>
-                    {engine === 'mysql' && <td>{u.host}</td>}
-                    <td className="files-panel__row-actions">
-                      <button title="Terapkan ulang grants (privilege terpilih di atas, semua DB)" disabled={busy} onClick={() => void handleReapplyGrants(u)}>
-                        🔑
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {users.map((u) => {
+                  const cred = engine === 'mysql' ? credentialFor(u.username, u.host ?? '%') : undefined;
+                  return (
+                    <tr key={u.username + (u.host ?? '')}>
+                      <td>{u.username}</td>
+                      {engine === 'mysql' && <td>{u.host}</td>}
+                      <td className="files-panel__row-actions">
+                        <button title="Terapkan ulang grants (privilege terpilih di atas, semua DB)" disabled={busy} onClick={() => void handleReapplyGrants(u)}>
+                          🔑
+                        </button>
+                        {engine === 'mysql' && cred && (
+                          <>
+                            <button title="Explore (browse tabel/baris)" disabled={busy} onClick={() => setExploreTarget({ username: u.username, host: u.host ?? '%' })}>
+                              🔍
+                            </button>
+                            <button title="Lupakan password tersimpan" disabled={busy} onClick={() => void handleForgetCredential(u.username, u.host ?? '%')}>
+                              ✖
+                            </button>
+                          </>
+                        )}
+                        {engine === 'mysql' && !cred && (
+                          <button title="Hubungkan kredensial (simpan password untuk Explore)" disabled={busy} onClick={() => setLinkingUser(u)}>
+                            🔗
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {users.length === 0 && (
                   <tr>
                     <td colSpan={3} className="files-panel__empty">
@@ -319,8 +434,35 @@ export function DomainDatabaseTab({ serverId }: { serverId: string; domain: stri
                 )}
               </tbody>
             </table>
+
+            {linkingUser && (
+              <div className="docker-recreate">
+                <p>
+                  Hubungkan kredensial untuk <strong>{linkingUser.username}@{linkingUser.host}</strong> — password diverifikasi dulu (coba konek
+                  langsung), lalu disimpan LOKAL di mesin ini (vault OS keychain / file terenkripsi), tidak pernah dikirim ke server.
+                </p>
+                <div className="docker-recreate__row">
+                  <input type="password" placeholder="password user tersebut" value={linkPassword} onChange={(e) => setLinkPassword(e.target.value)} />
+                  <button className="btn btn--sm btn--primary" disabled={busy || !linkPassword.trim()} onClick={() => void handleLinkCredential()}>
+                    Verifikasi & Simpan
+                  </button>
+                  <button className="btn btn--sm btn--ghost" onClick={() => setLinkingUser(null)}>
+                    Batal
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
         </>
+      )}
+
+      {exploreTarget && (
+        <MySQLExplorerModal
+          serverId={serverId}
+          username={exploreTarget.username}
+          host={exploreTarget.host}
+          onClose={() => setExploreTarget(null)}
+        />
       )}
     </div>
   );

@@ -70,6 +70,8 @@ export function ExportWebsiteDNSZone(arg1:string,arg2:string):Promise<void>;
 
 export function ExtractArchive(arg1:files.ExtractRequest):Promise<void>;
 
+export function ForgetWebsiteDBCredential(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
 export function GetWebsiteDBPrivileges():Promise<Array<website.DBPrivilegeOption>>;
 
 export function GetWebsiteDBStatus(arg1:string,arg2:string):Promise<website.DBEngineStatus>;
@@ -90,6 +92,8 @@ export function InspectDockerContainer(arg1:string,arg2:string):Promise<docker.C
 
 export function IssueWebsiteSSL(arg1:website.SSLIssueRequest):Promise<website.SSLStatus>;
 
+export function LinkWebsiteDomainDatabase(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
 export function ListDockerContainers(arg1:string):Promise<docker.ListResponse>;
 
 export function ListDockerNetworks(arg1:string):Promise<docker.NetworkListResponse>;
@@ -106,13 +110,33 @@ export function ListSystemUsers(arg1:string):Promise<Array<files.SystemUser>>;
 
 export function ListWebsiteCronJobs(arg1:string,arg2:string):Promise<website.CronListResponse>;
 
+export function ListWebsiteDBCredentials(arg1:string):Promise<Array<website.DBCredentialInfo>>;
+
 export function ListWebsiteDatabaseUsers(arg1:string,arg2:string):Promise<Array<website.DBUserInfo>>;
 
 export function ListWebsiteDatabases(arg1:string,arg2:string):Promise<Array<website.DBDatabaseInfo>>;
 
+export function ListWebsiteDomainDatabases(arg1:string,arg2:string):Promise<Array<website.DomainDatabaseLink>>;
+
 export function ListWebsiteSFTPAccounts(arg1:string,arg2:string):Promise<website.SFTPListResponse>;
 
 export function ListWebsites(arg1:string):Promise<website.ListResponse>;
+
+export function MySQLExploreDeleteRow(arg1:website.MySQLRowMutateRequest):Promise<void>;
+
+export function MySQLExploreExecuteQuery(arg1:website.MySQLQueryRequest):Promise<website.MySQLQueryResult>;
+
+export function MySQLExploreInsertRow(arg1:website.MySQLRowMutateRequest):Promise<void>;
+
+export function MySQLExploreListColumns(arg1:website.MySQLExploreRequest,arg2:string,arg3:string):Promise<Array<website.MySQLColumnInfo>>;
+
+export function MySQLExploreListDatabases(arg1:website.MySQLExploreRequest):Promise<Array<string>>;
+
+export function MySQLExploreListTables(arg1:website.MySQLExploreRequest,arg2:string):Promise<Array<website.MySQLTableInfo>>;
+
+export function MySQLExploreTableRows(arg1:website.MySQLTableRowsRequest):Promise<website.MySQLTableRowsResult>;
+
+export function MySQLExploreUpdateRow(arg1:website.MySQLRowMutateRequest):Promise<void>;
 
 export function OpenDockerExec(arg1:string,arg2:string,arg3:string):Promise<string>;
 
@@ -143,6 +167,8 @@ export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void
 export function RestartDockerContainer(arg1:string,arg2:string):Promise<void>;
 
 export function SaveServer(arg1:servers.SaveServerRequest):Promise<servers.Server>;
+
+export function SaveWebsiteDBCredential(arg1:website.SaveDBCredentialRequest):Promise<website.DBCredentialInfo>;
 
 export function SearchFiles(arg1:files.SearchRequest):Promise<files.SearchResult>;
 
@@ -185,6 +211,8 @@ export function TestServerConnection(arg1:servers.SaveServerRequest):Promise<ser
 export function ToggleWebsiteCronJob(arg1:website.CronToggleRequest):Promise<void>;
 
 export function TrustServerHostKey(arg1:servers.SaveServerRequest):Promise<void>;
+
+export function UnlinkWebsiteDomainDatabase(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function UpdateWebsiteCronJob(arg1:website.CronJobRequest):Promise<website.CronJobInfo>;
 

@@ -61,3 +61,44 @@ CREATE TABLE IF NOT EXISTS ui_tabs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ui_tabs_position ON ui_tabs(position ASC);
+
+-- website_db_credentials menyimpan METADATA kredensial database MySQL yang
+-- dikelola dari fitur Explore — password ASLINYA disimpan di secrets vault
+-- lokal (OS keychain, fallback file AES-256-GCM di ~/.poinhost/secrets.json),
+-- bukan di kolom tabel ini, dan TIDAK PERNAH ditulis balik ke server target
+-- (beda dari homepoin yang menaruh file JSON terenkripsi DI server yang
+-- dikelola). Baris di sini cuma menandai "kredensial user X@host di server Y
+-- sudah tersimpan", supaya UI bisa menampilkan daftarnya tanpa perlu
+-- mengorek isi vault (yang sama sekali tidak mendukung listing di beberapa
+-- backend OS keychain).
+CREATE TABLE IF NOT EXISTS website_db_credentials (
+    id            TEXT PRIMARY KEY,
+    server_id     TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    engine        TEXT NOT NULL DEFAULT 'mysql',
+    username      TEXT NOT NULL,
+    host          TEXT NOT NULL DEFAULT '%',
+    verified_at   TEXT,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(server_id, engine, username, host)
+);
+
+-- website_domain_databases menautkan database ke domain SECARA ORGANISATORIS
+-- SAJA (kurasi lokal poinhost) — MySQL sendiri tidak mengenal scoping per
+-- domain (grants tetap berlaku server-wide seperti biasa), jadi tabel ini
+-- TIDAK mengubah akses apa pun, cuma supaya tab Database di suatu domain bisa
+-- menampilkan "database yang dipakai situs ini". Ini yang bikin fitur
+-- Database poinhost benar-benar terelasi dengan Website, beda dari homepoin
+-- yang field Domain-nya sekadar hiasan UI tak terpakai di backend.
+CREATE TABLE IF NOT EXISTS website_domain_databases (
+    id            TEXT PRIMARY KEY,
+    server_id     TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    domain        TEXT NOT NULL,
+    engine        TEXT NOT NULL DEFAULT 'mysql',
+    db_name       TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(server_id, domain, engine, db_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_website_domain_databases_domain
+    ON website_domain_databases(server_id, domain);

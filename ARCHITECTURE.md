@@ -97,7 +97,8 @@ poinhost/
 │   ├── core/                   # infra lintas-modul (setara internal/shared/ homepoin)
 │   │   ├── config/             # parameter runtime (trimmed — lihat §6 roadmap)
 │   │   ├── database/           # buka SQLite WAL, migration runner
-│   │   └── sshpool/            # pool koneksi (lihat §3), executor, sftp, known_hosts
+│   │   ├── secrets/            # vault password LOKAL: OS keychain + fallback file AES-GCM (§14)
+│   │   └── sshpool/            # pool koneksi (lihat §3), executor, sftp, known_hosts, tunnel (§14)
 │   │
 │   ├── session/                 # BARU — tidak ada padanannya di homepoin
 │   │   ├── tab.go               # struct Tab
@@ -144,10 +145,14 @@ poinhost/
 │           ├── proxy.go           # edit ProxyTarget/ProxyRules vhost (whole-domain + per-path)
 │           ├── sftp.go            # akun Linux ter-chroot per domain (useradd + sshd_config.d)
 │           ├── cron.go            # job command/HTTP per domain, /etc/cron.d/poinhost
-│           └── database.go        # provisioning MySQL/PostgreSQL (bukan browser tabel)
+│           ├── database.go        # provisioning MySQL/PostgreSQL (bukan browser tabel)
+│           ├── dbcreds.go         # simpan/lupa/list kredensial DB via vault lokal (§14)
+│           ├── mysqlexplore.go    # Explore: koneksi driver asli tunneled (§14)
+│           └── domaindb.go        # tautan domain<->database, kurasi lokal (§14)
 │
 ├── migrations/
-│   └── 001_core.sql             # servers, app_settings, activity_logs, ui_tabs
+│   └── 001_core.sql             # servers, app_settings, activity_logs, ui_tabs,
+│                                 # website_db_credentials, website_domain_databases (§14)
 │
 └── frontend/
     ├── src/
@@ -160,7 +165,8 @@ poinhost/
     │   │   │                     # ContainerLogsModal/StatsModal/ExecModal, RecreateContainerModal,
     │   │   │                     # WebsitePanel, WebsiteEngineWizard, CreateWebsiteModal,
     │   │   │                     # SubdomainModal, DomainDetailModal (9 tab: PHP/SSL/
-    │   │   │                     # Files/Logs/Proxy/DNS/SFTP/Cron/Database)
+    │   │   │                     # Files/Logs/Proxy/DNS/SFTP/Cron/Database),
+    │   │   │                     # MySQLExplorerModal (§14)
     │   │   └── tabs/              # TabBar & TabContent (keep-alive per tab)
     │   └── App.tsx
     └── wailsjs/                  # auto-generated binding Go<->TS (`wails generate module`)
@@ -992,22 +998,137 @@ proses homepoin yang terpisah), poinhost SAMA SEKALI TIDAK PERLU membuka
 akses remote database (bind ke `0.0.0.0`, edit `pg_hba.conf`, buka
 firewall) yang dilakukan homepoin — jauh lebih sederhana dan tidak
 memperluas permukaan serangan server target tanpa alasan. Database
-browser server-wide (tabel/baris/query arbitrer — modul `mysqlmanager`/
-`pgmanager` terpisah di homepoin, jauh lebih besar) TETAP di luar scope.
+browser server-wide ala `mysqlmanager`/`pgmanager` homepoin (tabel/baris/
+query arbitrer) awalnya di luar scope bagian ini — kemudian dibangun
+khusus untuk MySQL dengan arsitektur berbeda, lihat §14.
 
-## 14. Yang BELUM di-porting di skeleton ini (roadmap)
+## 14. MySQL Manager: vault lokal + Explore koneksi driver asli + tautan domain
+
+Homepoin punya fitur "MySQL Manager" (`mysqlmanager`) yang SEPENUHNYA
+terpisah dari tab Database per-domain (§13) — server-wide, tidak terkait
+domain/website apa pun. Riset mendalam atas fitur itu (lihat konteks di
+bawah) jadi dasar desain ulang berikut, bukan port apa adanya.
+
+### Temuan homepoin: koneksi asli + password terenkripsi DI SERVER TARGET
+
+`mysqlmanager` homepoin membuka koneksi protokol MySQL ASLI
+(`go-sql-driver/mysql`) yang ditunnel lewat channel SSH (bukan exec CLI)
+supaya browse tabel besar tetap cepat — desain ini benar dan dipertahankan
+di poinhost. Yang JADI masalah: passwordnya disimpan di file JSON
+terenkripsi `/root/.homepoin_mysql_creds.json` **DI SERVER TARGET itu
+sendiri**, kuncinya diturunkan (PBKDF2) dari SATU master password
+level-aplikasi homepoin (bukan per-server/per-user) — artinya (1) satu
+titik gagal untuk kredensial SEMUA server yang dikelola, (2) menaruh
+artefak kredensial tambahan di server produksi customer tanpa perlu, dan
+(3) sama sekali tidak ada mekanisme kalau password diganti manual di
+server (`ALTER USER` langsung) — koneksi berikutnya gagal diam-diam,
+user harus sadar sendiri lalu masuk UI untuk menyimpan ulang.
+
+### Desain poinhost: vault LOKAL di mesin user, bukan di server target
+
+poinhost adalah desktop app single-user (bukan web app yang mungkin
+dipakai bersama banyak operator seperti homepoin) — tidak ada alasan
+menaruh kredensial tambahan di server yang dikelola. `internal/core/
+secrets` (`vault.go`/`keyring.go`/`file.go`/`service.go`) menyimpan
+password HANYA di mesin yang menjalankan poinhost:
+
+1. **OS keychain** (`github.com/zalando/go-keyring` — Keychain di macOS,
+   Credential Manager di Windows, Secret Service/libsecret di Linux)
+   sebagai pilihan utama — tidak perlu kelola kunci enkripsi sendiri,
+   sudah terlindungi login OS user. `probeKeyring()` benar-benar mencoba
+   set+delete sebelum dipakai (bukan cuma cek biner ada).
+2. **Fallback file lokal AES-256-GCM** (`~/.poinhost/secrets.json`, kunci
+   acak 32-byte di `~/.poinhost/secret.key` permission 0600) kalau OS
+   keychain tidak tersedia (mis. Linux headless tanpa Secret Service) —
+   beda dari homepoin, kuncinya murni acak spesifik-mesin-ini, BUKAN
+   diturunkan dari master password yang diketik user (poinhost sengaja
+   tidak punya konsep itu, lihat §7).
+
+Tabel `website_db_credentials` di SQLite poinhost sendiri (migrations)
+cuma menyimpan METADATA (server/engine/username/host mana yang sudah
+tersimpan) supaya UI bisa menampilkan daftarnya — beberapa backend OS
+keychain tidak mendukung listing, jadi metadata inilah yang dipakai UI,
+isi password aslinya selalu dari vault (`dbcreds.go`).
+
+### Explore MySQL: koneksi driver asli, TANPA registry dialer global
+
+Per arahan eksplisit saat desain ("kalau ada potensi lambat pagination
+mending pakai driver langsung saja") — `mysqlexplore.go` memakai
+`go-sql-driver/mysql` sungguhan, BUKAN exec CLI per halaman seperti tab
+Database (§13) — supaya paginasi tabel besar tetap cepat. Bedanya dari
+pendekatan homepoin: dialer per-tunnel dipasang lewat `cfg.DialFunc`
+(field di `mysql.Config`, dikonsumsi lewat `mysql.NewConnector(cfg)` +
+`sql.OpenDB`, BUKAN `sql.Open` dengan DSN string yang tidak bisa membawa
+closure), jadi tidak perlu registry nama-network global per server seperti
+`mysqlmanager` homepoin. Tunnel-nya sendiri (`sshpool.Executor.DialTunnel`,
+`internal/core/sshpool/tunnel.go`) memakai SLOT SHARED yang SAMA dipakai
+exec modul lain — Dial lewat `ssh.Client.Dial` (channel `direct-tcpip`)
+tidak pernah memicu handshake SSH baru. Alamat MySQL di sisi remote selalu
+`127.0.0.1:3306` (localhost dari sudut pandang server itu sendiri) — grant
+host user (`%`, `localhost`, dst) cuma kunci lookup kredensial, bukan
+alamat jaringan, konsisten dengan `runMySQL` di §13.
+
+Operasi yang didukung (semua lewat koneksi driver yang sama, dibuka sekali
+per panggilan): `ListDatabases` (otomatis terbatas sesuai grants MySQL
+user itu sendiri — `SHOW DATABASES` MySQL memang begitu), `ListTables`/
+`ListColumns` (dari `information_schema`), `TableRows` (paginated LIMIT/
+OFFSET + total count), `InsertRow`/`UpdateRow`/`DeleteRow` (identifier
+divalidasi regex + di-quote backtick, WHERE WAJIB diisi untuk update/
+delete — default ke kolom PRIMARY KEY, fallback ke seluruh kolom kalau
+tabel tidak punya PK), dan `ExecuteQuery` (satu statement bebas, guard
+sederhana menolak `;` ganda).
+
+### Solusi masalah password basi: deteksi eksplisit, bukan diam
+
+`classifyMySQLConnError` menandai kegagalan "Access denied" dengan prefix
+`AUTENTIKASI_GAGAL:` yang dideteksi `MySQLExplorerModal.tsx` di frontend —
+alih-alih gagal diam-diam seperti homepoin, modal langsung menampilkan
+form "masukkan ulang password", yang saat disimpan otomatis diverifikasi
+dulu (`SaveDBCredentialRequest.Verify`, coba konek beneran) sebelum
+ditulis ke vault, supaya vault tidak pernah menyimpan kredensial salah.
+
+### Tautan domain<->database: kurasi lokal, beda dari field dekoratif homepoin
+
+`domaindb.go` + tabel `website_domain_databases` (migrations) menautkan
+database ke domain — TAPI murni metadata kurasi di SQLite lokal poinhost,
+BUKAN scoping akses sungguhan (MySQL sendiri tetap server-wide, grants
+tidak berubah). Ini yang membuat tab Database poinhost benar-benar
+terelasi dengan Website: user bisa menandai "database X dipakai situs
+ini" dan tab Database domain tersebut menampilkannya balik — beda dari
+homepoin yang field `Domain`-nya di tab Database sekadar breadcrumb UI,
+tidak pernah dibaca ulang di mana pun (lihat §13).
+
+### Alur pemakaian end-to-end
+
+1. Buat user database baru lewat tab Database (§13) — centang opsional
+   "simpan untuk Explore nanti" (`DBCreateUserRequest.SaveCredential`)
+   supaya password yang sudah diketik user langsung tersimpan ke vault,
+   tanpa perlu diketik ulang.
+2. Untuk user yang sudah ada sebelumnya (dibuat di luar poinhost, atau
+   sebelum fitur ini ada): tombol "🔗 Hubungkan kredensial" — masukkan
+   password, diverifikasi dulu, baru disimpan.
+3. Tombol "🔍 Explore" muncul begitu kredensial tersimpan — membuka
+   `MySQLExplorerModal` (sidebar database/tabel, grid baris dengan edit
+   inline dobel-klik, insert/delete baris, kotak query bebas, paginasi).
+4. Password basi terdeteksi otomatis lewat marker `AUTENTIKASI_GAGAL:`,
+   modal menawarkan form simpan-ulang alih-alih gagal diam-diam.
+5. Database bisa ditautkan ke domain manapun lewat tombol "🔗 Tautkan" di
+   tabel Database — murni kurasi, tidak mengubah akses.
+
+## 15. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
 
-- **Enkripsi kredensial saat disimpan** (AES-256-GCM untuk password SSH/DB/
-  token DNS di SQLite — bagian `crypto.go` homepoin, TERPISAH dari
-  login/TOTP yang di atas sudah diputuskan tidak ikut). **Password server
-  saat ini disimpan APA ADANYA** di kolom `servers.password_enc` (lihat
-  komentar TODO di `repository.go`) — pakai auth key-based untuk sekarang,
-  jangan simpan password produksi sampai ini di-porting. Ini tetap relevan
-  walau tanpa login, karena melindungi isi file `poinhost.db` kalau
-  di-copy/dicuri, bukan melindungi akses ke aplikasi.
+- **Enkripsi kredensial SSH server saat disimpan.** `internal/core/secrets`
+  (§14 — OS keychain + fallback AES-256-GCM lokal) SEKARANG SUDAH ADA dan
+  dipakai penuh untuk password user database (fitur MySQL Manager), tapi
+  **password SSH server sendiri masih disimpan APA ADANYA** di kolom
+  `servers.password_enc` (lihat komentar TODO di `repository.go`) — belum
+  dimigrasikan ke vault yang sama. Pakai auth key-based untuk sekarang,
+  jangan simpan password SSH produksi sampai ini dimigrasikan. Ini tetap
+  relevan walau tanpa login, karena melindungi isi file `poinhost.db`
+  kalau di-copy/dicuri, bukan melindungi akses ke aplikasi.
 - **Jobs & event bus untuk operasi jangka panjang** (mis. instalasi paket,
   migrasi file/DB/Docker) — polanya sudah ada (`runtime.EventsEmit`/
   `EventsOn`, dipakai server status di §8 dan terminal di §9), tinggal
@@ -1044,7 +1165,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 15. Menjalankan (development)
+## 16. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev
