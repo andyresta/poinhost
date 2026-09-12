@@ -462,21 +462,71 @@ kotak teks oktal polos (yang tetap ditampilkan sebagai output, untuk yang
 sudah hafal angka seperti "755"/"644"). `Service.Chmod` mem-parsing oktal
 ini balik jadi `os.FileMode` lalu panggil `sftp.Chmod`.
 
-**Masih sengaja BELUM ada** (dipersempit dari homepoin untuk porting awal
-ini): `copy`, `search` file, dan elevasi `asUser`/sudo (homepoin punya
-modul `access` terpisah untuk switch user efektif — belum di-porting ke
-poinhost sama sekali, lihat §11). Semua operasi file saat ini jalan sebagai
-user SSH yang login, apa adanya.
+### Copy & Search
+
+`Copy` (salin, sumber tetap ada — beda dari `Rename` yang memindahkan) dan
+`Search` (cari nama file/direktori rekursif dari satu direktori, dibatasi
+200 hasil) SELALU lewat `execAccess` (`cp -r`, `find … -iname`) — SFTP tidak
+punya primitif copy maupun search sama sekali, jadi tidak ada "jalur cepat"
+SFTP untuk dua operasi ini seperti operasi lain (beda dari List/Mkdir/dst
+yang punya jalur SFTP kalau bukan sudo). `SearchModal.tsx` menampilkan hasil
+sebagai daftar terpisah (bukan menimpa tabel utama, karena hit bisa datang
+dari sub-direktori mana pun) — klik "Buka" memindahkan `FilesPanel` ke
+direktori tempat file itu berada.
+
+### Elevasi sudo (`asUser`) — dipertahankan dari homepoin, disesuaikan
+
+Prinsipnya: SFTP subsystem SSH SELALU jalan sebagai user yang login —
+tidak bisa "SFTP sebagai user lain" tanpa re-autentikasi penuh. Satu-
+satunya cara operasi file sebagai user LAIN adalah lewat shell command yang
+dibungkus `sudo -u <user>`. `files/access.go` (`fileAccess`/`resolveAccess`/
+`wrapSudo`) dan `files/sudoops.go` (`listDirSudo`/`readFileSudo`/dst)
+diporting nyaris apa adanya dari `access.go`/`sudoops.go` homepoin — logikanya
+sudah teruji, cuma sumber passwordnya beda:
+
+- Homepoin: password SSH sesi login di-cache di server per sesi HTTP
+  browser (`SSHPasswordForSession`), dipipe ke `sudo -S` kalau perlu.
+- Poinhost: **tidak ada sesi/login sama sekali** (§7) — password server
+  (kalau auth-nya password) sudah tersimpan di SQLite sejak Tambah Server,
+  jadi `servers.Service.SudoPassword(id)` tinggal baca langsung dari
+  situ, tanpa perlu cache sesi apa pun. Lebih sederhana justru KARENA
+  poinhost tidak punya login.
+- Server dengan auth SSH key tidak punya "password" untuk dipipe ke
+  `sudo -S` — jalur itu bergantung pada `NOPASSWD` di `/etc/sudoers`
+  server target; kalau sudo tetap minta password, error diterjemahkan
+  jadi pesan yang jelas (`mapSudoError`).
+
+Setiap operasi FILE (Mkdir/CreateFile/Rename/Delete/Compress/Extract/
+Read/Write/Chmod/Upload/Download, plus Copy/Search yang memang selalu lewat
+shell) menerima `asUser` opsional dan `resolveAccess` memvalidasi: kosong
+atau sama dengan user SSH → jalur SFTP normal tanpa sudo; beda user →
+WAJIB `server.useSudo == true` (dicentang di Edit Server, §6) dan user itu
+harus benar-benar ada di server (`getent passwd`), baru diizinkan.
+
+**Batasan yang diterima** (sama seperti homepoin): upload/download SEBAGAI
+user lain TIDAK benar-benar streaming — isi file dibaca penuh ke memori
+dulu (upload: file lokal dibaca penuh lalu `cp` lewat file sementara;
+download: `cat` dieksekusi dan outputnya ditangkap penuh sebagai satu
+string) karena jalurnya lewat shell command, bukan pipe SFTP mentah. Untuk
+file besar yang dioperasikan SEBAGAI user lain, ini lebih lambat & lebih
+boros memori dibanding jalur SFTP biasa — batasan yang sama persis dengan
+homepoin, bukan regresi baru.
+
+Frontend: dropdown "Jalankan sebagai" di toolbar `FilesPanel` HANYA muncul
+kalau `server.useSudo` true, terisi dari `ListSystemUsers` (getent passwd,
+difilter ke user login-capable + root). Ganti pilihan langsung memuat ulang
+direktori yang sama sebagai user baru — bisa kelihatan berbeda isinya kalau
+permission direktori membatasi siapa boleh lihat apa.
 
 Frontend (`FilesPanel.tsx`) di-keep-alive per tab sama seperti Overview &
 Terminal (§9) — direktori yang sedang dibuka & seleksi file tidak hilang
 saat pindah ke modul lain lalu balik lagi. Modal kecil (`PromptModal`,
-`CompressModal`, `ChmodModal`, `EditFileModal`) dipakai untuk semua input
-folder/file/rename/kompres/chmod/edit, bukan `window.prompt()` (dukungannya
-tidak konsisten lintas WebView platform). Interaksi per-baris pakai tombol
-yang muncul saat hover (pola yang sama dengan `ServersPage`), bukan
-context-menu klik-kanan kustom — pilihan sadar untuk mengurangi
-kompleksitas UI di porting awal ini.
+`CompressModal`, `ChmodModal`, `EditFileModal`, `SearchModal`) dipakai untuk
+semua input folder/file/rename/kompres/chmod/edit/cari, bukan
+`window.prompt()` (dukungannya tidak konsisten lintas WebView platform).
+Interaksi per-baris pakai tombol yang muncul saat hover (pola yang sama
+dengan `ServersPage`), bukan context-menu klik-kanan kustom — pilihan sadar
+untuk mengurangi kompleksitas UI di porting awal ini.
 
 ## 11. Yang BELUM di-porting di skeleton ini (roadmap)
 
@@ -496,12 +546,16 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   `EventsOn`, dipakai server status di §8 dan terminal di §9), tinggal
   modul migrasi/instalasinya sendiri yang belum di-porting.
 - **activitylog** (audit trail tiap operasi).
-- **`access`/sudo** (elevasi ke user lain di server target) — homepoin
-  punya modul terpisah untuk ini yang dipakai `files`/`dbmanager`/dll;
-  belum di-porting, jadi operasi file (§10) saat ini selalu jalan sebagai
-  user SSH yang login.
-- **Files lanjutan**: copy, search file — sengaja dipersempit dari homepoin
-  di porting pertama ini (lihat §10). Chmod & edit isi file teks sudah ada.
+- **`access`/sudo untuk MODUL LAIN** — elevasi `asUser` sudah ada khusus
+  untuk `files` (§10: List/Mkdir/Rename/Delete/Compress/Extract/Read/Write/
+  Chmod/Upload/Download/Copy/Search semua sudo-aware). Modul berikutnya yang
+  butuh ini (`dbmanager`, `docker`, dst di homepoin) masih perlu menerapkan
+  pola yang sama sendiri-sendiri — belum ada abstraksi lintas-modul untuk
+  "user efektif" di poinhost (homepoin punya modul `access` terpisah untuk
+  itu; poinhost sengaja belum, tunggu ada modul kedua yang butuh baru
+  diekstrak supaya tidak salah abstraksi lebih awal).
+- Files: copy & search sudah ada (§10). Yang masih sengaja belum:
+  editor gambar/preview biner, drag-drop upload dari file explorer OS.
 - Modul lain: services, cron, webserver/php/ssl/dns/email/ftp, dbmanager
   (mysql/pg), docker, migration. Semua akan mengikuti pola
   `servers/`/`terminal/`/`files/` di atas satu per satu.

@@ -12,6 +12,8 @@ export function CloseTerminal(arg1:string):Promise<void>;
 
 export function CompressFiles(arg1:files.CompressRequest):Promise<void>;
 
+export function CopyFiles(arg1:files.CopyRequest):Promise<void>;
+
 export function CreateFile(arg1:files.CreateFileRequest):Promise<void>;
 
 export function CreateFolder(arg1:files.MkdirRequest):Promise<void>;
@@ -20,11 +22,11 @@ export function DeleteFiles(arg1:files.DeleteRequest):Promise<void>;
 
 export function DeleteServer(arg1:string):Promise<void>;
 
-export function DownloadFileFromServer(arg1:string,arg2:string):Promise<void>;
+export function DownloadFileFromServer(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function ExtractArchive(arg1:files.ExtractRequest):Promise<void>;
 
-export function ListFiles(arg1:string,arg2:string):Promise<files.ListResult>;
+export function ListFiles(arg1:string,arg2:string,arg3:string):Promise<files.ListResult>;
 
 export function ListServerStatuses():Promise<Array<servers.ServerStatus>>;
 
@@ -32,11 +34,13 @@ export function ListServerTabs():Promise<Array<session.Tab>>;
 
 export function ListServers():Promise<Array<servers.Server>>;
 
+export function ListSystemUsers(arg1:string):Promise<Array<files.SystemUser>>;
+
 export function OpenServerTab(arg1:string,arg2:string):Promise<session.Tab>;
 
 export function OpenTerminal(arg1:string):Promise<string>;
 
-export function ReadFileContent(arg1:string,arg2:string):Promise<files.ReadResult>;
+export function ReadFileContent(arg1:string,arg2:string,arg3:string):Promise<files.ReadResult>;
 
 export function RefreshServerStatus(arg1:string):Promise<servers.ServerStatus>;
 
@@ -48,13 +52,15 @@ export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void
 
 export function SaveServer(arg1:servers.SaveServerRequest):Promise<servers.Server>;
 
+export function SearchFiles(arg1:files.SearchRequest):Promise<files.SearchResult>;
+
 export function SetTabActiveModule(arg1:string,arg2:string):Promise<void>;
 
 export function TestServerConnection(arg1:servers.SaveServerRequest):Promise<servers.ConnectionTestResult>;
 
 export function TrustServerHostKey(arg1:servers.SaveServerRequest):Promise<void>;
 
-export function UploadFilesToServer(arg1:string,arg2:string):Promise<void>;
+export function UploadFilesToServer(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function WriteFileContent(arg1:files.WriteFileRequest):Promise<void>;
 

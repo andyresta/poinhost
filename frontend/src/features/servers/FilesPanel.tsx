@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   ListFiles,
   CreateFolder,
@@ -10,12 +10,16 @@ import {
   UploadFilesToServer,
   DownloadFileFromServer,
   ChmodFile,
+  CopyFiles,
+  ListSystemUsers,
 } from '../../../wailsjs/go/main/App';
 import { files, sshpool } from '../../../wailsjs/go/models';
+import { useTabsStore } from '../../store/tabs';
 import { PromptModal } from './PromptModal';
 import { CompressModal } from './CompressModal';
 import { ChmodModal } from './ChmodModal';
 import { EditFileModal } from './EditFileModal';
+import { SearchModal } from './SearchModal';
 
 // File > 512KB tidak ditawari untuk diedit sebagai teks — kemungkinan besar
 // biner atau terlalu besar untuk nyaman diedit di aplikasi (backend sendiri
@@ -59,23 +63,34 @@ function breadcrumbParts(p: string): { label: string; path: string }[] {
 // masih terbuka — lihat ServerWorkspace.tsx — jadi direktori & seleksi yang
 // sedang dibuka tidak hilang saat user pindah ke modul lain lalu balik lagi.
 export function FilesPanel({ serverId }: { serverId: string }) {
+  const server = useTabsStore((s) => s.servers.find((x) => x.id === serverId));
+
   const [path, setPath] = useState('/');
   const [result, setResult] = useState<files.ListResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [modal, setModal] = useState<'newFolder' | 'newFile' | 'compress' | null>(null);
+  const [modal, setModal] = useState<'newFolder' | 'newFile' | 'compress' | 'copy' | 'search' | null>(
+    null,
+  );
   const [renameTarget, setRenameTarget] = useState<sshpool.FileEntry | null>(null);
   const [editTarget, setEditTarget] = useState<sshpool.FileEntry | null>(null);
   const [chmodTarget, setChmodTarget] = useState<sshpool.FileEntry | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // "Jalankan sebagai" — kosong berarti user SSH biasa (jalur SFTP cepat,
+  // tanpa sudo sama sekali). Cuma relevan kalau server ini useSudo=true;
+  // lihat internal/modules/files/access.go untuk validasi & elevasi sudo
+  // sesungguhnya di backend (dropdown ini cuma UI-nya).
+  const [asUser, setAsUser] = useState('');
+  const [systemUsers, setSystemUsers] = useState<files.SystemUser[]>([]);
 
   const load = useCallback(
     async (targetPath: string) => {
       setLoading(true);
       setError(null);
       try {
-        const res = await ListFiles(serverId, targetPath);
+        const res = await ListFiles(serverId, targetPath, asUser);
         setResult(res);
         setPath(res.path);
         setSelected(new Set());
@@ -85,13 +100,37 @@ export function FilesPanel({ serverId }: { serverId: string }) {
         setLoading(false);
       }
     },
-    [serverId],
+    [serverId, asUser],
   );
 
   useEffect(() => {
     void load('/');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId]);
+
+  // Ganti "jalankan sebagai" -> muat ulang direktori yang sama sebagai user
+  // baru (bisa jadi kelihatan berbeda isinya kalau permission direktori
+  // membatasi siapa yang boleh lihat apa). Dilewati saat mount pertama —
+  // efek di atas sudah menangani load awal, jadi tidak fetch dobel.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    void load(path);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asUser]);
+
+  useEffect(() => {
+    if (!server?.useSudo) {
+      setSystemUsers([]);
+      return;
+    }
+    ListSystemUsers(serverId)
+      .then(setSystemUsers)
+      .catch(() => setSystemUsers([]));
+  }, [serverId, server?.useSudo]);
 
   const entries = result?.entries ?? [];
   const selectedEntries = entries.filter((e) => selected.has(e.path));
@@ -124,14 +163,14 @@ export function FilesPanel({ serverId }: { serverId: string }) {
 
   async function handleUpload() {
     await withBusy(async () => {
-      await UploadFilesToServer(serverId, path);
+      await UploadFilesToServer(serverId, path, asUser);
       await load(path);
     });
   }
 
   async function handleDownload(entry: sshpool.FileEntry) {
     await withBusy(async () => {
-      await DownloadFileFromServer(serverId, entry.path);
+      await DownloadFileFromServer(serverId, entry.path, asUser);
     });
   }
 
@@ -139,14 +178,16 @@ export function FilesPanel({ serverId }: { serverId: string }) {
     if (selected.size === 0) return;
     if (!confirm(`Hapus ${selected.size} item terpilih? Tindakan ini tidak bisa dibatalkan.`)) return;
     await withBusy(async () => {
-      await DeleteFiles(new files.DeleteRequest({ serverId, paths: [...selected] }));
+      await DeleteFiles(new files.DeleteRequest({ serverId, paths: [...selected], asUser }));
       await load(path);
     });
   }
 
   async function handleExtract(entry: sshpool.FileEntry) {
     await withBusy(async () => {
-      await ExtractArchive(new files.ExtractRequest({ serverId, archivePath: entry.path, destPath: path }));
+      await ExtractArchive(
+        new files.ExtractRequest({ serverId, archivePath: entry.path, destPath: path, asUser }),
+      );
       await load(path);
     });
   }
@@ -166,9 +207,28 @@ export function FilesPanel({ serverId }: { serverId: string }) {
         <button className="btn btn--sm" disabled={busy} onClick={() => void handleUpload()}>
           ⬆ Upload
         </button>
+        <button className="btn btn--sm" disabled={busy} onClick={() => setModal('search')}>
+          🔍 Cari
+        </button>
         <button className="btn btn--sm" disabled={loading} onClick={() => void load(path)}>
           ⟲
         </button>
+
+        {server?.useSudo && (
+          <label className="files-panel__asuser">
+            <span>Jalankan sebagai</span>
+            <select value={asUser} onChange={(e) => setAsUser(e.target.value)}>
+              <option value="">{server.username} (SSH)</option>
+              {systemUsers
+                .filter((u) => u.username !== server.username)
+                .map((u) => (
+                  <option key={u.username} value={u.username}>
+                    {u.username}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
 
         {selected.size > 0 && (
           <div className="files-panel__bulk">
@@ -183,6 +243,9 @@ export function FilesPanel({ serverId }: { serverId: string }) {
                 Rename
               </button>
             )}
+            <button className="btn btn--sm" onClick={() => setModal('copy')}>
+              Copy
+            </button>
             <button className="btn btn--sm" onClick={() => setModal('compress')}>
               Kompres
             </button>
@@ -273,7 +336,7 @@ export function FilesPanel({ serverId }: { serverId: string }) {
           confirmLabel="Buat"
           onClose={() => setModal(null)}
           onConfirm={async (name) => {
-            await CreateFolder(new files.MkdirRequest({ serverId, path, name }));
+            await CreateFolder(new files.MkdirRequest({ serverId, path, name, asUser }));
             await load(path);
           }}
         />
@@ -286,7 +349,7 @@ export function FilesPanel({ serverId }: { serverId: string }) {
           confirmLabel="Buat"
           onClose={() => setModal(null)}
           onConfirm={async (name) => {
-            await CreateFile(new files.CreateFileRequest({ serverId, path, name }));
+            await CreateFile(new files.CreateFileRequest({ serverId, path, name, asUser }));
             await load(path);
           }}
         />
@@ -305,10 +368,37 @@ export function FilesPanel({ serverId }: { serverId: string }) {
                 sources: [...selected],
                 archivePath: joinPath(path, archiveName),
                 format,
+                asUser,
               }),
             );
             await load(path);
           }}
+        />
+      )}
+
+      {modal === 'copy' && (
+        <PromptModal
+          title="Copy ke..."
+          label="Path tujuan"
+          initialValue={path}
+          confirmLabel="Copy"
+          onClose={() => setModal(null)}
+          onConfirm={async (destPath) => {
+            await CopyFiles(
+              new files.CopyRequest({ serverId, sources: [...selected], destPath, asUser }),
+            );
+            await load(path);
+          }}
+        />
+      )}
+
+      {modal === 'search' && (
+        <SearchModal
+          serverId={serverId}
+          path={path}
+          asUser={asUser}
+          onClose={() => setModal(null)}
+          onOpenParent={(parentPath) => void load(parentPath)}
         />
       )}
 
@@ -325,6 +415,7 @@ export function FilesPanel({ serverId }: { serverId: string }) {
                 serverId,
                 oldPath: renameTarget.path,
                 newPath: joinPath(path, newName),
+                asUser,
               }),
             );
             await load(path);
@@ -338,14 +429,14 @@ export function FilesPanel({ serverId }: { serverId: string }) {
           currentMode={chmodTarget.mode}
           onClose={() => setChmodTarget(null)}
           onConfirm={async (mode) => {
-            await ChmodFile(new files.ChmodRequest({ serverId, path: chmodTarget.path, mode }));
+            await ChmodFile(new files.ChmodRequest({ serverId, path: chmodTarget.path, mode, asUser }));
             await load(path);
           }}
         />
       )}
 
       {editTarget && (
-        <EditFileModal serverId={serverId} path={editTarget.path} onClose={() => setEditTarget(null)} />
+        <EditFileModal serverId={serverId} path={editTarget.path} asUser={asUser} onClose={() => setEditTarget(null)} />
       )}
     </div>
   );

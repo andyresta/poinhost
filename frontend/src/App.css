@@ -733,3 +733,65 @@ tr:hover .files-panel__row-actions {
   padding: 2px 8px;
   border-radius: 4px;
 }
+
+/* "Jalankan sebagai" selector */
+.files-panel__asuser {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  opacity: 0.85;
+  margin-left: 6px;
+}
+.files-panel__asuser select {
+  background: #232f45;
+  border: 1px solid #2b3a52;
+  color: #e5e7eb;
+  border-radius: 5px;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
+/* Search modal */
+.search-input-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.search-input-row input {
+  flex: 1;
+  background: #232f45;
+  border: 1px solid #2b3a52;
+  color: #e5e7eb;
+  padding: 7px 8px;
+  border-radius: 5px;
+  font-size: 13px;
+}
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+}
+.search-result-item:hover {
+  background: #232f45;
+}
+.search-result-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

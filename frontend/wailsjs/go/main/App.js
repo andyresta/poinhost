@@ -18,6 +18,10 @@ export function CompressFiles(arg1) {
   return window['go']['main']['App']['CompressFiles'](arg1);
 }
 
+export function CopyFiles(arg1) {
+  return window['go']['main']['App']['CopyFiles'](arg1);
+}
+
 export function CreateFile(arg1) {
   return window['go']['main']['App']['CreateFile'](arg1);
 }
@@ -34,16 +38,16 @@ export function DeleteServer(arg1) {
   return window['go']['main']['App']['DeleteServer'](arg1);
 }
 
-export function DownloadFileFromServer(arg1, arg2) {
-  return window['go']['main']['App']['DownloadFileFromServer'](arg1, arg2);
+export function DownloadFileFromServer(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DownloadFileFromServer'](arg1, arg2, arg3);
 }
 
 export function ExtractArchive(arg1) {
   return window['go']['main']['App']['ExtractArchive'](arg1);
 }
 
-export function ListFiles(arg1, arg2) {
-  return window['go']['main']['App']['ListFiles'](arg1, arg2);
+export function ListFiles(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ListFiles'](arg1, arg2, arg3);
 }
 
 export function ListServerStatuses() {
@@ -58,6 +62,10 @@ export function ListServers() {
   return window['go']['main']['App']['ListServers']();
 }
 
+export function ListSystemUsers(arg1) {
+  return window['go']['main']['App']['ListSystemUsers'](arg1);
+}
+
 export function OpenServerTab(arg1, arg2) {
   return window['go']['main']['App']['OpenServerTab'](arg1, arg2);
 }
@@ -66,8 +74,8 @@ export function OpenTerminal(arg1) {
   return window['go']['main']['App']['OpenTerminal'](arg1);
 }
 
-export function ReadFileContent(arg1, arg2) {
-  return window['go']['main']['App']['ReadFileContent'](arg1, arg2);
+export function ReadFileContent(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ReadFileContent'](arg1, arg2, arg3);
 }
 
 export function RefreshServerStatus(arg1) {
@@ -90,6 +98,10 @@ export function SaveServer(arg1) {
   return window['go']['main']['App']['SaveServer'](arg1);
 }
 
+export function SearchFiles(arg1) {
+  return window['go']['main']['App']['SearchFiles'](arg1);
+}
+
 export function SetTabActiveModule(arg1, arg2) {
   return window['go']['main']['App']['SetTabActiveModule'](arg1, arg2);
 }
@@ -102,8 +114,8 @@ export function TrustServerHostKey(arg1) {
   return window['go']['main']['App']['TrustServerHostKey'](arg1);
 }
 
-export function UploadFilesToServer(arg1, arg2) {
-  return window['go']['main']['App']['UploadFilesToServer'](arg1, arg2);
+export function UploadFilesToServer(arg1, arg2, arg3) {
+  return window['go']['main']['App']['UploadFilesToServer'](arg1, arg2, arg3);
 }
 
 export function WriteFileContent(arg1) {
