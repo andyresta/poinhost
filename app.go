@@ -70,7 +70,7 @@ func NewApp() *App {
 	terminalSvc := terminal.NewService(terminals)
 
 	sftpClient := sshpool.NewSFTPClient(pool)
-	filesSvc := files.NewService(sftpClient, executor)
+	filesSvc := files.NewService(sftpClient, executor, serversSvc)
 
 	return &App{
 		cfg:         cfg,
@@ -278,9 +278,18 @@ func (a *App) CloseTerminal(sessionID string) {
 // Bindings: Files (lihat internal/modules/files)
 // ---------------------------------------------------------------------
 
-// ListFiles menampilkan isi satu direktori remote.
-func (a *App) ListFiles(serverID, path string) (*files.ListResult, error) {
-	return a.filesSvc.List(a.ctx, serverID, path)
+// ListFiles menampilkan isi satu direktori remote. asUser kosong berarti
+// beroperasi sebagai user SSH yang login (lihat files/access.go untuk
+// mekanisme elevasi sudo ke user lain).
+func (a *App) ListFiles(serverID, path, asUser string) (*files.ListResult, error) {
+	return a.filesSvc.List(a.ctx, serverID, path, asUser)
+}
+
+// ListSystemUsers mengembalikan user Linux di server yang bisa dipilih
+// sebagai "jalankan sebagai" — dipakai untuk mengisi dropdown elevasi sudo
+// di FilesPanel, cuma relevan kalau server.useSudo true.
+func (a *App) ListSystemUsers(serverID string) ([]files.SystemUser, error) {
+	return a.filesSvc.ListSystemUsers(a.ctx, serverID)
 }
 
 // CreateFolder membuat direktori baru.
@@ -315,9 +324,21 @@ func (a *App) ExtractArchive(req files.ExtractRequest) error {
 	return a.filesSvc.Extract(a.ctx, req)
 }
 
+// CopyFiles menyalin satu/lebih file/direktori ke lokasi tujuan (sumber
+// tetap ada, beda dari RenameFile yang memindahkan).
+func (a *App) CopyFiles(req files.CopyRequest) error {
+	return a.filesSvc.Copy(a.ctx, req)
+}
+
+// SearchFiles mencari file/direktori di bawah satu path yang namanya
+// mengandung kata kunci (rekursif, dibatasi 200 hasil).
+func (a *App) SearchFiles(req files.SearchRequest) (*files.SearchResult, error) {
+	return a.filesSvc.Search(a.ctx, req)
+}
+
 // ReadFileContent membaca isi file teks remote untuk dibuka di editor.
-func (a *App) ReadFileContent(serverID, path string) (*files.ReadResult, error) {
-	return a.filesSvc.ReadFile(a.ctx, serverID, path)
+func (a *App) ReadFileContent(serverID, path, asUser string) (*files.ReadResult, error) {
+	return a.filesSvc.ReadFile(a.ctx, serverID, path, asUser)
 }
 
 // WriteFileContent menyimpan hasil edit isi file teks remote.
@@ -335,7 +356,7 @@ func (a *App) ChmodFile(req files.ChmodRequest) error {
 // remoteDir. Ini sengaja BUKAN <input type=file>+base64 ala aplikasi web —
 // dialog asli lebih natural untuk aplikasi desktop dan menghindari
 // menampung seluruh isi file di memori JS.
-func (a *App) UploadFilesToServer(serverID, remoteDir string) error {
+func (a *App) UploadFilesToServer(serverID, remoteDir, asUser string) error {
 	localPaths, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Pilih file untuk diupload",
 	})
@@ -343,7 +364,7 @@ func (a *App) UploadFilesToServer(serverID, remoteDir string) error {
 		return err
 	}
 	for _, localPath := range localPaths {
-		if err := a.filesSvc.UploadFromLocalPath(a.ctx, serverID, localPath, remoteDir); err != nil {
+		if err := a.filesSvc.UploadFromLocalPath(a.ctx, serverID, localPath, remoteDir, asUser); err != nil {
 			return fmt.Errorf("upload %s: %w", localPath, err)
 		}
 	}
@@ -353,7 +374,7 @@ func (a *App) UploadFilesToServer(serverID, remoteDir string) error {
 // DownloadFileFromServer membuka dialog simpan NATIVE OS untuk memilih
 // lokasi tujuan di komputer lokal, lalu men-stream file remote langsung ke
 // sana. String path kosong (tanpa error) berarti user membatalkan dialog.
-func (a *App) DownloadFileFromServer(serverID, remotePath string) error {
+func (a *App) DownloadFileFromServer(serverID, remotePath, asUser string) error {
 	localPath, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{
 		Title:           "Simpan file",
 		DefaultFilename: files.BaseName(remotePath),
@@ -364,5 +385,5 @@ func (a *App) DownloadFileFromServer(serverID, remotePath string) error {
 	if localPath == "" {
 		return nil
 	}
-	return a.filesSvc.DownloadToLocalPath(a.ctx, serverID, remotePath, localPath)
+	return a.filesSvc.DownloadToLocalPath(a.ctx, serverID, remotePath, localPath, asUser)
 }

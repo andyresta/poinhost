@@ -122,6 +122,15 @@ func (s *Service) Save(req SaveServerRequest) (*Server, error) {
 	return saved, nil
 }
 
+// SudoPassword mengembalikan password SSH tersimpan untuk server — dipakai
+// files.Service saat butuh elevasi sudo ke user lain (`sudo -S`) pada server
+// yang auth-nya password (bukan key). Server yang login dengan SSH key
+// tidak punya password untuk dipipe ke sudo -S; jalur itu bergantung pada
+// NOPASSWD di sudoers (lihat files/access.go).
+func (s *Service) SudoPassword(id string) (string, error) {
+	return s.repo.GetPassword(id)
+}
+
 // Delete menghapus server dan melepasnya dari pool (menutup semua koneksi).
 func (s *Service) Delete(id string) error {
 	s.pool.UnregisterServer(id)

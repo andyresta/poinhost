@@ -30,10 +30,12 @@ function detectLanguage(filename: string) {
 export function EditFileModal({
   serverId,
   path,
+  asUser = '',
   onClose,
 }: {
   serverId: string;
   path: string;
+  asUser?: string;
   onClose: () => void;
 }) {
   const [content, setContent] = useState('');
@@ -48,7 +50,7 @@ export function EditFileModal({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    ReadFileContent(serverId, path)
+    ReadFileContent(serverId, path, asUser)
       .then((res) => {
         if (cancelled) return;
         setContent(res.content);
@@ -59,7 +61,7 @@ export function EditFileModal({
     return () => {
       cancelled = true;
     };
-  }, [serverId, path]);
+  }, [serverId, path, asUser]);
 
   function handleClose() {
     if (dirty && !confirm('Ada perubahan yang belum disimpan. Tutup tanpa menyimpan?')) return;
@@ -70,7 +72,7 @@ export function EditFileModal({
     setSaving(true);
     setError(null);
     try {
-      await WriteFileContent(new files.WriteFileRequest({ serverId, path, content }));
+      await WriteFileContent(new files.WriteFileRequest({ serverId, path, content, asUser }));
       setOriginal(content);
     } catch (e) {
       setError(String(e));
