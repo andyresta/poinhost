@@ -32,6 +32,11 @@ type DBEngineStatus struct {
 	DistroName     string `json:"distroName,omitempty"`
 	PackageManager string `json:"packageManager,omitempty"`
 	CanInstall     bool   `json:"canInstall"`
+	// RepoConfigured: repo resmi vendor (MariaDB repo / PostgreSQL PGDG)
+	// sudah terpasang di server ini — hasil dari instalasi versi PINNED
+	// sebelumnya (lihat dbversion.go). Bukan syarat instalasi baru (repo
+	// dipasang otomatis sekali kalau perlu), cuma info status.
+	RepoConfigured bool `json:"repoConfigured"`
 }
 
 // DBDatabaseInfo satu database di server.
@@ -172,13 +177,26 @@ const dbStatusScriptMySQL = `BIN=$(command -v mysql 2>/dev/null || command -v ma
 echo "BIN=$BIN"
 if [ -n "$BIN" ]; then "$BIN" --version 2>&1 | head -1; fi
 echo "ACTIVE=$(systemctl is-active mysql 2>/dev/null || systemctl is-active mariadb 2>/dev/null || echo unknown)"
-echo "ENABLED=$(systemctl is-enabled mysql 2>/dev/null || systemctl is-enabled mariadb 2>/dev/null || echo unknown)"`
+echo "ENABLED=$(systemctl is-enabled mysql 2>/dev/null || systemctl is-enabled mariadb 2>/dev/null || echo unknown)"
+if [ -f /etc/apt/sources.list.d/mariadb.list ] || [ -f /etc/yum.repos.d/mariadb.repo ]; then echo "REPO=1"; fi`
 
+// dbStatusScriptPostgres versi (mayor) diekstrak dari `psql --version` lalu
+// dipakai mencoba nama service ter-versi ala PGDG dulu (`postgresql-16`,
+// dst — dipakai instalasi PINNED lewat repo PGDG di RHEL/dnf, lihat
+// dbversion.go) sebelum fallback ke nama generik `postgresql` (dipakai
+// instalasi bawaan distro/apt, nama service-nya selalu generik apa pun
+// versinya) — supaya status tetap akurat untuk KEDUA jalur instalasi.
 const dbStatusScriptPostgres = `BIN=$(command -v psql 2>/dev/null || true)
 echo "BIN=$BIN"
-if [ -n "$BIN" ]; then "$BIN" --version 2>&1 | head -1; fi
-echo "ACTIVE=$(systemctl is-active postgresql 2>/dev/null || echo unknown)"
-echo "ENABLED=$(systemctl is-enabled postgresql 2>/dev/null || echo unknown)"`
+VER=""
+if [ -n "$BIN" ]; then
+  VLINE=$("$BIN" --version 2>&1 | head -1)
+  echo "$VLINE"
+  VER=$(echo "$VLINE" | grep -oE '[0-9]+' | head -1)
+fi
+echo "ACTIVE=$(systemctl is-active postgresql-$VER 2>/dev/null || systemctl is-active postgresql 2>/dev/null || echo unknown)"
+echo "ENABLED=$(systemctl is-enabled postgresql-$VER 2>/dev/null || systemctl is-enabled postgresql 2>/dev/null || echo unknown)"
+if [ -f /etc/apt/sources.list.d/pgdg.list ] || rpm -q pgdg-redhat-repo >/dev/null 2>&1; then echo "REPO=1"; fi`
 
 // DBStatus membaca status instalasi & service satu engine database.
 func (s *Service) DBStatus(serverID, engine string) (*DBEngineStatus, error) {
@@ -215,6 +233,8 @@ func (s *Service) DBStatus(serverID, engine string) (*DBEngineStatus, error) {
 			st.Active = strings.TrimPrefix(line, "ACTIVE=") == "active"
 		case strings.HasPrefix(line, "ENABLED="):
 			st.Enabled = strings.TrimPrefix(line, "ENABLED=") == "enabled"
+		case line == "REPO=1":
+			st.RepoConfigured = true
 		case st.Version == "" && line != "" && !strings.Contains(line, "="):
 			st.Version = line
 		}
@@ -222,7 +242,15 @@ func (s *Service) DBStatus(serverID, engine string) (*DBEngineStatus, error) {
 	return st, nil
 }
 
-// DBStart mengaktifkan service database yang sudah terpasang tapi tidak aktif.
+// DBStart mengaktifkan service database yang sudah terpasang tapi tidak
+// aktif. PostgreSQL butuh perlakuan khusus: instalasi PINNED lewat repo
+// PGDG di RHEL/dnf (lihat dbversion.go) memberi nama service TER-VERSI
+// (`postgresql-16`, dst — PGDG sengaja begitu supaya beberapa versi bisa
+// hidup berdampingan), beda dari instalasi bawaan distro/apt yang selalu
+// memakai nama generik `postgresql` apa pun versinya. Skrip di bawah coba
+// nama ter-versi dulu (diekstrak dari `psql --version`), fallback ke nama
+// generik — jadi jalan untuk KEDUA jalur instalasi tanpa perlu tahu lebih
+// dulu jalur mana yang dipakai.
 func (s *Service) DBStart(serverID, engine string) (*DBEngineStatus, error) {
 	engine, err := normalizeDBEngine(engine)
 	if err != nil {
@@ -232,15 +260,22 @@ func (s *Service) DBStart(serverID, engine string) (*DBEngineStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	svc := "mariadb"
-	if engine == "postgresql" {
-		svc = "postgresql"
-	}
 	s.mutex.Lock(serverID)
 	defer s.mutex.Unlock(serverID)
-	script := `set -e
-systemctl enable ` + svc + ` 2>/dev/null || systemctl enable mysql 2>/dev/null || true
-systemctl start ` + svc + ` 2>&1 || systemctl start mysql 2>&1 || systemctl restart ` + svc + ` 2>&1`
+
+	var script string
+	if engine == "postgresql" {
+		script = `set -e
+BIN=$(command -v psql 2>/dev/null || true)
+VER=""
+if [ -n "$BIN" ]; then VER=$("$BIN" --version 2>&1 | grep -oE '[0-9]+' | head -1); fi
+systemctl enable postgresql-$VER 2>/dev/null || systemctl enable postgresql 2>/dev/null || true
+systemctl start postgresql-$VER 2>&1 || systemctl start postgresql 2>&1 || systemctl restart postgresql 2>&1`
+	} else {
+		script = `set -e
+systemctl enable mariadb 2>/dev/null || systemctl enable mysql 2>/dev/null || true
+systemctl start mariadb 2>&1 || systemctl start mysql 2>&1 || systemctl restart mariadb 2>&1`
+	}
 	if _, err := s.run(access, script, 20*time.Second); err != nil {
 		return nil, err
 	}
@@ -250,7 +285,13 @@ systemctl start ` + svc + ` 2>&1 || systemctl start mysql 2>&1 || systemctl rest
 // dbInstallScript skrip instalasi per engine+package manager. MariaDB
 // dipakai sebagai pengganti MySQL di apt/dnf/yum (drop-in compatible,
 // tersedia langsung dari repo distro tanpa perlu repo pihak ketiga).
-func dbInstallScript(engine, pm string) (string, bool) {
+//
+// version kosong berarti "bawaan distro" (perilaku asli, tanpa repo pihak
+// ketiga apa pun — versi ikut apa pun yang jadi default di repo OS
+// tersebut, TIDAK selalu versi terbaru). version diisi (mis. "16" untuk
+// PostgreSQL, "10.11" untuk MariaDB) berarti PINNED lewat repo resmi
+// vendor — lihat dbversion.go.
+func dbInstallScript(engine, pm, version string) (string, bool) {
 	// dockerAccess dijalankan di AKHIR instalasi (bukan langkah terpisah
 	// yang bisa lupa dipanggil) — supaya "instalasi MySQL/PostgreSQL" dan
 	// "bisa langsung diakses dari container Docker di host yang sama"
@@ -259,6 +300,10 @@ func dbInstallScript(engine, pm string) (string, bool) {
 	// EnsureDBDockerAccess untuk instalasi yang sudah ada sebelumnya (lihat
 	// dockeraccess.go) — jangan duplikasi logikanya di sini.
 	dockerAccess := dbDockerAccessApplyScript(engine, pm)
+
+	if version != "" {
+		return dbVersionedInstallScript(engine, pm, version, dockerAccess)
+	}
 
 	if engine == "mysql" {
 		switch pm {

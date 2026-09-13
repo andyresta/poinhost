@@ -154,6 +154,10 @@ export function GetWebsiteDBStatus(arg1, arg2) {
   return window['go']['main']['App']['GetWebsiteDBStatus'](arg1, arg2);
 }
 
+export function GetWebsiteDBVersions(arg1) {
+  return window['go']['main']['App']['GetWebsiteDBVersions'](arg1);
+}
+
 export function GetWebsiteDNSPreview(arg1, arg2) {
   return window['go']['main']['App']['GetWebsiteDNSPreview'](arg1, arg2);
 }
