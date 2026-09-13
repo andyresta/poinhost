@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X } from 'lucide-react';
 import { TestServerConnection, TrustServerHostKey } from '../../../wailsjs/go/main/App';
 import { servers } from '../../../wailsjs/go/models';
 import { useTabsStore } from '../../store/tabs';
@@ -128,7 +129,7 @@ export function ServerFormModal({
         <div className="modal-card__header">
           <h2>{mode === 'create' ? 'Tambah Server' : `Edit ${initial?.name ?? ''}`}</h2>
           <button className="modal-card__close" onClick={onClose} aria-label="Tutup">
-            ×
+            <X size={18} />
           </button>
         </div>
 
@@ -231,7 +232,7 @@ export function ServerFormModal({
                   <span key={t} className="tag-chip">
                     {t}
                     <button onClick={() => removeTag(t)} aria-label={`Hapus tag ${t}`}>
-                      ×
+                      <X size={11} />
                     </button>
                   </span>
                 ))}

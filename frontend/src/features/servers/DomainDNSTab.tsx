@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Clipboard, Download } from 'lucide-react';
 import { GetWebsiteDNSPreview, ExportWebsiteDNSZone } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
 
@@ -69,10 +70,10 @@ export function DomainDNSTab({ serverId, domain }: { serverId: string; domain: s
 
       <div className="files-panel__toolbar" style={{ marginTop: 8 }}>
         <button className="btn btn--sm" onClick={() => void handleCopy()}>
-          {copied ? 'Tersalin!' : '📋 Salin'}
+          {copied ? 'Tersalin!' : (<><Clipboard size={13} /> Salin</>)}
         </button>
         <button className="btn btn--sm btn--primary" disabled={!preview.hostValid} onClick={() => void handleDownload()}>
-          ⬇ Unduh (.zone)
+          <Download size={13} /> Unduh (.zone)
         </button>
       </div>
     </div>

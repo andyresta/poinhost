@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { DockerContainerLogs, StreamDockerContainerLogs, StopDockerStream } from '../../../wailsjs/go/main/App';
 import { docker } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { X } from 'lucide-react';
 
 interface LogStreamEvent {
   type: 'line' | 'end' | 'error';
@@ -86,7 +87,7 @@ export function ContainerLogsModal({
             {live && <span className="docker-live-dot" title="Live" />}
           </h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body modal-card__body--editor">

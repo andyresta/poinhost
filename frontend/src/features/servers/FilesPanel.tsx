@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { ArrowUp, Upload, Search, RotateCw, Folder, FileText, Download, FilePenLine, Package, Lock, Pencil } from 'lucide-react';
 import {
   ListFiles,
   CreateFolder,
@@ -203,7 +204,7 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
     <div className="files-panel">
       <div className="files-panel__toolbar">
         <button className="btn btn--sm" disabled={path === rootPath || loading} onClick={() => void load(result?.parent ?? rootPath)}>
-          ⬆ Naik
+          <ArrowUp size={13} /> Naik
         </button>
         <button className="btn btn--sm" disabled={busy} onClick={() => setModal('newFolder')}>
           + Folder
@@ -212,13 +213,13 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
           + File
         </button>
         <button className="btn btn--sm" disabled={busy} onClick={() => void handleUpload()}>
-          ⬆ Upload
+          <Upload size={13} /> Upload
         </button>
         <button className="btn btn--sm" disabled={busy} onClick={() => setModal('search')}>
-          🔍 Cari
+          <Search size={13} /> Cari
         </button>
         <button className="btn btn--sm" disabled={loading} onClick={() => void load(path)}>
-          ⟲
+          <RotateCw size={13} />
         </button>
 
         {server?.useSudo && (
@@ -294,7 +295,7 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
                   <input type="checkbox" checked={selected.has(entry.path)} onChange={() => toggleSelect(entry.path)} />
                 </td>
                 <td className="files-panel__name" onDoubleClick={() => openEntry(entry)}>
-                  <span className="files-panel__icon">{entry.isDir ? '📁' : '📄'}</span>
+                  <span className="files-panel__icon">{entry.isDir ? <Folder size={13} /> : <FileText size={13} />}</span>
                   {entry.name}
                 </td>
                 <td>{formatSize(entry.size, entry.isDir)}</td>
@@ -302,24 +303,24 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
                 <td className="files-panel__row-actions">
                   {!entry.isDir && (
                     <button title="Download" onClick={() => void handleDownload(entry)}>
-                      ⬇
+                      <Download size={14} />
                     </button>
                   )}
                   {!entry.isDir && entry.size <= EDITABLE_SIZE_HINT && (
                     <button title="Edit isi file" onClick={() => setEditTarget(entry)}>
-                      📝
+                      <FilePenLine size={14} />
                     </button>
                   )}
                   {!entry.isDir && ARCHIVE_RE.test(entry.name) && (
                     <button title="Ekstrak di sini" onClick={() => void handleExtract(entry)}>
-                      📦
+                      <Package size={14} />
                     </button>
                   )}
                   <button title="Ubah permission" onClick={() => setChmodTarget(entry)}>
-                    🔒
+                    <Lock size={14} />
                   </button>
                   <button title="Rename" onClick={() => setRenameTarget(entry)}>
-                    ✎
+                    <Pencil size={14} />
                   </button>
                 </td>
               </tr>

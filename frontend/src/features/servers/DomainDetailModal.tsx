@@ -21,6 +21,7 @@ import { DomainDNSTab } from './DomainDNSTab';
 import { DomainSFTPTab } from './DomainSFTPTab';
 import { DomainCronTab } from './DomainCronTab';
 import { DatabaseManagerPanel } from './DatabaseManagerPanel';
+import { X } from 'lucide-react';
 
 const SSL_EMAIL_KEY = 'poinhost.website.sslEmail';
 
@@ -435,7 +436,7 @@ export function DomainDetailModal({
         <div className="modal-card__header">
           <h2>{domain}</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body modal-card__body--editor">

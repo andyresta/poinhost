@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X } from 'lucide-react';
 
 // Modal kecil "Tambah Subdomain" — parent ditampilkan read-only, user cuma
 // mengisi label-nya (mis. "app" untuk app.contoh.com).
@@ -35,7 +36,7 @@ export function SubdomainModal({
         <div className="modal-card__header">
           <h2>Tambah Subdomain</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body">

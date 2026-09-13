@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { RotateCw, Trash2 } from 'lucide-react';
 import { ListWebsiteSFTPAccounts, CreateWebsiteSFTPAccount, DeleteWebsiteSFTPAccount } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
 
@@ -67,7 +68,7 @@ export function DomainSFTPTab({ serverId, domain }: { serverId: string; domain: 
 
       <div className="files-panel__toolbar">
         <button className="btn btn--sm" disabled={busy} onClick={() => void load()}>
-          ⟲ Refresh
+          <RotateCw size={13} /> Refresh
         </button>
         <button className="btn btn--sm btn--primary" onClick={() => setShowForm((v) => !v)}>
           + Akun SFTP
@@ -105,7 +106,7 @@ export function DomainSFTPTab({ serverId, domain }: { serverId: string; domain: 
               </td>
               <td className="files-panel__row-actions">
                 <button disabled={busy} onClick={() => void handleDelete(a.username)}>
-                  🗑
+                  <Trash2 size={14} />
                 </button>
               </td>
             </tr>

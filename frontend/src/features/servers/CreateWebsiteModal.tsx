@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CreateWebsite, GetWebsitePHPStatus } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
+import { X } from 'lucide-react';
 
 const SSL_EMAIL_KEY = 'poinhost.website.sslEmail';
 
@@ -66,7 +67,7 @@ export function CreateWebsiteModal({
         <div className="modal-card__header">
           <h2>Buat Website</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body">

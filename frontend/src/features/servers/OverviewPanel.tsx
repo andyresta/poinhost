@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { RotateCw } from 'lucide-react';
 import { useTabsStore } from '../../store/tabs';
 import { StatusDot } from './StatusDot';
 
@@ -47,7 +48,7 @@ export function OverviewPanel({ serverId }: { serverId: string }) {
           <span>{status?.connection === 'online' ? 'Online' : status?.connection === 'reconnecting' ? 'Menyambung ulang…' : 'Offline'}</span>
         </div>
         <button className="btn btn--ghost btn--sm" onClick={() => void handleRefresh()} disabled={refreshing}>
-          {refreshing ? 'Memuat…' : '↻ Refresh'}
+          {refreshing ? 'Memuat…' : (<><RotateCw size={13} /> Refresh</>)}
         </button>
       </div>
 

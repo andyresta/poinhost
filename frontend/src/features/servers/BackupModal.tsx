@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ExportBackup, ImportBackup } from '../../../wailsjs/go/main/App';
 import { backup } from '../../../wailsjs/go/models';
+import { X } from 'lucide-react';
 
 // Mekanisme pindah data antar perangkat TANPA akun/server/layanan pihak
 // ketiga (lihat internal/core/backup) — satu file terenkripsi passphrase,
@@ -71,7 +72,7 @@ export function BackupModal({ onClose, onImported }: { onClose: () => void; onIm
         <div className="modal-card__header">
           <h2>Backup & Pindah Perangkat</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
 

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X } from 'lucide-react';
 
 // Modal kecil khusus kompresi: nama arsip + format (zip / tar.gz). Terpisah
 // dari PromptModal karena butuh satu field tambahan (segmented format).
@@ -32,7 +33,7 @@ export function CompressModal({
         <div className="modal-card__header">
           <h2>Kompres (gzip)</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body">
