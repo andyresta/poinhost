@@ -22,7 +22,7 @@ export function TabBar() {
           >
             <span
               className="tab-bar__dot"
-              style={{ backgroundColor: server?.color ?? '#6366f1' }}
+              style={{ backgroundColor: server?.color ?? 'var(--accent)' }}
             />
             <span className="tab-bar__title">{tab.title || server?.name || tab.serverId}</span>
             <button

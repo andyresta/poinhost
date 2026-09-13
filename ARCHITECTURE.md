@@ -1591,7 +1591,79 @@ DNS zone §13) — dialog OS asli, file tidak pernah "singgah" di memori JS.
 Import (passphrase + ringkasan hasil: jumlah server/kredensial/tautan yang
 berhasil masuk).
 
-## 16. Yang BELUM di-porting di skeleton ini (roadmap)
+## 16. Tema: terang/gelap via token CSS, bukan palet indigo bawaan template
+
+Permintaan user: toggle tema terang/gelap (ikon, bukan teks), dan desainnya
+jangan terkesan "AI slop" — layout/tipografi/gaya generik yang langsung
+kelihatan bukan pilihan sadar. Sebelum ini, seluruh app HANYA punya satu
+tema (gelap), warnanya hardcoded sebagai hex literal tersebar di
+`App.css` (~17 warna unik dipakai berulang), dan aksennya `#6366f1` —
+indigo di atas slate/navy biru dingin, kombinasi yang jadi default hampir
+semua dashboard bikinan AI karena itu warna aksen default Tailwind.
+
+### Token CSS, bukan tambal-sulam per-komponen
+
+`frontend/src/theme.css` (baru) mendefinisikan semua warna sebagai custom
+property: `:root` = tema terang (nilai dasar), `:root[data-theme='dark']`
+menimpanya untuk tema gelap. `App.css` diubah SATU KALI mengganti tiap
+hex literal (`#232f45`, `#2b3a52`, dst) dengan `var(--surface-hover)`,
+`var(--border)`, dst — bukan menulis ulang tiap file komponen, karena
+hampir semua warna ternyata sudah terpusat di satu file itu (komponen
+lain pakai className yang menunjuk ke sana, bukan inline style warna).
+Teks sekunder (`opacity: 0.5/0.6/dst`, dipakai puluhan kali) SENGAJA tidak
+disentuh — itu sudah otomatis theme-aware selama warna dasarnya
+(`color: var(--text)`) benar, opacity tinggal mengalikan dari situ.
+
+Satu pengecualian disengaja: `--well-bg`/`--well-fg` (panel terminal,
+log stream instalasi) TETAP gelap konstan di kedua tema — konvensi umum
+(terminal/log selalu gelap, lihat VS Code dkk), dan sudah cocok dengan
+tema JS-level xterm.js sendiri (`TerminalPanel.tsx`/`ContainerExecModal.tsx`
+hardcode `#12192a`/`#e5e7eb` di config Terminal-nya sendiri, terpisah dari
+CSS — sengaja tidak diubah, xterm.js merender ke canvas, tidak baca
+custom property CSS sama sekali).
+
+### Palet: terracotta/tembaga hangat, bukan indigo-di-atas-slate
+
+Aksen diganti dari `#6366f1` (indigo) ke `#b85c3a` (terang) /`#d97c57`
+(gelap) — terracotta hangat, dipasangkan dengan netral HANGAT (`#f6f3ed`
+kertas di tema terang, `#1a1712` nyaris-hitam hangat di tema gelap),
+bukan abu-abu/navy dingin bawaan skeleton lama. Warna semantik (sukses/
+bahaya/peringatan) tetap keluarga hijau/merah/kuning yang familiar, cuma
+nada per-tema disesuaikan supaya kontras cukup (mis. hijau lebih gelap di
+tema terang, lebih terang di tema gelap — bukan satu hex tetap yang
+kebetulan kontras di satu tema saja). `COLOR_SWATCHES[0]` (opsi warna
+pertama untuk kartu server, `ServerFormModal.tsx`) dan fallback warna tab
+(`TabBar.tsx`) memakai `var(--accent)` langsung (bukan hex tetap) supaya
+otomatis ikut tema aktif; default warna server baru di backend
+(`servers.Service.Save`, migrasi `001_core.sql`) juga diperbarui ke
+`#b85c3a` — bukan lagi sisa indigo lama.
+
+### Toggle: Zustand + localStorage, diterapkan sebelum render pertama
+
+`frontend/src/store/theme.ts` — state preferensi TERPISAH dari
+`store/tabs.ts` (yang semuanya lewat binding Wails/SQLite): preferensi
+tema murni lokal browser, tidak ada alasan disimpan di server/DB. Modul
+ini menerapkan `document.documentElement.dataset.theme` SEKALI saat
+modul di-import (bukan di dalam `useEffect` komponen manapun) — supaya
+atribut `data-theme` sudah benar SEBELUM render pertama React, tidak ada
+kedipan "salah tema" sesaat. `ThemeToggle.tsx` (ikon SVG matahari/bulan
+polos, BUKAN emoji — konsisten dengan permintaan "jangan AI slop", emoji
+sebagai ikon tombol adalah salah satu ciri paling gampang dikenali dari
+UI bikinan AI) dipasang di header `ServersPage`, ikon yang tampil
+menunjukkan tema TUJUAN kalau diklik (ikon matahari saat gelap = "klik
+untuk terang"), pola umum toggle tema.
+
+### Yang belum diberesin (di luar cakupan permintaan ini)
+
+Ikon emoji ((🐳🔍🔗✖🔑📄⚙🗑▶⏹⌨📊, dst) masih dipakai luas sebagai ikon
+tombol di puluhan tempat (DockerPanel, DatabaseManagerPanel,
+RecreateContainerModal, dst) — mengganti semuanya ke satu sistem ikon SVG
+yang konsisten (mis. lucide/heroicons) adalah pekerjaan terpisah yang
+jauh lebih besar (menyentuh puluhan file), sengaja tidak dibundel diam-
+diam ke perubahan tema ini. `ThemeToggle.tsx` yang baru sudah memberi
+contoh pola SVG-nya untuk pekerjaan lanjutan itu kalau diminta.
+
+## 17. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -1624,11 +1696,17 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
 - Website (§12-§13): domain/vhost Nginx + PHP-FPM + SSL + seluruh 7 tab
   per-domain (Files/Logs/Proxy/DNS/SFTP/Cron/Database) sudah penuh — menu
   Website homepoin sudah selesai di-porting semuanya.
-- Modul lain: services, dbmanager browser server-wide (mysql/pg, tabel/
-  baris/query — beda dari provisioning ringan di §13), migration,
-  reverse-proxy port-forward server-wide, email/ftp server-wide. Semua
-  akan mengikuti pola `servers/`/`terminal/`/`files/`/`docker/`/`website/`
-  di atas satu per satu.
+- ~~dbmanager browser server-wide (mysql/pg, tabel/baris/query)~~ —
+  **SUDAH SELESAI**: Explore (§14) sekarang punya modul "Database"
+  top-level per server (`DatabaseManagerPanel.tsx`), tidak lagi terkunci
+  di bawah tab per-domain Website. Masih pakai bind lokal `127.0.0.1:3306`/
+  `5432` (instalasi standar di server yang sama) — koneksi ke host/port
+  arbitrer (mis. instance di port non-default) belum didukung, tapi itu
+  di luar gap yang diminta ("server-wide", bukan "host mana pun").
+- Modul lain: services, migration, reverse-proxy port-forward server-wide,
+  email/ftp server-wide. Semua akan mengikuti pola
+  `servers/`/`terminal/`/`files/`/`docker/`/`website/` di atas satu per
+  satu.
 - **Split-pane multi-terminal per tab** (>1 sesi shell dalam satu tab) —
   fondasinya sudah ada di backend (`TerminalRegistry` & `terminal.Service`
   sudah mendukung N sesi per tab, lihat §9), yang belum ada cuma UI-nya
@@ -1637,7 +1715,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 17. Menjalankan (development)
+## 18. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev

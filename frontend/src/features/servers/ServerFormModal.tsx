@@ -4,7 +4,7 @@ import { servers } from '../../../wailsjs/go/models';
 import { useTabsStore } from '../../store/tabs';
 
 const COLOR_SWATCHES = [
-  '#6366f1', '#ec4899', '#22c55e', '#f59e0b',
+  'var(--accent)', '#ec4899', '#22c55e', '#f59e0b',
   '#06b6d4', '#a855f7', '#ef4444', '#64748b',
 ];
 

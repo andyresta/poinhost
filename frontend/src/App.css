@@ -2,15 +2,15 @@
   display: flex;
   height: 100vh;
   width: 100vw;
-  color: #e5e7eb;
-  background: #1b2636;
+  color: var(--text);
+  background: var(--bg);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .app__sidebar {
   width: 260px;
   flex-shrink: 0;
-  border-right: 1px solid #2b3a52;
+  border-right: 1px solid var(--border);
   overflow-y: auto;
 }
 
@@ -34,6 +34,17 @@
 .servers-page__header h1 {
   font-size: 15px;
   margin: 0;
+}
+.servers-page__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
 }
 .servers-page__empty {
   font-size: 12px;
@@ -59,11 +70,11 @@
   padding: 8px 10px;
   border-radius: 6px;
   border-left: 3px solid transparent;
-  background: #202b40;
+  background: var(--surface);
   cursor: pointer;
 }
 .server-card:hover {
-  background: #232f45;
+  background: var(--surface-hover);
 }
 .server-card__main {
   min-width: 0;
@@ -117,9 +128,9 @@
 
 /* Buttons */
 .btn {
-  border: 1px solid #2b3a52;
-  background: #232f45;
-  color: #e5e7eb;
+  border: 1px solid var(--border);
+  background: var(--surface-hover);
+  color: var(--text);
   border-radius: 6px;
   padding: 7px 12px;
   font-size: 13px;
@@ -130,16 +141,20 @@
   cursor: not-allowed;
 }
 .btn--primary {
-  background: #6366f1;
-  border-color: #6366f1;
-  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 .btn--ghost {
   background: transparent;
 }
 .btn--danger {
-  background: #ef4444;
-  border-color: #ef4444;
+  background: var(--danger);
+  border-color: var(--danger);
   color: #fff;
 }
 .btn--sm {
@@ -151,7 +166,7 @@
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(10, 14, 22, 0.6);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -162,8 +177,8 @@
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 64px);
   overflow-y: auto;
-  background: #1b2636;
-  border: 1px solid #2b3a52;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 10px;
   display: flex;
   flex-direction: column;
@@ -194,7 +209,7 @@
 .db-explorer__sidebar {
   width: 220px;
   flex-shrink: 0;
-  border-right: 1px solid #2b3a52;
+  border-right: 1px solid var(--border);
   overflow-y: auto;
   padding: 10px;
 }
@@ -221,10 +236,10 @@
   text-overflow: ellipsis;
 }
 .db-explorer__sidebar-item:hover {
-  background: #232f45;
+  background: var(--surface-hover);
 }
 .db-explorer__sidebar-item--active {
-  background: #2b3a52;
+  background: var(--border);
   font-weight: 600;
 }
 .db-explorer__main {
@@ -246,7 +261,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  border: 1px solid #2b3a52;
+  border: 1px solid var(--border);
   border-radius: 6px;
 }
 .db-explorer__grid {
@@ -261,15 +276,15 @@
   font-size: 10px;
   text-transform: uppercase;
   opacity: 0.5;
-  border-bottom: 1px solid #2b3a52;
+  border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  background: #1b2636;
+  background: var(--bg);
   white-space: nowrap;
 }
 .db-explorer__grid td {
   padding: 4px 8px;
-  border-bottom: 1px solid #232f45;
+  border-bottom: 1px solid var(--surface-hover);
   white-space: nowrap;
   max-width: 260px;
   overflow: hidden;
@@ -296,7 +311,7 @@
 .db-explorer__query-box {
   width: 100%;
   min-height: 60px;
-  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   resize: vertical;
 }
@@ -305,8 +320,8 @@
   flex-wrap: wrap;
   gap: 6px;
   padding: 8px;
-  background: #16202f;
-  border: 1px solid #2b3a52;
+  background: var(--well-bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
 }
 .db-explorer__insert-form label {
@@ -330,14 +345,14 @@
   height: 100%;
 }
 .editor-dirty-dot {
-  color: #f59e0b;
+  color: var(--warning);
 }
 .modal-card__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  border-bottom: 1px solid #2b3a52;
+  border-bottom: 1px solid var(--border);
 }
 .modal-card__header h2 {
   font-size: 15px;
@@ -362,7 +377,7 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 16px;
-  border-top: 1px solid #2b3a52;
+  border-top: 1px solid var(--border);
 }
 .modal-card__hint {
   font-size: 11px;
@@ -402,9 +417,9 @@
 .form-field input,
 .form-field textarea,
 .form-field select {
-  background: #232f45;
-  border: 1px solid #2b3a52;
-  color: #e5e7eb;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
   padding: 7px 8px;
   border-radius: 5px;
   font-size: 13px;
@@ -421,7 +436,7 @@
 
 .segmented {
   display: inline-flex;
-  border: 1px solid #2b3a52;
+  border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
   margin-bottom: 10px;
@@ -436,7 +451,7 @@
   opacity: 0.6;
 }
 .segmented__item--active {
-  background: #232f45;
+  background: var(--surface-hover);
   opacity: 1;
 }
 
@@ -452,7 +467,7 @@
   cursor: pointer;
 }
 .color-swatch--active {
-  border-color: #e5e7eb;
+  border-color: var(--text);
 }
 
 .tag-input {
@@ -460,8 +475,8 @@
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
-  background: #232f45;
-  border: 1px solid #2b3a52;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
   border-radius: 5px;
   padding: 4px 6px;
 }
@@ -478,7 +493,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #2b3a52;
+  background: var(--border);
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 11px;
@@ -491,8 +506,8 @@
   cursor: pointer;
 }
 .tag-chip--readonly {
-  background: #1b2636;
-  border: 1px solid #2b3a52;
+  background: var(--bg);
+  border: 1px solid var(--border);
 }
 
 .connection-status {
@@ -501,20 +516,20 @@
   font-size: 12px;
 }
 .connection-status--pending {
-  background: #232f45;
+  background: var(--surface-hover);
   opacity: 0.8;
 }
 .connection-status--ok {
-  background: rgba(34, 197, 94, 0.12);
-  color: #4ade80;
+  background: var(--success-bg);
+  color: var(--success);
 }
 .connection-status--error {
-  background: rgba(239, 68, 68, 0.12);
-  color: #f87171;
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 .connection-status--warn {
-  background: rgba(245, 158, 11, 0.12);
-  color: #fbbf24;
+  background: var(--warning-bg);
+  color: var(--warning);
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -529,7 +544,7 @@
 /* Tab bar */
 .tab-bar {
   display: flex;
-  border-bottom: 1px solid #2b3a52;
+  border-bottom: 1px solid var(--border);
   overflow-x: auto;
 }
 .tab-bar__item {
@@ -537,7 +552,7 @@
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  border-right: 1px solid #2b3a52;
+  border-right: 1px solid var(--border);
   cursor: pointer;
   white-space: nowrap;
   font-size: 13px;
@@ -545,7 +560,7 @@
 }
 .tab-bar__item--active {
   opacity: 1;
-  background: #232f45;
+  background: var(--surface-hover);
 }
 .tab-bar__dot {
   width: 6px;
@@ -587,7 +602,7 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #2b3a52;
+  border-right: 1px solid var(--border);
   padding: 8px;
   gap: 2px;
 }
@@ -604,7 +619,7 @@
 }
 .workspace__nav-item--active {
   opacity: 1;
-  background: #232f45;
+  background: var(--surface-hover);
 }
 .workspace__panel {
   flex: 1;
@@ -631,7 +646,7 @@
 .terminal-panel {
   flex: 1;
   min-height: 0;
-  background: #12192a;
+  background: var(--well-bg);
   border-radius: 6px;
   padding: 8px;
 }
@@ -647,17 +662,17 @@
   border-radius: 50%;
   margin-right: 6px;
   flex-shrink: 0;
-  background: #64748b;
+  background: var(--neutral);
 }
 .status-dot--online {
-  background: #22c55e;
+  background: var(--success);
   box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
 }
 .status-dot--offline {
-  background: #64748b;
+  background: var(--neutral);
 }
 .status-dot--reconnecting {
-  background: #f59e0b;
+  background: var(--warning);
   animation: status-pulse 1.4s ease-in-out infinite;
 }
 @keyframes status-pulse {
@@ -684,7 +699,7 @@
 }
 .overview__error {
   font-size: 12px;
-  color: #f87171;
+  color: var(--danger);
   margin-bottom: 10px;
 }
 .overview__grid {
@@ -693,7 +708,7 @@
   gap: 12px;
 }
 .overview__stat {
-  background: #202b40;
+  background: var(--surface);
   border-radius: 8px;
   padding: 10px 12px;
 }
@@ -712,12 +727,12 @@
   margin-top: 6px;
   height: 4px;
   border-radius: 2px;
-  background: #2b3a52;
+  background: var(--border);
   overflow: hidden;
 }
 .overview__bar-fill {
   height: 100%;
-  background: #6366f1;
+  background: var(--accent);
 }
 .overview__checked-at {
   margin-top: 14px;
@@ -771,7 +786,7 @@
   min-height: 0;
   overflow-y: auto;
   position: relative;
-  border: 1px solid #2b3a52;
+  border: 1px solid var(--border);
   border-radius: 6px;
 }
 .files-panel__table {
@@ -786,17 +801,17 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.5;
-  border-bottom: 1px solid #2b3a52;
+  border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  background: #1b2636;
+  background: var(--bg);
 }
 .files-panel__table td {
   padding: 6px 8px;
-  border-bottom: 1px solid #232f45;
+  border-bottom: 1px solid var(--surface-hover);
 }
 .files-panel__row--selected {
-  background: #232f45;
+  background: var(--surface-hover);
 }
 .files-panel__name {
   cursor: default;
@@ -841,7 +856,7 @@ tr:hover .files-panel__row-actions {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(27, 38, 54, 0.6);
+  background: rgba(0, 0, 0, 0.4);
   font-size: 12px;
 }
 
@@ -872,7 +887,7 @@ tr:hover .files-panel__row-actions {
   font-size: 13px;
 }
 .chmod-octal code {
-  background: #232f45;
+  background: var(--surface-hover);
   padding: 2px 8px;
   border-radius: 4px;
 }
@@ -887,9 +902,9 @@ tr:hover .files-panel__row-actions {
   margin-left: 6px;
 }
 .files-panel__asuser select {
-  background: #232f45;
-  border: 1px solid #2b3a52;
-  color: #e5e7eb;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
   border-radius: 5px;
   padding: 4px 6px;
   font-size: 11px;
@@ -903,9 +918,9 @@ tr:hover .files-panel__row-actions {
 }
 .search-input-row input {
   flex: 1;
-  background: #232f45;
-  border: 1px solid #2b3a52;
-  color: #e5e7eb;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
   padding: 7px 8px;
   border-radius: 5px;
   font-size: 13px;
@@ -929,7 +944,7 @@ tr:hover .files-panel__row-actions {
   font-size: 12px;
 }
 .search-result-item:hover {
-  background: #232f45;
+  background: var(--surface-hover);
 }
 .search-result-path {
   flex: 1;
@@ -950,7 +965,7 @@ tr:hover .files-panel__row-actions {
   display: flex;
   gap: 4px;
   margin-bottom: 10px;
-  border-bottom: 1px solid #2b3a52;
+  border-bottom: 1px solid var(--border);
 }
 .docker-panel__subnav-item {
   background: none;
@@ -964,7 +979,7 @@ tr:hover .files-panel__row-actions {
 }
 .docker-panel__subnav-item--active {
   opacity: 1;
-  border-bottom-color: #6366f1;
+  border-bottom-color: var(--accent);
 }
 .docker-panel__version {
   margin-left: auto;
@@ -976,37 +991,37 @@ tr:hover .files-panel__row-actions {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #232f45;
+  background: var(--surface-hover);
 }
 .docker-badge--running {
-  color: #22c55e;
-  background: rgba(34, 197, 94, 0.12);
+  color: var(--success);
+  background: var(--success-bg);
 }
 .docker-badge--stopped {
-  color: #94a3b8;
+  color: var(--neutral);
 }
 .docker-badge--paused,
 .docker-badge--restarting {
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.12);
+  color: var(--warning);
+  background: var(--warning-bg);
 }
 
 /* Engine install wizard */
 .docker-engine {
   padding: 12px;
-  background: #202b40;
+  background: var(--surface);
   border-radius: 8px;
   font-size: 13px;
 }
 .docker-engine__log {
   margin-top: 12px;
-  background: #12192a;
+  background: var(--well-bg);
   border-radius: 6px;
   padding: 10px;
   max-height: 320px;
   overflow-y: auto;
   font-size: 12px;
-  font-family: Menlo, Consolas, monospace;
+  font-family: var(--font-mono);
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -1017,7 +1032,7 @@ tr:hover .files-panel__row-actions {
   height: 7px;
   border-radius: 50%;
   margin-left: 8px;
-  background: #22c55e;
+  background: var(--success);
   animation: status-pulse 1.4s ease-in-out infinite;
 }
 
@@ -1031,9 +1046,9 @@ tr:hover .files-panel__row-actions {
   margin-right: 8px;
 }
 .docker-exec__shell select {
-  background: #232f45;
-  border: 1px solid #2b3a52;
-  color: #e5e7eb;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
   border-radius: 5px;
   padding: 3px 6px;
   font-size: 11px;
@@ -1066,9 +1081,9 @@ tr:hover .files-panel__row-actions {
 .docker-recreate__row input[type='text'],
 .docker-recreate__row input:not([type]),
 .docker-recreate__row input[type='number'] {
-  background: #232f45;
-  border: 1px solid #2b3a52;
-  color: #e5e7eb;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
   border-radius: 5px;
   padding: 5px 7px;
   font-size: 12px;
@@ -1076,9 +1091,9 @@ tr:hover .files-panel__row-actions {
   min-width: 0;
 }
 .docker-recreate__row select {
-  background: #232f45;
-  border: 1px solid #2b3a52;
-  color: #e5e7eb;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
   border-radius: 5px;
   padding: 5px 7px;
   font-size: 12px;
@@ -1091,9 +1106,9 @@ tr:hover .files-panel__row-actions {
   white-space: nowrap;
 }
 .docker-recreate__memory {
-  background: #232f45;
-  border: 1px solid #2b3a52;
-  color: #e5e7eb;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
   border-radius: 5px;
   padding: 6px 8px;
   font-size: 13px;
@@ -1104,17 +1119,17 @@ tr:hover .files-panel__row-actions {
   margin-bottom: 10px;
 }
 .docker-network-form input {
-  background: #232f45;
-  border: 1px solid #2b3a52;
-  color: #e5e7eb;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
   border-radius: 5px;
   padding: 5px 7px;
   font-size: 12px;
 }
 .docker-network-form select {
-  background: #232f45;
-  border: 1px solid #2b3a52;
-  color: #e5e7eb;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
   border-radius: 5px;
   padding: 5px 7px;
   font-size: 12px;
@@ -1139,7 +1154,7 @@ tr:hover .files-panel__row-actions {
 .answer-like-notice ul {
   margin: 6px 0 8px;
   padding-left: 18px;
-  color: #f59e0b;
+  color: var(--warning);
 }
 .subdomain-input {
   display: flex;

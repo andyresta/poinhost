@@ -3,6 +3,7 @@ import { useTabsStore } from '../../store/tabs';
 import { ServerFormModal } from './ServerFormModal';
 import { BackupModal } from './BackupModal';
 import { StatusDot } from './StatusDot';
+import { ThemeToggle } from './ThemeToggle';
 import type { servers } from '../../../wailsjs/go/models';
 
 // Panel kiri: kartu server (bukan daftar teks polos seperti homepoin) +
@@ -35,12 +36,15 @@ export function ServersPage() {
     <div className="servers-page">
       <div className="servers-page__header">
         <h1>Servers</h1>
-        <button className="btn btn--sm" title="Export/Import data (pindah ke perangkat lain)" onClick={() => setShowBackup(true)}>
-          ⇄ Backup
-        </button>
-        <button className="btn btn--primary btn--sm" onClick={() => setModal({ mode: 'create' })}>
-          + Tambah
-        </button>
+        <div className="servers-page__header-actions">
+          <ThemeToggle />
+          <button className="btn btn--sm" title="Export/Import data (pindah ke perangkat lain)" onClick={() => setShowBackup(true)}>
+            ⇄ Backup
+          </button>
+          <button className="btn btn--primary btn--sm" onClick={() => setModal({ mode: 'create' })}>
+            + Tambah
+          </button>
+        </div>
       </div>
 
       <ul className="server-cards">
