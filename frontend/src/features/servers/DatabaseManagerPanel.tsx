@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { CircleCheck, TriangleAlert, Boxes, Link2, KeyRound, Search, X } from 'lucide-react';
 import {
   GetWebsiteDBStatus,
   StartWebsiteDB,
@@ -383,10 +384,10 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
               <div className="docker-engine">
                 <p>
                   {dockerAccess.bindAllInterfaces ? (
-                    <>✅ Container Docker di host ini sudah bisa connect ke {engine === 'mysql' ? 'MySQL/MariaDB' : 'PostgreSQL'} ini.</>
+                    <><CircleCheck size={13} /> Container Docker di host ini sudah bisa connect ke {engine === 'mysql' ? 'MySQL/MariaDB' : 'PostgreSQL'} ini.</>
                   ) : (
                     <>
-                      ⚠️ Container Docker di host ini <strong>belum bisa</strong> connect ke {engine === 'mysql' ? 'MySQL/MariaDB' : 'PostgreSQL'} ini —
+                      <TriangleAlert size={13} /> Container Docker di host ini <strong>belum bisa</strong> connect ke {engine === 'mysql' ? 'MySQL/MariaDB' : 'PostgreSQL'} ini —
                       masih hanya mendengarkan di 127.0.0.1 (loopback).
                     </>
                   )}
@@ -404,7 +405,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                 {dockerAccess.message && <p className="overview__error">{dockerAccess.message}</p>}
                 {(!dockerAccess.bindAllInterfaces || !dockerAccess.firewallRuleActive) && (
                   <button className="btn btn--sm btn--primary" disabled={dockerAccessBusy} onClick={() => void handleEnsureDockerAccess()}>
-                    {dockerAccessBusy ? 'Menerapkan…' : '🐳 Aktifkan akses dari Docker'}
+                    {dockerAccessBusy ? 'Menerapkan…' : (<><Boxes size={13} /> Aktifkan akses dari Docker</>)}
                   </button>
                 )}
               </div>
@@ -431,7 +432,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                           disabled={busy}
                           onClick={() => void handleToggleDomainLink(d.name)}
                         >
-                          {linkedDbs.includes(d.name) ? '🔗 Tertaut' : '🔗 Tautkan'}
+                          {linkedDbs.includes(d.name) ? (<><Link2 size={13} /> Tertaut</>) : (<><Link2 size={13} /> Tautkan</>)}
                         </button>
                       </td>
                     )}
@@ -513,7 +514,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                       {engine === 'mysql' && <td>{u.host}</td>}
                       <td className="files-panel__row-actions">
                         <button title="Terapkan ulang grants (privilege terpilih di atas, semua DB)" disabled={busy} onClick={() => void handleReapplyGrants(u)}>
-                          🔑
+                          <KeyRound size={14} />
                         </button>
                         {cred && (
                           <>
@@ -522,16 +523,16 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                               disabled={busy}
                               onClick={() => setExploreTarget({ engine, username: u.username, host: u.host ?? '%' })}
                             >
-                              🔍
+                              <Search size={14} />
                             </button>
                             <button title="Lupakan password tersimpan" disabled={busy} onClick={() => void handleForgetCredential(u.username, u.host ?? '%')}>
-                              ✖
+                              <X size={14} />
                             </button>
                           </>
                         )}
                         {!cred && (
                           <button title="Hubungkan kredensial (simpan password untuk Explore)" disabled={busy} onClick={() => setLinkingUser(u)}>
-                            🔗
+                            <Link2 size={14} />
                           </button>
                         )}
                       </td>

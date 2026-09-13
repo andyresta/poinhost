@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { X, Database, RotateCw, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   MySQLExploreListDatabases,
   MySQLExploreListTables,
@@ -263,7 +264,7 @@ export function MySQLExplorerModal({
             Explore MySQL — {username}@{host}
           </h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
 
@@ -289,7 +290,7 @@ export function MySQLExplorerModal({
                   className={`db-explorer__sidebar-item${selectedDb === db ? ' db-explorer__sidebar-item--active' : ''}`}
                   onClick={() => void openDatabase(db)}
                 >
-                  🗄 {db}
+                  <Database size={13} /> {db}
                 </button>
               ))}
 
@@ -366,7 +367,7 @@ export function MySQLExplorerModal({
                       title="Muat ulang halaman ini + hitung ulang total (data mungkin berubah dari tempat lain)"
                       onClick={() => void loadRows(selectedTable, page, { skipTotal: false })}
                     >
-                      ⟳
+                      <RotateCw size={14} />
                     </button>
                     <button className="btn btn--sm btn--primary" style={{ marginLeft: 'auto' }} onClick={() => setShowInsertForm((v) => !v)}>
                       + Baris
@@ -441,7 +442,7 @@ export function MySQLExplorerModal({
                             })}
                             <td>
                               <button title="Hapus baris" disabled={busy} onClick={() => void handleDeleteRow(ri)}>
-                                🗑
+                                <Trash2 size={14} />
                               </button>
                             </td>
                           </tr>
@@ -459,7 +460,7 @@ export function MySQLExplorerModal({
 
                   <div className="db-explorer__pagination">
                     <button className="btn btn--sm" disabled={page <= 0} onClick={() => void loadRows(selectedTable, page - 1, { skipTotal: true })}>
-                      ← Sebelumnya
+                      <ChevronLeft size={13} /> Sebelumnya
                     </button>
                     <span>
                       Halaman {page + 1} / {totalPages}
@@ -469,7 +470,7 @@ export function MySQLExplorerModal({
                       disabled={page + 1 >= totalPages}
                       onClick={() => void loadRows(selectedTable, page + 1, { skipTotal: true })}
                     >
-                      Berikutnya →
+                      Berikutnya <ChevronRight size={13} />
                     </button>
                   </div>
                 </>

@@ -4,6 +4,7 @@ import { EditorView } from '@codemirror/view';
 import { langNames, loadLanguage, type LanguageName } from '@uiw/codemirror-extensions-langs';
 import { ReadFileContent, WriteFileContent } from '../../../wailsjs/go/main/App';
 import { files } from '../../../wailsjs/go/models';
+import { X } from 'lucide-react';
 
 // Ekstensi umum yang tidak match langsung ke nama bahasa CodeMirror tapi
 // jelas maksudnya — sisanya (yang benar-benar tidak dikenal) tetap bisa
@@ -92,7 +93,7 @@ export function EditFileModal({
             {dirty && <span className="editor-dirty-dot" title="Belum disimpan"> ●</span>}
           </h2>
           <button className="modal-card__close" onClick={handleClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body modal-card__body--editor">

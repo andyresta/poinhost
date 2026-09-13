@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { RotateCw, Trash2 } from 'lucide-react';
 import { ListDockerNetworks, CreateDockerNetwork, RemoveDockerNetwork } from '../../../wailsjs/go/main/App';
 import { docker } from '../../../wailsjs/go/models';
 
@@ -73,7 +74,7 @@ export function NetworksPanel({ serverId }: { serverId: string }) {
     <div className="files-panel">
       <div className="files-panel__toolbar">
         <button className="btn btn--sm" disabled={loading} onClick={() => void load()}>
-          ⟲ Refresh
+          <RotateCw size={13} /> Refresh
         </button>
         <button className="btn btn--sm btn--primary" onClick={() => setShowForm((v) => !v)}>
           + Network
@@ -127,7 +128,7 @@ export function NetworksPanel({ serverId }: { serverId: string }) {
                 <td className="files-panel__row-actions">
                   {!n.builtin && (
                     <button title="Hapus" disabled={busy} onClick={() => void handleRemove(n.name)}>
-                      🗑
+                      <Trash2 size={14} />
                     </button>
                   )}
                 </td>

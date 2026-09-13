@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X } from 'lucide-react';
 
 // Modal input teks kecil generik (nama folder/file baru, rename, dst) —
 // dipakai berkali-kali di FilesPanel supaya tidak perlu `window.prompt()`
@@ -39,7 +40,7 @@ export function PromptModal({
         <div className="modal-card__header">
           <h2>{title}</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body">

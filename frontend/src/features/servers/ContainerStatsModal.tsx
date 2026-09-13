@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StreamDockerContainerStats, StopDockerStream } from '../../../wailsjs/go/main/App';
 import { docker } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { X } from 'lucide-react';
 
 interface StatsStreamEvent {
   type: 'stats' | 'end' | 'error';
@@ -60,7 +61,7 @@ export function ContainerStatsModal({
         <div className="modal-card__header">
           <h2>Statistik — {name}</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body">

@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { OpenDockerExec, WriteTerminal, ResizeTerminal, CloseTerminal } from '../../../wailsjs/go/main/App';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { X } from 'lucide-react';
 
 function decodeBase64(b64: string): Uint8Array {
   const binary = atob(b64);
@@ -112,7 +113,7 @@ export function ContainerExecModal({
             </select>
           </label>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body modal-card__body--editor">

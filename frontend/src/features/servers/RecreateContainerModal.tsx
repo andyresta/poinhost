@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { InspectDockerContainer, RecreateDockerContainer } from '../../../wailsjs/go/main/App';
 import { docker } from '../../../wailsjs/go/models';
 
@@ -95,7 +96,7 @@ export function RecreateContainerModal({
         <div className="modal-card__header">
           <h2>Konfigurasi — {name}</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body modal-card__body--editor docker-recreate">
@@ -125,7 +126,7 @@ export function RecreateContainerModal({
                       onChange={(ev) => setEnv(env.map((x, j) => (j === i ? new docker.EnvVar({ ...x, value: ev.target.value }) : x)))}
                     />
                     <button className="btn btn--sm btn--danger" onClick={() => setEnv(env.filter((_, j) => j !== i))}>
-                      ✕
+                      <X size={14} />
                     </button>
                   </div>
                 ))}
@@ -179,7 +180,7 @@ export function RecreateContainerModal({
                       <option value="localhost">{scopeLabel('localhost')}</option>
                     </select>
                     <button className="btn btn--sm btn--danger" onClick={() => setPorts(ports.filter((_, j) => j !== i))}>
-                      ✕
+                      <X size={14} />
                     </button>
                   </div>
                 ))}
@@ -229,7 +230,7 @@ export function RecreateContainerModal({
                       ro
                     </label>
                     <button className="btn btn--sm btn--danger" onClick={() => setVolumes(volumes.filter((_, j) => j !== i))}>
-                      ✕
+                      <X size={14} />
                     </button>
                   </div>
                 ))}

@@ -1653,17 +1653,83 @@ UI bikinan AI) dipasang di header `ServersPage`, ikon yang tampil
 menunjukkan tema TUJUAN kalau diklik (ikon matahari saat gelap = "klik
 untuk terang"), pola umum toggle tema.
 
-### Yang belum diberesin (di luar cakupan permintaan ini)
+### Ikon emoji sebagai ikon tombol — sudah diberesin di §17
 
-Ikon emoji ((🐳🔍🔗✖🔑📄⚙🗑▶⏹⌨📊, dst) masih dipakai luas sebagai ikon
-tombol di puluhan tempat (DockerPanel, DatabaseManagerPanel,
-RecreateContainerModal, dst) — mengganti semuanya ke satu sistem ikon SVG
-yang konsisten (mis. lucide/heroicons) adalah pekerjaan terpisah yang
-jauh lebih besar (menyentuh puluhan file), sengaja tidak dibundel diam-
-diam ke perubahan tema ini. `ThemeToggle.tsx` yang baru sudah memberi
-contoh pola SVG-nya untuk pekerjaan lanjutan itu kalau diminta.
+Waktu perubahan tema ini ditulis, ikon emoji (🐳🔍🔗✖🔑📄⚙🗑▶⏹⌨📊, dst)
+masih dipakai luas sebagai ikon tombol di puluhan tempat, sengaja tidak
+dibundel diam-diam ke perubahan tema ini karena jauh lebih besar
+(menyentuh puluhan file). Sudah dikerjakan sebagai pekerjaan terpisah,
+lihat §17.
 
-## 17. Yang BELUM di-porting di skeleton ini (roadmap)
+## 17. Ikon: SVG konsisten (lucide-react), bukan emoji
+
+Permintaan user lanjutan dari §16: ganti semua ikon emoji ke sistem SVG
+yang konsisten — emoji sebagai ikon tombol adalah salah satu ciri paling
+gampang dikenali dari UI bikinan AI (disebut eksplisit di §16 juga).
+Sebelum ini, ~90 pemakaian emoji/simbol tersebar di ~30 file TSX
+(`DockerPanel`, `FilesPanel`, `DatabaseManagerPanel`,
+`RecreateContainerModal`, dst).
+
+### Library: `lucide-react`, bukan hand-rolled SVG per-ikon
+
+`ThemeToggle.tsx` (§16) sudah punya contoh SVG matahari/bulan tulisan
+tangan, tapi menulis ulang ~40 ikon berbeda dengan tangan tidak realistis
+dan hasilnya gampang tidak konsisten (stroke-width, viewBox beda-beda).
+`lucide-react` ditambahkan sebagai dependency (`frontend/package.json`) —
+satu set ikon outline konsisten, tree-shakeable per-komponen yang
+di-import.
+
+### Menyatukan simbol yang tadinya tidak konsisten
+
+Proses penggantian juga jadi kesempatan membenahi inkonsistensi lama yang
+tersembunyi di balik variasi glyph: tiga simbol "refresh" berbeda
+(`↻`/`⟲`/`⟳`) dipakai di file berbeda untuk aksi yang SAMA — disatukan
+jadi satu `RotateCw`. Tiga simbol "tutup" berbeda (`×`/`✕`/`✖`) juga
+dipakai tidak konsisten antar modal — disatukan jadi satu `X`. Satu typo
+ditemukan di `WebsitePanel.tsx`: tombol "Tambah subdomain" memakai
+karakter fullwidth-plus (U+FF0B, `＋`) alih-alih `+` biasa yang dipakai
+di tempat lain — diganti `Plus`. Glyph `⬆` dipakai untuk DUA arti berbeda
+tergantung konteks (navigasi ke folder induk di `FilesPanel` vs upload
+file) — dibedakan jadi `ArrowUp` dan `Upload` sesuai konteks masing-
+masing, bukan disamakan.
+
+Satu aturan layout ditambahkan sekali di `App.css` (bukan style per-
+instance di tiap tombol):
+
+```css
+button svg {
+  vertical-align: -2px;
+  flex-shrink: 0;
+}
+```
+
+### Bug yang ditemukan saat verifikasi visual: `[hidden]` kalah cascade
+
+Verifikasi dilakukan dengan Playwright (stub `window.go.main.App` dan
+`window.runtime` karena app ini Wails asli, tidak ada binding itu di
+browser polos) untuk screenshot tiap panel di kedua tema. Saat berpindah
+modul dalam satu tab server (mis. Files → Docker), panel yang sudah
+pernah dikunjungi tetap kelihatan (numpuk di bawah panel aktif) walau
+atribut HTML `hidden` sudah benar terpasang di DOM.
+
+Penyebabnya: `.workspace__module { display: flex; ... }` adalah aturan
+CSS ber-origin "author" (ditulis developer), sedangkan styling bawaan
+`[hidden]` (`display: none`) ber-origin "user-agent" (bawaan browser) —
+dalam cascade CSS, aturan author MENANG atas aturan user-agent pada
+specificity yang setara, terlepas dari urutan penulisan. Jadi
+`display: flex` di `.workspace__module` diam-diam mengalahkan `hidden`
+bawaan browser. Dikonfirmasi lewat `getComputedStyle` sebelum (`display:
+"flex"` walau `hidden: true`) dan sesudah (`display: "none"`) perbaikan.
+Bug ini sudah ada sebelum sesi ini, tidak berkaitan dengan tema/ikon,
+ditemukan murni sebagai efek samping verifikasi visual. Perbaikan:
+
+```css
+.workspace__module[hidden] {
+  display: none;
+}
+```
+
+## 18. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -1715,7 +1781,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 18. Menjalankan (development)
+## 19. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev

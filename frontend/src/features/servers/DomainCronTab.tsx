@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { X, RotateCw, FileText, Pencil, Play, Pause, Trash2 } from 'lucide-react';
 import {
   ListWebsiteCronJobs,
   CreateWebsiteCronJob,
@@ -76,7 +77,7 @@ function CronLogModal({ serverId, domain, jobId, onClose }: { serverId: string; 
         <div className="modal-card__header">
           <h2>Log Job</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body modal-card__body--editor">
@@ -168,7 +169,7 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
 
       <div className="files-panel__toolbar">
         <button className="btn btn--sm" onClick={() => void load()}>
-          ⟲ Refresh
+          <RotateCw size={13} /> Refresh
         </button>
         <button className="btn btn--sm btn--primary" onClick={() => setForm(emptyForm())}>
           + Job Baru
@@ -201,16 +202,16 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
               </td>
               <td className="files-panel__row-actions">
                 <button title="Log" onClick={() => setLogJobId(job.id)}>
-                  📄
+                  <FileText size={14} />
                 </button>
                 <button title="Edit" onClick={() => setForm(formFromJob(job))}>
-                  ✎
+                  <Pencil size={14} />
                 </button>
                 <button title={job.enabled ? 'Nonaktifkan' : 'Aktifkan'} disabled={busy === job.id} onClick={() => void handleToggle(job)}>
-                  {job.enabled ? '⏸' : '▶'}
+                  {job.enabled ? <Pause size={14} /> : <Play size={14} />}
                 </button>
                 <button title="Hapus" disabled={busy === job.id} onClick={() => void handleDelete(job)}>
-                  🗑
+                  <Trash2 size={14} />
                 </button>
               </td>
             </tr>
@@ -231,7 +232,7 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
             <div className="modal-card__header">
               <h2>{form.id ? 'Edit Job' : 'Job Baru'}</h2>
               <button className="modal-card__close" onClick={() => setForm(null)}>
-                ×
+                <X size={18} />
               </button>
             </div>
             <div className="modal-card__body">

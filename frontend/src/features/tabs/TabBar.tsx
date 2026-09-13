@@ -1,3 +1,4 @@
+import { X } from 'lucide-react';
 import { useTabsStore } from '../../store/tabs';
 
 // Tab bar ala browser: satu tab = satu server yang sedang dikelola. Klik
@@ -33,7 +34,7 @@ export function TabBar() {
                 void closeTab(tab.id);
               }}
             >
-              ×
+              <X size={12} />
             </button>
           </div>
         );

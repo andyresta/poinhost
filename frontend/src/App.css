@@ -126,6 +126,13 @@
   opacity: 1;
 }
 
+/* Ikon SVG (lucide-react) dipakai di dalam tombol/teks di seluruh app —
+   satu aturan letak di sini, bukan style per-instance di tiap tombol. */
+button svg {
+  vertical-align: -2px;
+  flex-shrink: 0;
+}
+
 /* Buttons */
 .btn {
   border: 1px solid var(--border);
@@ -641,6 +648,14 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+}
+/* `display: flex` di atas kalah spesifisitas yang sama dengan `[hidden]`
+   bawaan browser TAPI menang urutan (author style > UA style) — tanpa
+   baris ini, modul yang sudah pernah dikunjungi tetap tampil flex walau
+   attribute hidden terpasang (numpuk di atas modul yang aktif, bukan
+   benar-benar disembunyikan). */
+.workspace__module[hidden] {
+  display: none;
 }
 
 .terminal-panel {

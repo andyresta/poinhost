@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Check, Trash2 } from 'lucide-react';
 import {
   GetWebsiteProxyStatus,
   SetWebsiteProxyDomain,
@@ -149,10 +150,10 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
               <tr key={r.path}>
                 <td>{r.path}</td>
                 <td>{r.target}</td>
-                <td>{r.webSocket ? '✓' : '—'}</td>
+                <td>{r.webSocket ? <Check size={13} /> : '—'}</td>
                 <td className="files-panel__row-actions">
                   <button disabled={busy} onClick={() => void handleDeleteRule(r.path)}>
-                    🗑
+                    <Trash2 size={14} />
                   </button>
                 </td>
               </tr>

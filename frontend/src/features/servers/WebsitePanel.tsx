@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { RotateCw, CornerDownRight, Lock, Settings, Plus, Pause, Play, Trash2, X } from 'lucide-react';
 import { ListWebsites, CreateWebsiteSubdomain, DeleteWebsite, SetWebsiteEnabled } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
 import { WebsiteEngineWizard } from './WebsiteEngineWizard';
@@ -112,7 +113,7 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
         <>
           <div className="files-panel__toolbar">
             <button className="btn btn--sm" disabled={loading} onClick={() => void load()}>
-              ⟲ Refresh
+              <RotateCw size={13} /> Refresh
             </button>
             <button className="btn btn--sm btn--primary" onClick={() => setShowCreate(true)}>
               + Buat Website
@@ -159,11 +160,11 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
                 {rows.map(({ domain: d, indent }) => (
                   <tr key={d.domain}>
                     <td className="files-panel__name" style={indent ? { paddingLeft: 28 } : undefined}>
-                      {indent && '↳ '}
+                      {indent && <CornerDownRight size={12} />}
                       {d.domain}
                     </td>
                     <td>{d.phpEnabled ? `PHP ${d.phpVersion}` : '—'}</td>
-                    <td>{d.sslEnabled ? '🔒 Aktif' : '—'}</td>
+                    <td>{d.sslEnabled ? (<><Lock size={12} /> Aktif</>) : '—'}</td>
                     <td>
                       <span className={`docker-badge ${d.enabled ? 'docker-badge--running' : 'docker-badge--stopped'}`}>
                         {d.enabled ? 'Aktif' : 'Nonaktif'}
@@ -171,11 +172,11 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
                     </td>
                     <td className="files-panel__row-actions">
                       <button title="Kelola" onClick={() => setDetailDomain(d.domain)}>
-                        ⚙
+                        <Settings size={14} />
                       </button>
                       {!d.isSubdomain && (
                         <button title="Tambah subdomain" onClick={() => setSubdomainParent(d.domain)}>
-                          ＋
+                          <Plus size={14} />
                         </button>
                       )}
                       <button
@@ -183,10 +184,10 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
                         disabled={busyDomain === d.domain}
                         onClick={() => void toggleEnabled(d)}
                       >
-                        {d.enabled ? '⏸' : '▶'}
+                        {d.enabled ? <Pause size={14} /> : <Play size={14} />}
                       </button>
                       <button title="Hapus" disabled={busyDomain === d.domain} onClick={() => setDeleteTarget(d)}>
-                        🗑
+                        <Trash2 size={14} />
                       </button>
                     </td>
                   </tr>
@@ -226,7 +227,7 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
             <div className="modal-card__header">
               <h2>Hapus Website</h2>
               <button className="modal-card__close" onClick={() => setDeleteTarget(null)}>
-                ×
+                <X size={18} />
               </button>
             </div>
             <div className="modal-card__body">

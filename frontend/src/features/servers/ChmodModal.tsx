@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { X } from 'lucide-react';
 
 const ROWS: { label: string; bit: number }[] = [
   { label: 'Baca', bit: 4 },
@@ -64,7 +65,7 @@ export function ChmodModal({
         <div className="modal-card__header">
           <h2>Ubah Permission</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body">

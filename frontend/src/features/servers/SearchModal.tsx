@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Folder, FileText, X } from 'lucide-react';
 import { SearchFiles } from '../../../wailsjs/go/main/App';
 import { files } from '../../../wailsjs/go/models';
 
@@ -50,7 +51,7 @@ export function SearchModal({
         <div className="modal-card__header">
           <h2>Cari File</h2>
           <button className="modal-card__close" onClick={onClose}>
-            ×
+            <X size={18} />
           </button>
         </div>
         <div className="modal-card__body">
@@ -75,7 +76,7 @@ export function SearchModal({
               {result.hits.length === 0 && <li className="files-panel__empty">Tidak ada hasil untuk "{result.query}".</li>}
               {result.hits.map((hit) => (
                 <li key={hit.path} className="search-result-item">
-                  <span>{hit.isDir ? '📁' : '📄'}</span>
+                  <span>{hit.isDir ? <Folder size={14} /> : <FileText size={14} />}</span>
                   <span className="search-result-path">{hit.path}</span>
                   <button
                     className="btn btn--sm"
