@@ -81,8 +81,15 @@ func NewApp() *App {
 	mutex := sshpool.NewServerMutexRegistry()
 	executor := sshpool.NewExecutor(pool, mutex, cfg.Executor)
 
+	// vault SATU instance dipakai bersama untuk semua rahasia lokal — password
+	// SSH server (servers.Repository, lihat migrateLegacyPasswords) maupun
+	// kredensial database (website.Service, fitur Explore) — bukan dua vault
+	// terpisah untuk hal yang secara prinsip sama (rahasia di mesin user,
+	// tidak pernah ditulis ke server target).
+	vault := secrets.New(cfg.DataDir)
+
 	serversRepo := servers.NewRepository(db)
-	serversSvc := servers.NewService(serversRepo, pool, executor)
+	serversSvc := servers.NewService(serversRepo, pool, executor, vault)
 	collector := servers.NewCollector(serversSvc)
 
 	sessionMgr := session.NewManager(db)
@@ -93,7 +100,6 @@ func NewApp() *App {
 	filesSvc := files.NewService(sftpClient, executor, serversSvc)
 
 	dockerSvc := docker.NewService(serversSvc, executor, mutex)
-	vault := secrets.New(cfg.DataDir)
 	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault)
 	backupSvc := backup.NewService(serversSvc, websiteSvc)
 
