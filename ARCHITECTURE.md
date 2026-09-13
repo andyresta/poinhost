@@ -1273,6 +1273,66 @@ PostgreSQL juga.
 5. Database bisa ditautkan ke domain manapun lewat tombol "🔗 Tautkan" di
    tabel Database — murni kurasi, tidak mengubah akses.
 
+### Akses Docker→database: bind otomatis + firewall terbatas, bukan setting manual
+
+Keluhan user: di homepoin, container Docker di host yang sama tidak bisa
+connect ke MySQL/PostgreSQL yang terpasang di host itu, walau
+`host.docker.internal` sudah diarahkan dengan benar di sisi Docker. Itu
+bukan masalah Docker — akar masalahnya di database itu sendiri: instalasi
+paket distro bawaan (MariaDB/PostgreSQL) SELALU cuma mendengarkan di
+`127.0.0.1` (loopback). Koneksi yang datang dari container (lewat
+interface bridge Docker, bukan loopback) ditolak di level TCP sebelum
+sempat autentikasi sama sekali — grant user/role sama sekali tidak
+relevan di titik ini. `host.docker.internal` menyelesaikan resolusi DNS
+container→host dengan benar; yang menolaknya adalah socket listener
+database, bukan DNS-nya.
+
+Solusi (`internal/modules/website/dockeraccess.go`) dibuat SEMPIT, bukan
+"buka ke internet" ala fitur remote-access `pgmanager` homepoin yang
+sengaja tidak diporting (§14 di atas, alasan arsitektur tunnel):
+
+- **Bind**: MySQL/MariaDB → `bind-address = 0.0.0.0` lewat file drop-in
+  baru `99-poinhost-docker.cnf` (di `mariadb.conf.d/` untuk distro
+  apt-based, `my.cnf.d/` untuk dnf/yum) — bukan mengedit file config
+  vendor yang lokasinya beda-beda antar distro. PostgreSQL →
+  `ALTER SYSTEM SET listen_addresses = '*';`, ditulis ke
+  `postgresql.auto.conf` (prioritas tertinggi, jalur SQL yang stabil di
+  semua versi, tidak perlu mencari `postgresql.conf` di path spesifik
+  distro).
+- **Pembatasan jangkauan**: bukan `0.0.0.0/0`, tapi `172.16.0.0/12` —
+  rentang alamat bridge network Docker BAWAAN (`docker0` di
+  `172.17.0.0/16`, plus jaringan bridge kustom yang secara default
+  dialokasikan Docker dari `172.18.0.0/16` sampai `172.31.0.0/16`).
+  Hanya mengizinkan traffic dari Docker lokal di mesin yang sama, bukan
+  membuka port ke jaringan/internet luar.
+- **Asimetri keamanan MySQL vs PostgreSQL**: PostgreSQL punya lapisan
+  proteksi kedua yang independen dari firewall OS — `pg_hba.conf`
+  menolak sumber IP yang tidak cocok di level protokolnya sendiri,
+  sebelum autentikasi, jadi tetap aman walau firewall OS tidak aktif.
+  Baris `host all all 172.16.0.0/12 md5` ditambahkan ke `pg_hba.conf`
+  (dicari via `SHOW hba_file;`, idempotent lewat marker
+  `poinhost-docker-access`). MySQL TIDAK punya mekanisme setara — sintaks
+  grant `user@host` MySQL adalah pola ala `LIKE`, bukan pencocokan CIDR
+  sungguhan — sehingga untuk MySQL, firewall OS yang aktif jadi lapisan
+  proteksi utama satu-satunya.
+- **Firewall**: fitur ini TIDAK PERNAH memasang atau mengaktifkan
+  firewall baru (keputusan sebesar itu di luar cakupan fitur ini) —
+  hanya menambah SATU aturan allow sempit (scope `172.16.0.0/12`, per
+  port) ke `ufw`/`firewalld` KALAU salah satunya terdeteksi sedang aktif.
+  Kalau tidak ada firewall aktif terdeteksi untuk MySQL, bind-address
+  tetap diubah sesuai permintaan, tapi hasilnya membawa pesan peringatan
+  eksplisit (bukan diam-diam meninggalkan port terbuka tanpa
+  pemberitahuan).
+- **Dua jalur, satu implementasi**: (1) otomatis dibakukan ke akhir
+  `dbInstallScript` — instalasi BARU lewat wizard poinhost langsung siap
+  diakses dari Docker tanpa langkah tambahan apa pun, sesuai permintaan
+  user; (2) jalur retrofit mandiri (`EnsureDBDockerAccess` /
+  `GetDBDockerAccessStatus`, tab Database menampilkan status +
+  tombol "🐳 Aktifkan akses dari Docker") untuk instalasi yang sudah ada
+  SEBELUM fitur ini ditambahkan. Keduanya memanggil fungsi pembangun
+  skrip yang sama (`dbDockerAccessApplyScript`), jadi hanya ada satu
+  implementasi untuk dijaga, bukan dua yang berpotensi berbeda.
+
 ## 15. Backup: export/import data lintas perangkat (tanpa akun/server)
 
 Latar belakang: user bertanya soal sign-in Google + sync otomatis antar

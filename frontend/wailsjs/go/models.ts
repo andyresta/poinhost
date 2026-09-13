@@ -1419,6 +1419,26 @@ export namespace website {
 	        this.charset = source["charset"];
 	    }
 	}
+	export class DBDockerAccessStatus {
+	    engine: string;
+	    bindAllInterfaces: boolean;
+	    firewallDetected?: string;
+	    firewallRuleActive: boolean;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DBDockerAccessStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.engine = source["engine"];
+	        this.bindAllInterfaces = source["bindAllInterfaces"];
+	        this.firewallDetected = source["firewallDetected"];
+	        this.firewallRuleActive = source["firewallRuleActive"];
+	        this.message = source["message"];
+	    }
+	}
 	export class DBEngineStatus {
 	    engine: string;
 	    installed: boolean;
