@@ -2,8 +2,11 @@ package servers
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 
+	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/google/uuid"
 )
@@ -13,11 +16,45 @@ type Service struct {
 	repo     *Repository
 	pool     *sshpool.Pool
 	executor *sshpool.Executor
+	// vault menyimpan password SSH server (SAMA instance secrets.Vault yang
+	// dipakai website.Service untuk kredensial database) — bukan lagi kolom
+	// password_enc di SQLite apa adanya, lihat migrateLegacyPasswords.
+	vault secrets.Vault
 }
 
 // NewService membuat servers.Service baru.
-func NewService(repo *Repository, pool *sshpool.Pool, executor *sshpool.Executor) *Service {
-	return &Service{repo: repo, pool: pool, executor: executor}
+func NewService(repo *Repository, pool *sshpool.Pool, executor *sshpool.Executor, vault secrets.Vault) *Service {
+	return &Service{repo: repo, pool: pool, executor: executor, vault: vault}
+}
+
+// vaultKeyForServerPassword key deterministik di vault untuk password SSH
+// satu server — tidak perlu kolom terpisah, cukup dihitung ulang dari ID.
+func vaultKeyForServerPassword(id string) string {
+	return "serverpass:" + id
+}
+
+// migrateLegacyPasswords memindahkan password SSH yang masih tersimpan apa
+// adanya di kolom password_enc (versi poinhost sebelum vault ini ada) ke
+// secrets.Vault, lalu mengosongkan kolom itu — SEKALI jalan tiap startup,
+// aman diulang (begitu kolom kosong, ListLegacyPasswords tidak
+// mengembalikan apa-apa lagi). Best-effort per server: satu server gagal
+// dipindah tidak menghalangi server lain ikut termigrasi.
+func (s *Service) migrateLegacyPasswords() error {
+	legacy, err := s.repo.ListLegacyPasswords()
+	if err != nil {
+		return fmt.Errorf("baca password lama: %w", err)
+	}
+	var errs []error
+	for id, pw := range legacy {
+		if err := s.vault.Set(vaultKeyForServerPassword(id), pw); err != nil {
+			errs = append(errs, fmt.Errorf("migrasi password server %s ke vault: %w", id, err))
+			continue
+		}
+		if err := s.repo.ClearLegacyPassword(id); err != nil {
+			errs = append(errs, fmt.Errorf("hapus password lama server %s: %w", id, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // Bootstrap memuat semua server dari DB dan mendaftarkannya ke pool +
@@ -26,6 +63,14 @@ func NewService(repo *Repository, pool *sshpool.Pool, executor *sshpool.Executor
 // kali membuka tab ke sebuah server, yang terjadi di homepoin karena
 // WarmConnection cuma dipanggil on-demand per server saat diklik.
 func (s *Service) Bootstrap(ctx context.Context) error {
+	if err := s.migrateLegacyPasswords(); err != nil {
+		// Tidak fatal — server yang belum termigrasi tetap bisa dipakai
+		// (registerToPool di bawah ini cuma dapat password kosong untuknya
+		// sampai migrasi berhasil di startup berikutnya atau usernya
+		// menyimpan ulang lewat form edit).
+		log.Printf("migrasi password server lama ke vault: %v", err)
+	}
+
 	list, err := s.repo.List()
 	if err != nil {
 		return err
@@ -46,7 +91,7 @@ func (s *Service) warmAll(list []*Server) {
 }
 
 func (s *Service) registerToPool(srv *Server) {
-	password, _ := s.repo.GetPassword(srv.ID)
+	password, _, _ := s.vault.Get(vaultKeyForServerPassword(srv.ID))
 	s.pool.RegisterServer(sshpool.ServerConfig{
 		ID:       srv.ID,
 		Host:     srv.Host,
@@ -99,13 +144,21 @@ func (s *Service) Save(req SaveServerRequest) (*Server, error) {
 
 	if req.ID == "" {
 		srv.ID = uuid.NewString()
-		if err := s.repo.Create(srv, req.Password); err != nil {
+		if err := s.repo.Create(srv); err != nil {
 			return nil, err
 		}
 	} else {
 		srv.ID = req.ID
-		if err := s.repo.Update(srv, req.Password); err != nil {
+		if err := s.repo.Update(srv); err != nil {
 			return nil, err
+		}
+	}
+	// Password kosong berarti "jangan ubah" (form edit tidak pernah
+	// menampilkan/mengirim ulang password lama) — vault yang sudah
+	// tersimpan dibiarkan apa adanya.
+	if req.Password != "" {
+		if err := s.vault.Set(vaultKeyForServerPassword(srv.ID), req.Password); err != nil {
+			return nil, fmt.Errorf("simpan password ke vault lokal: %w", err)
 		}
 	}
 
@@ -134,12 +187,17 @@ func (s *Service) UpsertFromBackup(srv *Server, rawPassword string) error {
 		srv.ID = uuid.NewString()
 	}
 	if _, err := s.repo.Get(srv.ID); err != nil {
-		if err := s.repo.Create(srv, rawPassword); err != nil {
+		if err := s.repo.Create(srv); err != nil {
 			return err
 		}
 	} else {
-		if err := s.repo.Update(srv, rawPassword); err != nil {
+		if err := s.repo.Update(srv); err != nil {
 			return err
+		}
+	}
+	if rawPassword != "" {
+		if err := s.vault.Set(vaultKeyForServerPassword(srv.ID), rawPassword); err != nil {
+			return fmt.Errorf("simpan password ke vault lokal: %w", err)
 		}
 	}
 	saved, err := s.repo.Get(srv.ID)
@@ -156,12 +214,16 @@ func (s *Service) UpsertFromBackup(srv *Server, rawPassword string) error {
 // tidak punya password untuk dipipe ke sudo -S; jalur itu bergantung pada
 // NOPASSWD di sudoers (lihat files/access.go).
 func (s *Service) SudoPassword(id string) (string, error) {
-	return s.repo.GetPassword(id)
+	password, _, err := s.vault.Get(vaultKeyForServerPassword(id))
+	return password, err
 }
 
-// Delete menghapus server dan melepasnya dari pool (menutup semua koneksi).
+// Delete menghapus server, melepasnya dari pool (menutup semua koneksi), dan
+// membuang password tersimpannya dari vault (best-effort — server sudah
+// terhapus dari SQL apa pun hasilnya).
 func (s *Service) Delete(id string) error {
 	s.pool.UnregisterServer(id)
+	_ = s.vault.Delete(vaultKeyForServerPassword(id))
 	return s.repo.Delete(id)
 }
 
@@ -210,7 +272,7 @@ func (s *Service) TrustHostKey(req SaveServerRequest) error {
 func (s *Service) probeConfig(req SaveServerRequest) sshpool.ServerConfig {
 	password := req.Password
 	if password == "" && req.ID != "" && req.AuthType == "password" {
-		password, _ = s.repo.GetPassword(req.ID)
+		password, _, _ = s.vault.Get(vaultKeyForServerPassword(req.ID))
 	}
 
 	id := req.ID

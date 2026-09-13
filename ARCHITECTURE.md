@@ -238,6 +238,42 @@ poinhost (`ServerFormModal.tsx`, `ServersPage.tsx`):
   memanggil `DeleteServer` — supaya tidak ada bookkeeping sesi terminal yang
   nyangkut setelah `Pool.UnregisterServer` menutup koneksinya di level pool.
 
+### Password SSH server: disimpan lewat `secrets.Vault`, bukan kolom SQLite apa adanya
+
+Sebelumnya password SSH server (kalau auth-nya `password`, bukan key) hanya
+disimpan apa adanya di kolom `servers.password_enc` — nama kolomnya
+menjanjikan enkripsi tapi isinya benar-benar plaintext (lihat TODO yang dulu
+ada di `repository.go`). Kalau file `poinhost.db` di-copy/dicuri, semua
+password SSH ikut bocor. Sekarang dipindah ke `internal/core/secrets.Vault`
+— SATU instance yang sama persis dipakai kredensial database (MySQL/
+PostgreSQL Explore, §14): OS keychain dulu, fallback file lokal AES-256-GCM
+kalau OS keychain tidak tersedia (mis. Linux tanpa Secret Service jalan).
+`app.go` membuat vault-nya SEKALI lalu meneruskan instance yang sama ke
+`servers.NewService` maupun `website.NewService` — bukan dua vault terpisah
+untuk hal yang secara prinsip sama.
+
+`servers.Repository.Create`/`Update` sekarang sama sekali tidak menyentuh
+kolom `password_enc` lagi (metadata saja) — password dibaca/ditulis
+`servers.Service` lewat `vault.Get`/`vault.Set` dengan key deterministik
+`serverpass:<id>`, pola yang sama persis dengan `vaultKeyForDBCredential` di
+§14. Semantik "password kosong di form edit berarti jangan ubah" (frontend
+tidak pernah menampilkan/mengirim ulang password lama) tetap dipertahankan
+di layer Service, cuma sumbernya pindah dari kolom SQL ke vault.
+
+**Migrasi data lama**: karena kolom `password_enc` sudah lama ada dan
+mungkin sudah terisi plaintext dari instalasi poinhost sebelum vault ini
+ditambahkan, `servers.Service.Bootstrap` menjalankan
+`migrateLegacyPasswords()` SEKALI di setiap startup, sebelum server
+didaftarkan ke pool: baca semua baris dengan `password_enc` terisi, pindahkan
+tiap satu ke vault (`vault.Set`), lalu kosongkan kolomnya
+(`ClearLegacyPassword`) — supaya tidak ada plaintext yang tertinggal di
+SQLite. Best-effort per server (satu server gagal dipindah tidak
+menghalangi server lain ikut termigrasi, dan password_enc-nya SENGAJA
+dibiarkan terisi sampai berhasil dipindah di startup berikutnya — bukan
+dihapus begitu saja sebelum vault-nya benar-benar tersimpan). Idempotent:
+begitu kolomnya kosong, `ListLegacyPasswords` tidak mengembalikan apa-apa
+lagi, jadi aman dijalankan tiap startup selamanya.
+
 ## 7. Login/register homepoin: DIHAPUS, bukan sekadar belum di-porting
 
 homepoin butuh master password + TOTP karena dia jalan sebagai **web server**
@@ -1450,15 +1486,11 @@ berhasil masuk).
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
 
-- **Enkripsi kredensial SSH server saat disimpan.** `internal/core/secrets`
-  (§14 — OS keychain + fallback AES-256-GCM lokal) SEKARANG SUDAH ADA dan
-  dipakai penuh untuk password user database (fitur MySQL Manager), tapi
-  **password SSH server sendiri masih disimpan APA ADANYA** di kolom
-  `servers.password_enc` (lihat komentar TODO di `repository.go`) — belum
-  dimigrasikan ke vault yang sama. Pakai auth key-based untuk sekarang,
-  jangan simpan password SSH produksi sampai ini dimigrasikan. Ini tetap
-  relevan walau tanpa login, karena melindungi isi file `poinhost.db`
-  kalau di-copy/dicuri, bukan melindungi akses ke aplikasi.
+- ~~Enkripsi kredensial SSH server saat disimpan~~ — **SUDAH SELESAI**:
+  password SSH server sekarang dipindah ke `secrets.Vault` yang sama dipakai
+  kredensial database, plus migrasi otomatis satu-kali untuk instalasi lama
+  yang masih punya plaintext di kolom `password_enc` (lihat subsection baru
+  di §6).
 - **Jobs & event bus untuk operasi jangka panjang** (mis. instalasi paket,
   migrasi file/DB/Docker) — polanya sudah ada (`runtime.EventsEmit`/
   `EventsOn`, dipakai server status di §8 dan terminal di §9), tinggal
