@@ -5,11 +5,13 @@ import { TerminalPanel } from './TerminalPanel';
 import { FilesPanel } from './FilesPanel';
 import { DockerPanel } from './DockerPanel';
 import { WebsitePanel } from './WebsitePanel';
+import { DatabaseManagerPanel } from './DatabaseManagerPanel';
 import type { session } from '../../../wailsjs/go/models';
 
 const MODULES = [
   { key: 'overview', label: 'Overview' },
   { key: 'website', label: 'Website' },
+  { key: 'database', label: 'Database' },
   { key: 'files', label: 'Files' },
   { key: 'terminal', label: 'Terminal' },
   { key: 'services', label: 'Services' },
@@ -22,7 +24,7 @@ const MODULES = [
 // `hidden`, bukan unmount) selama tab ini masih terbuka. Modul lain masih
 // placeholder, belum ada state yang perlu dipertahankan, jadi render
 // sederhana saja.
-const STATEFUL_MODULES = new Set(['overview', 'terminal', 'files', 'docker', 'website']);
+const STATEFUL_MODULES = new Set(['overview', 'terminal', 'files', 'docker', 'website', 'database']);
 
 // Isi satu tab: nav modul di kiri + panel konten modul aktif di kanan.
 // Modul services di sini masih placeholder — akan di-porting bertahap dari
@@ -86,6 +88,12 @@ export function ServerWorkspace({ tab }: { tab: session.Tab }) {
         {visited.has('website') && (
           <div className="workspace__module" hidden={tab.activeModule !== 'website'}>
             <WebsitePanel serverId={tab.serverId} />
+          </div>
+        )}
+
+        {visited.has('database') && (
+          <div className="workspace__module" hidden={tab.activeModule !== 'database'}>
+            <DatabaseManagerPanel serverId={tab.serverId} />
           </div>
         )}
 

@@ -1360,6 +1360,26 @@ PostgreSQL juga.
 5. Database bisa ditautkan ke domain manapun lewat tombol "🔗 Tautkan" di
    tabel Database — murni kurasi, tidak mengubah akses.
 
+### Titik masuk: tab per-domain DAN modul "Database" top-level per server
+
+Awalnya satu-satunya jalan ke sini adalah tab Database di bawah SATU
+domain tertentu (§13) — padahal, seperti dicatat di §13, modul ini
+TERNYATA bukan benar-benar domain-scoped sama sekali. Praktiknya ini
+berarti server yang belum punya domain/website apa pun (mis. server
+database murni) tidak bisa memakai fitur ini sama sekali, meski
+backend-nya sudah sanggup — murni keterbatasan navigasi UI, bukan
+keterbatasan backend.
+
+Diperbaiki dengan mengekstrak seluruh isi tab Database
+(`DomainDatabaseTab.tsx` lama) jadi `DatabaseManagerPanel.tsx` dengan
+prop `domain` OPSIONAL: diisi → tampilkan section "tautkan ke domain"
+(dipakai dari `DomainDetailModal.tsx`, sama seperti sebelumnya);
+dikosongkan → section itu dilewati saja. Modul baru "Database" didaftarkan
+di `ServerWorkspace.tsx` sebagai peer Website/Files/Terminal/Docker —
+sekarang setiap tab server punya akses langsung ke provisioning + Explore
+database TANPA perlu domain/website apa pun dulu. Nol perubahan Go: kedua
+titik masuk memanggil binding `website.Service` yang PERSIS SAMA.
+
 ### Akses Docker→database: bind otomatis + firewall terbatas, bukan setting manual
 
 Keluhan user: di homepoin, container Docker di host yang sama tidak bisa

@@ -20,7 +20,7 @@ import { DomainProxyTab } from './DomainProxyTab';
 import { DomainDNSTab } from './DomainDNSTab';
 import { DomainSFTPTab } from './DomainSFTPTab';
 import { DomainCronTab } from './DomainCronTab';
-import { DomainDatabaseTab } from './DomainDatabaseTab';
+import { DatabaseManagerPanel } from './DatabaseManagerPanel';
 
 const SSL_EMAIL_KEY = 'poinhost.website.sslEmail';
 
@@ -455,7 +455,7 @@ export function DomainDetailModal({
           {tab === 'dns' && <DomainDNSTab serverId={serverId} domain={domain} />}
           {tab === 'sftp' && <DomainSFTPTab serverId={serverId} domain={domain} />}
           {tab === 'cron' && <DomainCronTab serverId={serverId} domain={domain} />}
-          {tab === 'database' && <DomainDatabaseTab serverId={serverId} domain={domain} />}
+          {tab === 'database' && <DatabaseManagerPanel serverId={serverId} domain={domain} />}
         </div>
         <div className="modal-card__footer">
           <button className="btn btn--ghost" onClick={onClose}>

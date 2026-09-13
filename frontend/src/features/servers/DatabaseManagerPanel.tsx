@@ -30,16 +30,20 @@ interface StreamLineEvent {
   message?: string;
 }
 
-// Tab Database — utilitas provisioning MySQL/PostgreSQL ringan
-// (database/user/grants), sama seperti fondasinya di homepoin. Beda dari
-// homepoin: (1) user MySQL/role PostgreSQL bisa dihubungkan ke fitur Explore
-// (koneksi driver asli, lihat MySQLExplorerModal/PGExplorerModal) dengan
-// password disimpan LOKAL di vault mesin ini — TIDAK ditulis ke server
-// target; (2) database bisa ditautkan ke domain ini secara eksplisit (kurasi
-// lokal poinhost, murni organisatoris — MySQL/PostgreSQL sendiri tetap
-// server-wide), beda dari field Domain homepoin yang cuma hiasan UI tak
-// terpakai backend.
-export function DomainDatabaseTab({ serverId, domain }: { serverId: string; domain: string }) {
+// Utilitas provisioning MySQL/PostgreSQL ringan (database/user/grants) +
+// Explore (koneksi driver asli, browse tabel/baris/query — lihat
+// MySQLExplorerModal/PGExplorerModal), password disimpan LOKAL di vault
+// mesin ini, TIDAK pernah ditulis ke server target.
+//
+// Dipakai di DUA tempat: (1) tab "Database" per-domain di Website (dengan
+// `domain` diisi — tambahan: bisa menautkan database ke domain itu, murni
+// kurasi lokal poinhost, tidak mengubah akses); (2) modul "Database"
+// top-level per server (`domain` dikosongkan) — supaya bisa dipakai
+// langsung tanpa perlu server itu punya domain/website apa pun dulu, sesuai
+// temuan bahwa modul ini TERNYATA bukan benar-benar domain-scoped (lihat
+// komentar di internal/modules/website/database.go): MySQL/PostgreSQL
+// server-wide, Domain di request backend cuma breadcrumb UI.
+export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; domain?: string }) {
   const [engine, setEngine] = useState<'mysql' | 'postgresql'>('mysql');
   const [status, setStatus] = useState<website.DBEngineStatus | null>(null);
   const [databases, setDatabases] = useState<website.DBDatabaseInfo[]>([]);
@@ -87,8 +91,12 @@ export function DomainDatabaseTab({ serverId, domain }: { serverId: string; doma
         setDockerAccess(null);
       }
       setCredentials(await ListWebsiteDBCredentials(serverId));
-      const links = await ListWebsiteDomainDatabases(serverId, domain);
-      setLinkedDbs(links.filter((l) => l.engine === engine).map((l) => l.database));
+      if (domain) {
+        const links = await ListWebsiteDomainDatabases(serverId, domain);
+        setLinkedDbs(links.filter((l) => l.engine === engine).map((l) => l.database));
+      } else {
+        setLinkedDbs([]);
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -145,6 +153,7 @@ export function DomainDatabaseTab({ serverId, domain }: { serverId: string; doma
   }
 
   async function handleToggleDomainLink(dbName: string) {
+    if (!domain) return;
     setBusy(true);
     setError(null);
     try {
@@ -374,15 +383,17 @@ export function DomainDatabaseTab({ serverId, domain }: { serverId: string; doma
                 {databases.map((d) => (
                   <tr key={d.name}>
                     <td>{d.name}</td>
-                    <td className="files-panel__row-actions">
-                      <button
-                        title={linkedDbs.includes(d.name) ? 'Tertaut ke situs ini — klik untuk lepas' : 'Tautkan database ini ke situs ini (kurasi lokal saja)'}
-                        disabled={busy}
-                        onClick={() => void handleToggleDomainLink(d.name)}
-                      >
-                        {linkedDbs.includes(d.name) ? '🔗 Tertaut' : '🔗 Tautkan'}
-                      </button>
-                    </td>
+                    {domain && (
+                      <td className="files-panel__row-actions">
+                        <button
+                          title={linkedDbs.includes(d.name) ? 'Tertaut ke situs ini — klik untuk lepas' : 'Tautkan database ini ke situs ini (kurasi lokal saja)'}
+                          disabled={busy}
+                          onClick={() => void handleToggleDomainLink(d.name)}
+                        >
+                          {linkedDbs.includes(d.name) ? '🔗 Tertaut' : '🔗 Tautkan'}
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {databases.length === 0 && (
@@ -392,7 +403,7 @@ export function DomainDatabaseTab({ serverId, domain }: { serverId: string; doma
                 )}
               </tbody>
             </table>
-            {linkedDbs.length > 0 && (
+            {domain && linkedDbs.length > 0 && (
               <p className="chmod-path">Database yang dipakai situs ini: {linkedDbs.join(', ')}</p>
             )}
           </section>
