@@ -122,6 +122,10 @@ export function EnableWebsiteSSLAutoRenew(arg1, arg2) {
   return window['go']['main']['App']['EnableWebsiteSSLAutoRenew'](arg1, arg2);
 }
 
+export function EnsureWebsiteDBDockerAccess(arg1, arg2) {
+  return window['go']['main']['App']['EnsureWebsiteDBDockerAccess'](arg1, arg2);
+}
+
 export function ExportBackup(arg1, arg2) {
   return window['go']['main']['App']['ExportBackup'](arg1, arg2);
 }
@@ -136,6 +140,10 @@ export function ExtractArchive(arg1) {
 
 export function ForgetWebsiteDBCredential(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ForgetWebsiteDBCredential'](arg1, arg2, arg3, arg4);
+}
+
+export function GetWebsiteDBDockerAccessStatus(arg1, arg2) {
+  return window['go']['main']['App']['GetWebsiteDBDockerAccessStatus'](arg1, arg2);
 }
 
 export function GetWebsiteDBPrivileges() {

@@ -67,6 +67,8 @@ export function EnableWebsiteSSL(arg1:string,arg2:string):Promise<website.SSLSta
 
 export function EnableWebsiteSSLAutoRenew(arg1:string,arg2:string):Promise<website.SSLStatus>;
 
+export function EnsureWebsiteDBDockerAccess(arg1:string,arg2:string):Promise<website.DBDockerAccessStatus>;
+
 export function ExportBackup(arg1:string,arg2:boolean):Promise<string>;
 
 export function ExportWebsiteDNSZone(arg1:string,arg2:string):Promise<void>;
@@ -74,6 +76,8 @@ export function ExportWebsiteDNSZone(arg1:string,arg2:string):Promise<void>;
 export function ExtractArchive(arg1:files.ExtractRequest):Promise<void>;
 
 export function ForgetWebsiteDBCredential(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function GetWebsiteDBDockerAccessStatus(arg1:string,arg2:string):Promise<website.DBDockerAccessStatus>;
 
 export function GetWebsiteDBPrivileges():Promise<Array<website.DBPrivilegeOption>>;
 

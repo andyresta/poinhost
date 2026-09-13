@@ -16,6 +16,8 @@ import {
   ListWebsiteDomainDatabases,
   LinkWebsiteDomainDatabase,
   UnlinkWebsiteDomainDatabase,
+  GetWebsiteDBDockerAccessStatus,
+  EnsureWebsiteDBDockerAccess,
 } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
@@ -65,6 +67,9 @@ export function DomainDatabaseTab({ serverId, domain }: { serverId: string; doma
   const [linkPassword, setLinkPassword] = useState('');
   const [exploreTarget, setExploreTarget] = useState<{ engine: 'mysql' | 'postgresql'; username: string; host: string } | null>(null);
 
+  const [dockerAccess, setDockerAccess] = useState<website.DBDockerAccessStatus | null>(null);
+  const [dockerAccessBusy, setDockerAccessBusy] = useState(false);
+
   useEffect(() => {
     GetWebsiteDBPrivileges().then(setPrivileges).catch(() => setPrivileges([]));
   }, []);
@@ -77,6 +82,9 @@ export function DomainDatabaseTab({ serverId, domain }: { serverId: string; doma
       if (st.installed && st.active) {
         setDatabases(await ListWebsiteDatabases(serverId, engine));
         setUsers(await ListWebsiteDatabaseUsers(serverId, engine));
+        setDockerAccess(await GetWebsiteDBDockerAccessStatus(serverId, engine));
+      } else {
+        setDockerAccess(null);
       }
       setCredentials(await ListWebsiteDBCredentials(serverId));
       const links = await ListWebsiteDomainDatabases(serverId, domain);
@@ -163,6 +171,18 @@ export function DomainDatabaseTab({ serverId, domain }: { serverId: string; doma
       setError(String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleEnsureDockerAccess() {
+    setDockerAccessBusy(true);
+    setError(null);
+    try {
+      setDockerAccess(await EnsureWebsiteDBDockerAccess(serverId, engine));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setDockerAccessBusy(false);
     }
   }
 
@@ -305,6 +325,42 @@ export function DomainDatabaseTab({ serverId, domain }: { serverId: string; doma
 
       {status && status.installed && status.active && (
         <>
+          <section style={{ marginBottom: 16 }}>
+            <div className="files-panel__toolbar">
+              <h3 style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.6, margin: 0 }}>Akses dari Docker</h3>
+            </div>
+            {dockerAccess && (
+              <div className="docker-engine">
+                <p>
+                  {dockerAccess.bindAllInterfaces ? (
+                    <>✅ Container Docker di host ini sudah bisa connect ke {engine === 'mysql' ? 'MySQL/MariaDB' : 'PostgreSQL'} ini.</>
+                  ) : (
+                    <>
+                      ⚠️ Container Docker di host ini <strong>belum bisa</strong> connect ke {engine === 'mysql' ? 'MySQL/MariaDB' : 'PostgreSQL'} ini —
+                      masih hanya mendengarkan di 127.0.0.1 (loopback).
+                    </>
+                  )}
+                  {dockerAccess.bindAllInterfaces && (
+                    <>
+                      {' '}
+                      Firewall terdeteksi: <strong>{dockerAccess.firewallDetected || 'tidak ada'}</strong>
+                      {dockerAccess.firewallDetected && dockerAccess.firewallDetected !== 'none' && (
+                        <> ({dockerAccess.firewallRuleActive ? 'aturan poinhost aktif' : 'aturan poinhost belum ada'})</>
+                      )}
+                      .
+                    </>
+                  )}
+                </p>
+                {dockerAccess.message && <p className="overview__error">{dockerAccess.message}</p>}
+                {(!dockerAccess.bindAllInterfaces || !dockerAccess.firewallRuleActive) && (
+                  <button className="btn btn--sm btn--primary" disabled={dockerAccessBusy} onClick={() => void handleEnsureDockerAccess()}>
+                    {dockerAccessBusy ? 'Menerapkan…' : '🐳 Aktifkan akses dari Docker'}
+                  </button>
+                )}
+              </div>
+            )}
+          </section>
+
           <section style={{ marginBottom: 16 }}>
             <div className="files-panel__toolbar">
               <h3 style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.6, margin: 0 }}>Database</h3>

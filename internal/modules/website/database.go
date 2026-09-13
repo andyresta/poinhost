@@ -251,6 +251,15 @@ systemctl start ` + svc + ` 2>&1 || systemctl start mysql 2>&1 || systemctl rest
 // dipakai sebagai pengganti MySQL di apt/dnf/yum (drop-in compatible,
 // tersedia langsung dari repo distro tanpa perlu repo pihak ketiga).
 func dbInstallScript(engine, pm string) (string, bool) {
+	// dockerAccess dijalankan di AKHIR instalasi (bukan langkah terpisah
+	// yang bisa lupa dipanggil) — supaya "instalasi MySQL/PostgreSQL" dan
+	// "bisa langsung diakses dari container Docker di host yang sama"
+	// selalu satu paket yang sama, sesuai yang diminta: user tidak perlu
+	// tahu ada langkah tambahan sama sekali. Skrip yang SAMA persis dipakai
+	// EnsureDBDockerAccess untuk instalasi yang sudah ada sebelumnya (lihat
+	// dockeraccess.go) — jangan duplikasi logikanya di sini.
+	dockerAccess := dbDockerAccessApplyScript(engine, pm)
+
 	if engine == "mysql" {
 		switch pm {
 		case "apt":
@@ -260,7 +269,8 @@ apt-get install -y mariadb-server
 systemctl enable mariadb
 systemctl start mariadb
 mysql -e "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY ''; GRANT ALL ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION; FLUSH PRIVILEGES;" 2>/dev/null || true
-echo ">> MariaDB (MySQL) terpasang."
+` + dockerAccess + `
+echo ">> MariaDB (MySQL) terpasang, siap diakses dari container Docker di host ini."
 `, true
 		case "dnf", "yum":
 			return `set -e
@@ -268,7 +278,8 @@ echo ">> MariaDB (MySQL) terpasang."
 systemctl enable mariadb
 systemctl start mariadb
 mysql -e "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY ''; GRANT ALL ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION; FLUSH PRIVILEGES;" 2>/dev/null || true
-echo ">> MariaDB (MySQL) terpasang."
+` + dockerAccess + `
+echo ">> MariaDB (MySQL) terpasang, siap diakses dari container Docker di host ini."
 `, true
 		}
 		return "", false
@@ -281,7 +292,8 @@ echo ">> MariaDB (MySQL) terpasang."
 apt-get install -y postgresql
 systemctl enable postgresql
 systemctl start postgresql
-echo ">> PostgreSQL terpasang."
+` + dockerAccess + `
+echo ">> PostgreSQL terpasang, siap diakses dari container Docker di host ini."
 `, true
 	case "dnf", "yum":
 		return `set -e
@@ -289,7 +301,8 @@ echo ">> PostgreSQL terpasang."
 postgresql-setup --initdb 2>/dev/null || /usr/bin/postgresql-setup initdb 2>/dev/null || true
 systemctl enable postgresql
 systemctl start postgresql
-echo ">> PostgreSQL terpasang."
+` + dockerAccess + `
+echo ">> PostgreSQL terpasang, siap diakses dari container Docker di host ini."
 `, true
 	default:
 		return "", false

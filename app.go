@@ -954,6 +954,20 @@ func (a *App) StartWebsiteDB(serverID, engine string) (*website.DBEngineStatus, 
 	return a.websiteSvc.DBStart(serverID, engine)
 }
 
+// GetWebsiteDBDockerAccessStatus membaca status akses Docker->database saat
+// ini (bind-address/listen_addresses + aturan firewall poinhost) — untuk
+// instalasi yang dibuat lewat wizard poinhost ini sudah otomatis aktif,
+// binding ini untuk instalasi yang sudah ada SEBELUM fitur ini ditambahkan.
+func (a *App) GetWebsiteDBDockerAccessStatus(serverID, engine string) (*website.DBDockerAccessStatus, error) {
+	return a.websiteSvc.GetDBDockerAccessStatus(serverID, engine)
+}
+
+// EnsureWebsiteDBDockerAccess mengaktifkan akses Docker->database untuk
+// instalasi yang sudah ada sebelumnya (lihat dockeraccess.go).
+func (a *App) EnsureWebsiteDBDockerAccess(serverID, engine string) (*website.DBDockerAccessStatus, error) {
+	return a.websiteSvc.EnsureDBDockerAccess(serverID, engine)
+}
+
 // ListWebsiteDatabases mengembalikan daftar database di server.
 func (a *App) ListWebsiteDatabases(serverID, engine string) ([]website.DBDatabaseInfo, error) {
 	return a.websiteSvc.DBListDatabases(serverID, engine)
