@@ -125,7 +125,7 @@ func (s *Service) Save(req SaveServerRequest) (*Server, error) {
 		req.AuthType = "key"
 	}
 	if req.Color == "" {
-		req.Color = "#6366f1"
+		req.Color = "#b85c3a"
 	}
 
 	srv := &Server{

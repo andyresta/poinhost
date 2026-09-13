@@ -1,0 +1,66 @@
+/* Design tokens — dua tema (terang/gelap), satu set nama variabel.
+   :root = terang (default kalau atribut data-theme belum di-set apa pun,
+   mis. render pertama sebelum store/theme.ts sempat jalan). Toggle-nya
+   di ServersPage (ikon matahari/bulan) menyetel data-theme di <html>,
+   lihat store/theme.ts.
+
+   Sengaja BUKAN palet indigo-di-atas-slate biru dingin yang jadi
+   default hampir semua dashboard bikinan AI — di sini aksennya
+   terracotta/tembaga hangat di atas netral hangat (bukan biru/abu
+   dingin), supaya kelihatan seperti pilihan, bukan bawaan template. */
+:root {
+  color-scheme: light;
+
+  --bg: #f6f3ed;
+  --surface: #ffffff;
+  --surface-hover: #efe8db;
+  --surface-active: #e6ddcb;
+  --border: #e0d8c7;
+  --text: #2a2620;
+
+  --accent: #b85c3a;
+  --accent-hover: #a34f30;
+  --accent-fg: #fdf6f1;
+
+  --success: #2f8f52;
+  --success-bg: rgba(47, 143, 82, 0.12);
+  --danger: #c9403f;
+  --danger-bg: rgba(201, 64, 63, 0.12);
+  --warning: #a8730f;
+  --warning-bg: rgba(168, 115, 15, 0.14);
+  --neutral: #7c7364;
+
+  /* Sumur gelap (panel terminal, log stream) — SENGAJA konstan, tidak
+     ikut berubah per tema (konvensi umum: terminal selalu gelap). */
+  --well-bg: #15120d;
+  --well-fg: #eae4d8;
+
+  --font-mono: 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 11px;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg: #1a1712;
+  --surface: #242019;
+  --surface-hover: #2d271e;
+  --surface-active: #383024;
+  --border: #3c3324;
+  --text: #ece5d8;
+
+  --accent: #d97c57;
+  --accent-hover: #e28e6c;
+  --accent-fg: #1a1712;
+
+  --success: #5cbd7d;
+  --success-bg: rgba(92, 189, 125, 0.14);
+  --danger: #e46b6a;
+  --danger-bg: rgba(228, 107, 106, 0.16);
+  --warning: #dfa74e;
+  --warning-bg: rgba(223, 167, 78, 0.16);
+  --neutral: #8f8672;
+}

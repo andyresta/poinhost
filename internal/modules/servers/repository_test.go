@@ -18,7 +18,7 @@ CREATE TABLE servers (
     key_path      TEXT,
     password_enc  TEXT,
     tags          TEXT NOT NULL DEFAULT '[]',
-    color         TEXT NOT NULL DEFAULT '#6366f1',
+    color         TEXT NOT NULL DEFAULT '#b85c3a',
     notes         TEXT NOT NULL DEFAULT '',
     is_active     INTEGER NOT NULL DEFAULT 1,
     use_sudo      INTEGER NOT NULL DEFAULT 0,
