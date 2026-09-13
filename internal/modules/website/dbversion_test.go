@@ -17,6 +17,20 @@ func TestDBSupportedVersionsDoesNotAliasInternalSlice(t *testing.T) {
 	}
 }
 
+func TestDBSupportedVersionsMySQLPrefixesByProduct(t *testing.T) {
+	for _, v := range DBSupportedVersions("mysql") {
+		if !strings.HasPrefix(v, mariaDBVersionPrefix) {
+			t.Fatalf("every mysql-engine version must be product-prefixed (ready for a future mysql-* entry alongside it), got %q", v)
+		}
+	}
+	// Postgres has only one product, so no prefix is needed there.
+	for _, v := range DBSupportedVersions("postgresql") {
+		if strings.Contains(v, "-") {
+			t.Fatalf("postgresql versions should stay bare (no product prefix needed), got %q", v)
+		}
+	}
+}
+
 func TestDbInstallScriptDefaultVersionUnchanged(t *testing.T) {
 	script, ok := dbInstallScript("mysql", "apt", "")
 	if !ok {
@@ -31,7 +45,7 @@ func TestDbInstallScriptDefaultVersionUnchanged(t *testing.T) {
 }
 
 func TestDbInstallScriptPinnedVersionRoutesToVersionedScript(t *testing.T) {
-	script, ok := dbInstallScript("mysql", "apt", "10.11")
+	script, ok := dbInstallScript("mysql", "apt", "mariadb-10.11")
 	if !ok {
 		t.Fatal("expected pinned mariadb install to be supported on apt")
 	}
@@ -42,6 +56,16 @@ func TestDbInstallScriptPinnedVersionRoutesToVersionedScript(t *testing.T) {
 	// the same automatic step as the default install path.
 	if !strings.Contains(script, "POINHOST_DOCKER_ACCESS_DONE") {
 		t.Fatal("pinned install must still run the docker-access script (same as default install)")
+	}
+}
+
+func TestDbInstallScriptRealMySQLNotYetReachable(t *testing.T) {
+	// The "mysql-*" seam exists (see dbversion.go) but isn't wired up to
+	// any real install script yet — DBSupportedVersions never offers it,
+	// and if it somehow were requested anyway, it must fail cleanly
+	// (ok=false) rather than silently falling back to MariaDB.
+	if _, ok := dbInstallScript("mysql", "apt", "mysql-8.0"); ok {
+		t.Fatal("real MySQL install is not implemented yet and must report ok=false, not succeed silently")
 	}
 }
 
