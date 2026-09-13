@@ -1436,6 +1436,40 @@ jadi selalu jatuh ke fallback generik seperti sebelumnya).
 `DBEngineStatus.RepoConfigured` (dideteksi dari keberadaan file repo
 MariaDB/PGDG) melengkapi info ini di UI.
 
+### MySQL asli (Oracle): belum diimplementasikan, tapi seam-nya sudah disiapkan
+
+Follow-up dari fitur di atas: user sempat bertanya kenapa engine
+`"mysql"` sebenarnya MariaDB, bukan MySQL asli, dan apakah bisa MySQL
+saja. Setelah dicek: performanya nyaris setara untuk beban kerja tipikal
+poinhost (website PHP/CRUD biasa) — bedanya lebih ke fitur spesifik
+(optimizer/DDL MySQL 8.x vs storage engine tambahan MariaDB), bukan
+kecepatan mentah. Mekanisme resmi Oracle untuk otomasi non-interaktif
+(`mysql-apt-config_<versi>-1_all.deb` + `debconf-set-selections`, atau
+RPM `mysql80-community-release-el<N>-<rev>.noarch.rpm`) memakai nama
+file BER-VERSI yang berubah dari waktu ke waktu — jauh lebih rawan basi
+dibanding `mariadb_repo_setup`/PGDG yang dipakai di atas (skrip resmi
+vendor yang stabil, tidak perlu tahu nomor versi paket bootstrap-nya).
+Keputusan: tunda MySQL asli sampai benar-benar dibutuhkan, tapi siapkan
+dulu seam-nya supaya nanti tinggal diisi, bukan refactor besar:
+
+- Value yang dikembalikan `DBSupportedVersions("mysql")` diberi PREFIX
+  produk (`"mariadb-10.11"`, bukan cuma `"10.11"`) — supaya kalau
+  `"mysql-8.0"` dkk ditambahkan nanti, keduanya hidup berdampingan di
+  SATU dropdown yang sama tanpa field/DTO baru.
+- `dbVersionedInstallScript` sudah membaca prefix itu dan mem-dispatch ke
+  `mariaDBVersionedInstallScript`/`mysqlVersionedInstallScript` — yang
+  kedua ITU SENDIRI sudah ada sebagai fungsi, tapi cuma `return "", false`
+  (belum diisi skripnya). `DBSupportedVersions` tidak pernah menawarkan
+  versi `"mysql-*"` apa pun, jadi jalur ini belum bisa dicapai dari UI
+  sama sekali — murni titik perluasan yang menunggu diisi, bukan kode
+  mati yang membingungkan.
+- Konsekuensinya: `dbInstallScript`, `StreamInstall`, frontend
+  (`DatabaseManagerPanel.tsx`'s `versionLabel` sudah menangani prefix
+  `"mysql-"` juga), dan binding Wails semuanya SUDAH SIAP — menambah
+  MySQL asli nanti tinggal mengisi `mysqlVersionedInstallScript` +
+  menambah `supportedMySQLVersions` ke `DBSupportedVersions`, tidak ada
+  yang lain perlu disentuh.
+
 ### Akses Docker→database: bind otomatis + firewall terbatas, bukan setting manual
 
 Keluhan user: di homepoin, container Docker di host yang sama tidak bisa

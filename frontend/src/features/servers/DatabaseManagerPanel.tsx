@@ -300,6 +300,15 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
     setSelectedDbs((d) => (d.includes(name) ? d.filter((x) => x !== name) : [...d, name]));
   }
 
+  // installVersions untuk engine "mysql" berprefix produk ("mariadb-10.11")
+  // supaya nanti bisa berdampingan dengan "mysql-*" (MySQL asli, belum ada)
+  // di satu dropdown yang sama — cuma label tampilannya yang dirapikan di sini.
+  function versionLabel(v: string) {
+    if (v.startsWith('mariadb-')) return `MariaDB ${v.slice('mariadb-'.length)}`;
+    if (v.startsWith('mysql-')) return `MySQL ${v.slice('mysql-'.length)}`;
+    return v;
+  }
+
   return (
     <div>
       <div className="segmented" style={{ marginBottom: 10 }}>
@@ -338,7 +347,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                 <option value="">(bawaan distro)</option>
                 {installVersions.map((v) => (
                   <option key={v} value={v}>
-                    {v}
+                    {versionLabel(v)}
                   </option>
                 ))}
               </select>
@@ -349,8 +358,8 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
           )}
           {installVersion && (
             <p className="chmod-path">
-              Versi {installVersion} dipasang lewat repo resmi {engine === 'mysql' ? 'MariaDB' : 'PGDG'} — repo ditambahkan otomatis, tidak perlu
-              langkah manual.
+              Versi {versionLabel(installVersion)} dipasang lewat repo resmi {engine === 'mysql' ? 'MariaDB' : 'PGDG'} — repo ditambahkan otomatis,
+              tidak perlu langkah manual.
             </p>
           )}
           {lines.length > 0 && <pre className="docker-engine__log">{lines.join('\n')}</pre>}
