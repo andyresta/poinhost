@@ -144,7 +144,7 @@ func (s *Service) StreamInstall(ctx context.Context, serverID, kind, param strin
 	case "certbot":
 		script, ok = installCertbotScript(distro.PackageManager)
 	case "mysql", "postgresql":
-		script, ok = dbInstallScript(kind, distro.PackageManager)
+		script, ok = dbInstallScript(kind, distro.PackageManager, param)
 	default:
 		return errFmt("jenis instalasi %q tidak dikenal", kind)
 	}

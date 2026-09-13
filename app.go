@@ -950,6 +950,13 @@ func (a *App) GetWebsiteDBPrivileges() []website.DBPrivilegeOption {
 	return website.DBPrivilegeOptions()
 }
 
+// GetWebsiteDBVersions mengembalikan daftar versi PINNED yang bisa dipilih
+// eksplisit saat instalasi (statis, tanpa SSH) — di luar ini, opsi "(bawaan
+// distro)" (versi kosong ke StreamWebsiteInstall) tetap selalu tersedia.
+func (a *App) GetWebsiteDBVersions(engine string) []string {
+	return website.DBSupportedVersions(engine)
+}
+
 // GetWebsiteDBStatus membaca status instalasi & service satu engine database.
 func (a *App) GetWebsiteDBStatus(serverID, engine string) (*website.DBEngineStatus, error) {
 	return a.websiteSvc.DBStatus(serverID, engine)

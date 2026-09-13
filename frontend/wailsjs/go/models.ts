@@ -1453,6 +1453,7 @@ export namespace website {
 	    distroName?: string;
 	    packageManager?: string;
 	    canInstall: boolean;
+	    repoConfigured: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new DBEngineStatus(source);
@@ -1469,6 +1470,7 @@ export namespace website {
 	        this.distroName = source["distroName"];
 	        this.packageManager = source["packageManager"];
 	        this.canInstall = source["canInstall"];
+	        this.repoConfigured = source["repoConfigured"];
 	    }
 	}
 	export class DBGrantsRequest {

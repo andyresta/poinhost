@@ -83,6 +83,8 @@ export function GetWebsiteDBPrivileges():Promise<Array<website.DBPrivilegeOption
 
 export function GetWebsiteDBStatus(arg1:string,arg2:string):Promise<website.DBEngineStatus>;
 
+export function GetWebsiteDBVersions(arg1:string):Promise<Array<string>>;
+
 export function GetWebsiteDNSPreview(arg1:string,arg2:string):Promise<website.DNSPreviewResponse>;
 
 export function GetWebsiteDomainRoot(arg1:string,arg2:string):Promise<string>;

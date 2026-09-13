@@ -18,6 +18,7 @@ import {
   UnlinkWebsiteDomainDatabase,
   GetWebsiteDBDockerAccessStatus,
   EnsureWebsiteDBDockerAccess,
+  GetWebsiteDBVersions,
 } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
@@ -74,9 +75,17 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
   const [dockerAccess, setDockerAccess] = useState<website.DBDockerAccessStatus | null>(null);
   const [dockerAccessBusy, setDockerAccessBusy] = useState(false);
 
+  const [installVersions, setInstallVersions] = useState<string[]>([]);
+  const [installVersion, setInstallVersion] = useState('');
+
   useEffect(() => {
     GetWebsiteDBPrivileges().then(setPrivileges).catch(() => setPrivileges([]));
   }, []);
+
+  useEffect(() => {
+    setInstallVersion('');
+    GetWebsiteDBVersions(engine).then(setInstallVersions).catch(() => setInstallVersions([]));
+  }, [engine]);
 
   async function load() {
     setError(null);
@@ -199,7 +208,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
     setLines([]);
     setError(null);
     setInstalling(true);
-    const streamId = await StreamWebsiteInstall(serverId, engine, '');
+    const streamId = await StreamWebsiteInstall(serverId, engine, installVersion);
     streamIdRef.current = streamId;
     const unsub = EventsOn(`website:install:${streamId}`, (evt: StreamLineEvent) => {
       if (evt.type === 'line' && evt.line) setLines((l) => [...l, evt.line as string]);
@@ -324,9 +333,25 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
           </p>
           {!status.canInstall && <p className="overview__error">Distro server ini belum didukung instalasi otomatis.</p>}
           {status.canInstall && (
-            <button className="btn btn--primary" disabled={installing} onClick={() => void handleInstall()}>
-              {installing ? 'Menginstal…' : `Install ${engine === 'mysql' ? 'MariaDB' : 'PostgreSQL'}`}
-            </button>
+            <div className="docker-recreate__row">
+              <select value={installVersion} onChange={(e) => setInstallVersion(e.target.value)} disabled={installing}>
+                <option value="">(bawaan distro)</option>
+                {installVersions.map((v) => (
+                  <option key={v} value={v}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+              <button className="btn btn--primary" disabled={installing} onClick={() => void handleInstall()}>
+                {installing ? 'Menginstal…' : `Install ${engine === 'mysql' ? 'MariaDB' : 'PostgreSQL'}`}
+              </button>
+            </div>
+          )}
+          {installVersion && (
+            <p className="chmod-path">
+              Versi {installVersion} dipasang lewat repo resmi {engine === 'mysql' ? 'MariaDB' : 'PGDG'} — repo ditambahkan otomatis, tidak perlu
+              langkah manual.
+            </p>
           )}
           {lines.length > 0 && <pre className="docker-engine__log">{lines.join('\n')}</pre>}
         </div>
@@ -334,6 +359,13 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
 
       {status && status.installed && status.active && (
         <>
+          {status.version && (
+            <p className="chmod-path" style={{ marginTop: 0 }}>
+              {status.version}
+              {status.repoConfigured && ' · terpasang lewat repo resmi vendor (versi pinned)'}
+            </p>
+          )}
+
           <section style={{ marginBottom: 16 }}>
             <div className="files-panel__toolbar">
               <h3 style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.6, margin: 0 }}>Akses dari Docker</h3>

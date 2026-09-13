@@ -1380,6 +1380,62 @@ sekarang setiap tab server punya akses langsung ke provisioning + Explore
 database TANPA perlu domain/website apa pun dulu. Nol perubahan Go: kedua
 titik masuk memanggil binding `website.Service` yang PERSIS SAMA.
 
+### Instalasi: bawaan distro (default) vs versi PINNED lewat repo resmi vendor
+
+Pertanyaan user: apakah instalasi MySQL/PostgreSQL mengambil versi paling
+baru, dan bisa dipilih? Jawaban sebelum fitur ini: TIDAK ke keduanya —
+`dbInstallScript` cuma menjalankan `apt-get install -y mariadb-server` /
+`apt-get install -y postgresql` polos, tanpa repo pihak ketiga apa pun,
+jadi versi yang terpasang murni ikut apa pun yang jadi default di repo
+BAWAAN distro itu (mis. Ubuntu 22.04 memberi PostgreSQL 14, Ubuntu 24.04
+memberi PostgreSQL 16) — bisa jauh dari rilis terbaru, dan tidak bisa
+dipilih sama sekali.
+
+Riset pembanding: homepoin sendiri juga TIDAK punya pemilihan versi untuk
+MySQL/PostgreSQL. Tapi modul PHP poinhost (§12) sudah punya pola persis
+untuk masalah yang sama (PHP-FPM juga cuma dapat satu versi bawaan distro
+tanpa repo pihak ketiga): `phpRepoScript` menambah repo (PPA `ondrej/php`/
+`sury.org`/Remi) yang menyediakan banyak versi sekaligus, lalu
+`phpInstallVersionScript` memasang versi yang dipilih. Pola itu yang
+diikuti di sini (`internal/modules/website/dbversion.go`):
+
+- **MariaDB** (engine `"mysql"`): repo resmi MariaDB Foundation sendiri,
+  dipasang lewat skrip resmi mereka (`mariadb_repo_setup
+  --mariadb-server-version="mariadb-<versi>"`) — skrip ini SATU-SATUNYA
+  yang perlu dijalankan, mendeteksi & menyiapkan repo apt MAUPUN dnf/yum
+  otomatis. Beda dari pola PHP: repo MariaDB terikat ke SATU versi
+  tertentu (bukan "satu repo, banyak versi tersedia" ala PPA ondrej/php),
+  jadi repo-setup dan install versi digabung jadi SATU skrip, bukan dua
+  tahap terpisah. Nama paket beda per package manager: `mariadb-server`
+  (apt) vs `MariaDB-server` (dnf/yum, penamaan resmi RPM MariaDB pakai
+  kapital).
+- **PostgreSQL**: repo resmi PGDG. Di apt (`apt.postgresql.org`), SEMUA
+  versi terpasang dipayungi SATU service generik `postgresql` (pg_wrapper)
+  — mirip pola PHP (satu repo, pilih versi lewat nama paket
+  `postgresql-<versi>`). Di dnf/yum (RHEL/AlmaLinux dst), PGDG memberi
+  TIAP versi service TER-VERSI-nya sendiri (`postgresql-16`, dst — supaya
+  beberapa versi bisa hidup berdampingan), dan module bawaan distro
+  (`dnf module disable postgresql`) harus dimatikan dulu supaya tidak
+  bentrok dengan paket PGDG.
+- Versi PINNED yang ditawarkan: `DBSupportedVersions(engine)` — statis,
+  tanpa round-trip SSH (dipanggil sekali di frontend, sama seperti
+  `GetWebsiteDBPrivileges`). Di luar daftar itu, opsi "(bawaan distro)"
+  (versi kosong) tetap selalu tersedia dan perilakunya TIDAK berubah sama
+  sekali dari sebelum fitur ini ada.
+
+**Konsekuensi arsitektur nama service PostgreSQL ter-versi**: karena
+service PostgreSQL BISA ter-versi (jalur dnf/PGDG) atau generik (jalur
+apt/default), `dbStatusScriptPostgres` dan `DBStart` tidak bisa lagi
+menebak satu nama service tetap — keduanya sekarang mengekstrak versi
+mayor dari `psql --version` di dalam skrip yang sama, coba nama
+ter-versi (`postgresql-$VER`) DULU, baru fallback ke nama generik
+(`postgresql`). Ini jalan untuk KEDUA jalur instalasi tanpa perlu tahu
+lebih dulu jalur mana yang dipakai, dan tetap backward-compatible untuk
+instalasi default yang sudah ada (tidak pernah punya service ter-versi,
+jadi selalu jatuh ke fallback generik seperti sebelumnya).
+`DBEngineStatus.RepoConfigured` (dideteksi dari keberadaan file repo
+MariaDB/PGDG) melengkapi info ini di UI.
+
 ### Akses Docker→database: bind otomatis + firewall terbatas, bukan setting manual
 
 Keluhan user: di homepoin, container Docker di host yang sama tidak bisa
