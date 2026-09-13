@@ -57,7 +57,7 @@ export function RecreateContainerModal({
     setSaving(true);
     setError(null);
     try {
-      await RecreateDockerContainer(
+      const res = await RecreateDockerContainer(
         new docker.RecreateContainerRequest({
           serverId,
           containerId,
@@ -67,11 +67,25 @@ export function RecreateContainerModal({
           memoryBytes: memoryMB > 0 ? memoryMB * 1024 * 1024 : 0,
         }),
       );
+      if (res.warning) {
+        alert(res.warning);
+      }
       onDone();
     } catch (e) {
       setError(String(e));
     } finally {
       setSaving(false);
+    }
+  }
+
+  function scopeLabel(scope: string) {
+    switch (scope) {
+      case 'intranet':
+        return 'Intranet (LAN saja)';
+      case 'localhost':
+        return 'Localhost saja';
+      default:
+        return 'Publik (internet)';
     }
   }
 
@@ -122,7 +136,7 @@ export function RecreateContainerModal({
                   <h3>Port</h3>
                   <button
                     className="btn btn--sm"
-                    onClick={() => setPorts([...ports, new docker.PortMapping({ hostPort: 0, containerPort: 0, protocol: 'tcp' })])}
+                    onClick={() => setPorts([...ports, new docker.PortMapping({ hostPort: 0, containerPort: 0, protocol: 'tcp', scope: 'public' })])}
                   >
                     + Tambah
                   </button>
@@ -155,11 +169,26 @@ export function RecreateContainerModal({
                       <option value="tcp">tcp</option>
                       <option value="udp">udp</option>
                     </select>
+                    <select
+                      title="Siapa yang boleh mengakses port ini dari luar server"
+                      value={p.scope || 'public'}
+                      onChange={(ev) => setPorts(ports.map((x, j) => (j === i ? new docker.PortMapping({ ...x, scope: ev.target.value }) : x)))}
+                    >
+                      <option value="public">{scopeLabel('public')}</option>
+                      <option value="intranet">{scopeLabel('intranet')}</option>
+                      <option value="localhost">{scopeLabel('localhost')}</option>
+                    </select>
                     <button className="btn btn--sm btn--danger" onClick={() => setPorts(ports.filter((_, j) => j !== i))}>
                       ✕
                     </button>
                   </div>
                 ))}
+                {ports.length > 0 && (
+                  <p className="chmod-path">
+                    Publik = bisa diakses dari internet. Intranet = hanya dari jaringan lokal (dibatasi lewat firewall server, kalau aktif).
+                    Localhost = hanya dari server itu sendiri.
+                  </p>
+                )}
               </section>
 
               <section>

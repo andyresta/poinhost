@@ -66,6 +66,7 @@ export namespace docker {
 	    containerPort: number;
 	    protocol: string;
 	    hostIp?: string;
+	    scope?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PortMapping(source);
@@ -77,6 +78,7 @@ export namespace docker {
 	        this.containerPort = source["containerPort"];
 	        this.protocol = source["protocol"];
 	        this.hostIp = source["hostIp"];
+	        this.scope = source["scope"];
 	    }
 	}
 	export class EnvVar {
@@ -369,6 +371,7 @@ export namespace docker {
 	}
 	export class RecreateContainerResponse {
 	    container: ContainerInfo;
+	    warning?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new RecreateContainerResponse(source);
@@ -377,6 +380,7 @@ export namespace docker {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.container = this.convertValues(source["container"], ContainerInfo);
+	        this.warning = source["warning"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
