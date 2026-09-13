@@ -111,7 +111,9 @@ func (s *Service) RecreateContainer(req RecreateContainerRequest) (*RecreateCont
 	}
 	createCmd := quoteCreateCommand(createArgs)
 
-	// 4) stop → rm → create → start (nama container dipertahankan)
+	// 4) stop → rm → create → start (nama container dipertahankan), lalu
+	// terapkan firewall untuk scope port ("intranet"/"public") — satu
+	// round-trip SSH yang sama, bukan panggilan terpisah.
 	script := "set -e\n" +
 		"CID=" + shellQuote(cid) + "\n" +
 		"NAME=" + shellQuote(tpl.Name) + "\n" +
@@ -119,7 +121,8 @@ func (s *Service) RecreateContainer(req RecreateContainerRequest) (*RecreateCont
 		"docker rm \"$CID\"\n" +
 		createCmd + "\n" +
 		"docker start \"$NAME\"\n" +
-		"echo \"__poinhost_RECREATE_OK__$(docker inspect --format '{{.Id}}' \"$NAME\" 2>/dev/null)\"\n"
+		"echo \"__poinhost_RECREATE_OK__$(docker inspect --format '{{.Id}}' \"$NAME\" 2>/dev/null)\"\n" +
+		portScopeApplyScript(tpl.Ports)
 
 	runRes, err := s.runDocker(access, script, 120*time.Second)
 	if err != nil {
@@ -163,5 +166,12 @@ func (s *Service) RecreateContainer(req RecreateContainerRequest) (*RecreateCont
 		info.Ports = strings.Join(parts, ", ")
 	}
 
-	return &RecreateContainerResponse{Container: info}, nil
+	firewallDetected := "none"
+	for _, line := range strings.Split(runRes.Stdout+"\n"+runRes.Stderr, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "FIREWALL="); ok {
+			firewallDetected = v
+		}
+	}
+
+	return &RecreateContainerResponse{Container: info, Warning: portScopeWarning(tpl.Ports, firewallDetected)}, nil
 }

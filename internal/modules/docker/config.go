@@ -207,6 +207,27 @@ func inspectToDetail(inv *inspectRaw) (*ContainerInspectResponse, *createTemplat
 	if labels == nil {
 		labels = map[string]string{}
 	}
+	// Bind-address mentah tidak bisa membedakan "public" dari "intranet"
+	// (keduanya 0.0.0.0) — baca kembali pilihan scope dari label yang kita
+	// tulis sendiri waktu recreate (lihat syncPortScopeLabels). Untuk
+	// container yang belum pernah di-recreate lewat poinhost (tidak ada
+	// label kita), masih tebak dari bind mentahnya: 127.0.0.1 jelas berarti
+	// "localhost", selain itu default "public" (status sebelum fitur ini ada).
+	for i := range ports {
+		if raw, ok := labels[portScopeLabelKey(ports[i].HostPort, ports[i].Protocol)]; ok {
+			scope, err := normalizePortScope(raw)
+			if err != nil {
+				scope = portScopePublic
+			}
+			ports[i].Scope = scope
+			continue
+		}
+		if ports[i].HostIP == "127.0.0.1" {
+			ports[i].Scope = portScopeLocalhost
+		} else {
+			ports[i].Scope = portScopePublic
+		}
+	}
 
 	restart := strings.TrimSpace(inv.HostConfig.RestartPolicy.Name)
 	if restart == "" || restart == "no" {
@@ -405,9 +426,8 @@ func validateRecreateOverrides(env []EnvVar, ports []PortMapping, volumes []Volu
 		if p.HostPort == 0 {
 			return fmt.Errorf("port host wajib 1–65535")
 		}
-		ip := strings.TrimSpace(p.HostIP)
-		if strings.ContainsAny(ip, " \t\n\r;'\")") {
-			return fmt.Errorf("host IP port tidak valid")
+		if _, err := normalizePortScope(p.Scope); err != nil {
+			return err
 		}
 	}
 	for _, v := range volumes {
@@ -455,11 +475,16 @@ func normalizeOverrides(env []EnvVar, ports []PortMapping, volumes []VolumeMount
 		if proto == "" {
 			proto = "tcp"
 		}
+		scope, err := normalizePortScope(p.Scope)
+		if err != nil {
+			scope = portScopePublic
+		}
 		outPorts = append(outPorts, PortMapping{
 			HostPort:      p.HostPort,
 			ContainerPort: p.ContainerPort,
 			Protocol:      proto,
-			HostIP:        strings.TrimSpace(p.HostIP),
+			HostIP:        hostIPForScope(scope),
+			Scope:         scope,
 		})
 	}
 	for _, v := range volumes {
@@ -480,6 +505,11 @@ func applyOverrides(tpl *createTemplate, env []EnvVar, ports []PortMapping, volu
 	tpl.Ports = p
 	tpl.Volumes = v
 	tpl.MemoryBytes = mem
+	// Docker sendiri tidak bisa membedakan "public" vs "intranet" dari
+	// bind-address (keduanya 0.0.0.0) — simpan pilihan scope di label
+	// supaya kebuka lagi RecreateContainerModal nanti menampilkan pilihan
+	// yang sama, bukan diam-diam reset ke "public".
+	tpl.Labels = syncPortScopeLabels(tpl.Labels, tpl.Ports)
 }
 
 // IsBuiltinNetworkMode true untuk network mode bawaan Docker yang selalu ada di server

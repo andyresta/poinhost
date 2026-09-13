@@ -73,7 +73,16 @@ type PortMapping struct {
 	HostPort      int    `json:"hostPort"`
 	ContainerPort int    `json:"containerPort"`
 	Protocol      string `json:"protocol"` // tcp | udp
-	HostIP        string `json:"hostIp,omitempty"`
+	// HostIP dihitung otomatis dari Scope (lihat portscope.go), bukan
+	// input manual — 127.0.0.1 untuk "localhost", kosong (0.0.0.0) untuk
+	// "public"/"intranet" (intranet dibatasi lewat firewall, bukan bind).
+	HostIP string `json:"hostIp,omitempty"`
+	// Scope siapa yang boleh menjangkau port ini dari luar server:
+	// "public" (internet, default), "intranet" (jaringan lokal/LAN saja,
+	// lewat firewall discoped ke rentang IP privat), "localhost" (cuma
+	// dari server itu sendiri, bind 127.0.0.1 — tidak ada mekanisme
+	// firewall yang bisa dilewati).
+	Scope string `json:"scope,omitempty"`
 }
 
 // VolumeMount bind mount host path → container path.
@@ -112,6 +121,10 @@ type RecreateContainerRequest struct {
 // RecreateContainerResponse hasil recreate (info container baru).
 type RecreateContainerResponse struct {
 	Container ContainerInfo `json:"container"`
+	// Warning: mis. port di-set "intranet" tapi tidak ada firewall aktif
+	// terdeteksi di server ini — jadi pembatasannya belum benar-benar
+	// berlaku (lihat portscope.go).
+	Warning string `json:"warning,omitempty"`
 }
 
 // NetworkInfo satu network Docker di server remote.

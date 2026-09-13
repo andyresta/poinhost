@@ -721,6 +721,57 @@ karena "masuk sebentar ke satu container" adalah tindakan sesaat, beda
 dari sesi Terminal VPS yang memang dirancang bertahan lintas perpindahan
 modul (§9).
 
+### Port container: publik (internet) vs intranet (LAN) vs localhost
+
+Setiap port yang di-publish container (`-p host:container`) otomatis bisa
+dijangkau siapa pun yang bisa menjangkau server ini, termasuk dari
+internet — terlepas dari tujuan sebenarnya (mis. database internal yang
+cuma dipakai app lain di server yang sama, atau exporter metrik yang
+harusnya cuma dibaca dari LAN kantor). Selector "Scope" per port di
+`RecreateContainerModal` (`internal/modules/docker/portscope.go`) memberi
+kontrol eksplisit, tiga tingkat:
+
+- **Publik (internet)** — bisa diakses dari mana saja. Default, sama
+  seperti perilaku sebelum fitur ini ada.
+- **Intranet (LAN saja)** — HANYA dari rentang IP privat (RFC1918:
+  `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), lewat aturan firewall
+  yang dibatasi. Docker sendiri tidak bisa membatasi "hanya LAN" waktu
+  bind (cuma bisa bind ke satu IP tertentu, bukan rentang), jadi port
+  tetap bind ke semua interface (`0.0.0.0`) dan firewall-lah yang
+  menyaring sumbernya — sama seperti pendekatan akses Docker→database di
+  §14, tapi di sini arahnya kebalik: yang dibatasi itu SUMBER dari luar,
+  bukan tujuan bridge Docker.
+- **Localhost saja** — bind ke `127.0.0.1`. Satu-satunya mode yang
+  proteksinya independen dari firewall: tidak terjangkau dari luar server
+  ini apa pun kondisi firewall-nya.
+
+Kalau scope "Intranet" dipilih tapi TIDAK ada firewall (ufw/firewalld)
+aktif terdeteksi di server, pembatasannya tidak benar-benar berlaku (sama
+terbukanya dengan "Publik") — dilaporkan eksplisit lewat
+`RecreateContainerResponse.Warning`, bukan diam-diam gagal membatasi
+(pola yang sama dengan peringatan MySQL tanpa firewall di §14). Fitur ini
+TIDAK PERNAH memasang/mengaktifkan firewall baru, cuma menambah/menghapus
+aturan sempit ke firewall yang memang sudah aktif.
+
+Docker sendiri tidak bisa membedakan "public" dari "intranet" dari
+bind-address mentah (keduanya sama-sama `0.0.0.0`) — jadi pilihan scope
+disimpan sebagai container label (`poinhost.portscope.<port>.<proto>`),
+ditulis ulang tiap recreate (`syncPortScopeLabels`) dan dibaca kembali
+waktu inspect, supaya modal recreate berikutnya menampilkan pilihan yang
+SAMA seperti terakhir diset — bukan diam-diam reset ke "Publik" tiap kali
+container di-recreate untuk alasan lain (ganti env, misalnya).
+
+Saat scope BERUBAH (mis. dari Publik ke Intranet), skrip firewall
+(`portScopeApplyScript`) selalu MENGHAPUS dulu semua kemungkinan aturan
+poinhost sebelumnya (allow-dari-mana-saja maupun tiap CIDR intranet)
+sebelum menambah yang baru — kalau tidak, aturan lama yang lebih longgar
+bisa diam-diam tetap berlaku berdampingan dengan yang baru lebih ketat
+(ufw/firewalld meng-OR semua allow rule yang cocok, jadi satu aturan
+longgar yang tertinggal saja cukup membuat pembatasan baru tidak
+berarti). Diterapkan dalam SATU skrip untuk semua port sekaligus (satu
+round-trip SSH, dijalankan langsung setelah recreate berhasil), bukan
+satu panggilan terpisah per port.
+
 ## 12. Website: domain/vhost Nginx + PHP-FPM + SSL Let's Encrypt
 
 ### Scope tahap ini — "inti" menu Website, sisanya menyusul
