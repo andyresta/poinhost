@@ -6,8 +6,10 @@ import { TabBar } from './features/tabs/TabBar';
 import { TabContent } from './features/tabs/TabContent';
 import { EventsOn } from '../wailsjs/runtime/runtime';
 import { servers } from '../wailsjs/go/models';
+import { useSidebarStore } from './store/sidebar';
 
 function App() {
+  const collapsed = useSidebarStore((s) => s.collapsed);
   const loadTabs = useTabsStore((s) => s.loadTabs);
   const loadServers = useTabsStore((s) => s.loadServers);
   const loadStatuses = useTabsStore((s) => s.loadStatuses);
@@ -33,7 +35,7 @@ function App() {
 
   return (
     <div id="App">
-      <aside className="app__sidebar">
+      <aside className={`app__sidebar${collapsed ? ' app__sidebar--collapsed' : ''}`}>
         <ServersPage />
       </aside>
       <main className="app__main">
