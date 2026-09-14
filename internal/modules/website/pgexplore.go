@@ -90,9 +90,9 @@ type PGTableRowsResult struct {
 // WAJIB diisi untuk update/delete.
 type PGRowMutateRequest struct {
 	PGTableRequest
-	Table  string             `json:"table"`
-	Values map[string]*string `json:"values,omitempty"`
-	Where  map[string]*string `json:"where,omitempty"`
+	Table  string         `json:"table"`
+	Values map[string]any `json:"values,omitempty"`
+	Where  map[string]any `json:"where,omitempty"`
 }
 
 // PGQueryRequest menjalankan SATU statement SQL bebas.
@@ -464,7 +464,7 @@ func (s *Service) PGExploreTableRows(req PGTableRowsRequest) (*PGTableRowsResult
 // buildPGSetClause membangun klausa SET "col1" = $N, ... — placeholder
 // mulai dari startIdx supaya bisa digabung dengan placeholder WHERE di
 // query yang sama (lihat PGExploreUpdateRow).
-func buildPGSetClause(values map[string]*string, startIdx int) (string, []interface{}, error) {
+func buildPGSetClause(values map[string]any, startIdx int) (string, []interface{}, error) {
 	cols := make([]string, 0, len(values))
 	for k := range values {
 		cols = append(cols, k)
@@ -479,11 +479,7 @@ func buildPGSetClause(values map[string]*string, startIdx int) (string, []interf
 			return "", nil, err
 		}
 		parts = append(parts, quotePGIdent(col)+" = $"+strconv.Itoa(idx))
-		if v := values[col]; v != nil {
-			args = append(args, *v)
-		} else {
-			args = append(args, nil)
-		}
+		args = append(args, values[col])
 		idx++
 	}
 	return strings.Join(parts, ", "), args, nil
@@ -492,7 +488,7 @@ func buildPGSetClause(values map[string]*string, startIdx int) (string, []interf
 // buildPGWhereClause membangun klausa WHERE "col1" = $N AND ... (placeholder
 // mulai dari startIdx) — nilai nil berarti "IS NULL" (tidak makan slot
 // placeholder).
-func buildPGWhereClause(where map[string]*string, startIdx int) (string, []interface{}, error) {
+func buildPGWhereClause(where map[string]any, startIdx int) (string, []interface{}, error) {
 	if len(where) == 0 {
 		return "", nil, errFmt("kondisi WHERE wajib diisi (mencegah operasi menimpa seluruh tabel)")
 	}
@@ -514,7 +510,7 @@ func buildPGWhereClause(where map[string]*string, startIdx int) (string, []inter
 			parts = append(parts, quotePGIdent(col)+" IS NULL")
 		} else {
 			parts = append(parts, quotePGIdent(col)+" = $"+strconv.Itoa(idx))
-			args = append(args, *val)
+			args = append(args, val)
 			idx++
 		}
 	}
@@ -549,11 +545,7 @@ func (s *Service) PGExploreInsertRow(req PGRowMutateRequest) error {
 		}
 		quotedCols = append(quotedCols, quotePGIdent(col))
 		placeholders = append(placeholders, "$"+strconv.Itoa(i+1))
-		if v := req.Values[col]; v != nil {
-			args = append(args, *v)
-		} else {
-			args = append(args, nil)
-		}
+		args = append(args, req.Values[col])
 	}
 
 	db, _, err := s.openPGExploreStored(req.PGTableRequest)
