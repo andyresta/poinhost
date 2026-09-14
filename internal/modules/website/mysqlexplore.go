@@ -87,10 +87,10 @@ type MySQLTableRowsResult struct {
 // yang sedang diedit di grid.
 type MySQLRowMutateRequest struct {
 	MySQLExploreRequest
-	Database string             `json:"database"`
-	Table    string             `json:"table"`
-	Values   map[string]*string `json:"values,omitempty"`
-	Where    map[string]*string `json:"where,omitempty"`
+	Database string         `json:"database"`
+	Table    string         `json:"table"`
+	Values   map[string]any `json:"values,omitempty"`
+	Where    map[string]any `json:"where,omitempty"`
 }
 
 // MySQLQueryRequest menjalankan SATU statement SQL bebas (kotak query).
@@ -430,7 +430,7 @@ func (s *Service) MySQLExploreTableRows(req MySQLTableRowsRequest) (*MySQLTableR
 // buildMySQLWhereClause membangun klausa WHERE dari map kolom->nilai
 // (urutan kolom diurutkan supaya query yang dihasilkan deterministik/mudah
 // dibaca saat debug) — nilai nil berarti "IS NULL".
-func buildMySQLWhereClause(where map[string]*string) (string, []interface{}, error) {
+func buildMySQLWhereClause(where map[string]any) (string, []interface{}, error) {
 	if len(where) == 0 {
 		return "", nil, errFmt("kondisi WHERE wajib diisi (mencegah operasi menimpa seluruh tabel)")
 	}
@@ -451,7 +451,7 @@ func buildMySQLWhereClause(where map[string]*string) (string, []interface{}, err
 			parts = append(parts, quoteMySQLIdent(col)+" IS NULL")
 		} else {
 			parts = append(parts, quoteMySQLIdent(col)+" = ?")
-			args = append(args, *val)
+			args = append(args, val)
 		}
 	}
 	return strings.Join(parts, " AND "), args, nil
@@ -484,11 +484,7 @@ func (s *Service) MySQLExploreInsertRow(req MySQLRowMutateRequest) error {
 		}
 		quotedCols = append(quotedCols, quoteMySQLIdent(col))
 		placeholders = append(placeholders, "?")
-		if v := req.Values[col]; v != nil {
-			args = append(args, *v)
-		} else {
-			args = append(args, nil)
-		}
+		args = append(args, req.Values[col])
 	}
 
 	db, _, _, err := s.openMySQLExploreStored(req.MySQLExploreRequest)
@@ -529,11 +525,7 @@ func (s *Service) MySQLExploreUpdateRow(req MySQLRowMutateRequest) error {
 			return err
 		}
 		setParts = append(setParts, quoteMySQLIdent(col)+" = ?")
-		if v := req.Values[col]; v != nil {
-			args = append(args, *v)
-		} else {
-			args = append(args, nil)
-		}
+		args = append(args, req.Values[col])
 	}
 
 	whereClause, whereArgs, err := buildMySQLWhereClause(req.Where)

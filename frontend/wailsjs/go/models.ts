@@ -1803,8 +1803,8 @@ export namespace website {
 	    host?: string;
 	    database: string;
 	    table: string;
-	    values?: Record<string, string>;
-	    where?: Record<string, string>;
+	    values?: Record<string, any>;
+	    where?: Record<string, any>;
 	
 	    static createFrom(source: any = {}) {
 	        return new MySQLRowMutateRequest(source);
@@ -1962,8 +1962,8 @@ export namespace website {
 	    database: string;
 	    schema?: string;
 	    table: string;
-	    values?: Record<string, string>;
-	    where?: Record<string, string>;
+	    values?: Record<string, any>;
+	    where?: Record<string, any>;
 	
 	    static createFrom(source: any = {}) {
 	        return new PGRowMutateRequest(source);
