@@ -117,7 +117,7 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
           <>
             <p className="chmod-path">Semua traffic domain ini diteruskan ke: {status.proxyTarget}</p>
             <button className="btn btn--sm btn--danger" disabled={busy} onClick={() => void handleDisable()}>
-              Nonaktifkan (kembali ke {status.phpEnabled ? `PHP ${status.phpVersion}` : 'static'})
+              {busy && <span className="spinner" />} Nonaktifkan (kembali ke {status.phpEnabled ? `PHP ${status.phpVersion}` : 'static'})
             </button>
           </>
         ) : (
@@ -128,7 +128,7 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
               websocket
             </label>
             <button className="btn btn--sm btn--primary" disabled={busy || !target.trim()} onClick={() => void handleEnable()}>
-              Aktifkan
+              {busy && <span className="spinner" />} Aktifkan
             </button>
           </div>
         )}
@@ -153,7 +153,7 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
                 <td>{r.webSocket ? <Check size={13} /> : '—'}</td>
                 <td className="files-panel__row-actions">
                   <button disabled={busy} onClick={() => void handleDeleteRule(r.path)}>
-                    <Trash2 size={14} />
+                    {busy ? <span className="spinner" /> : <Trash2 size={14} />}
                   </button>
                 </td>
               </tr>
@@ -175,7 +175,7 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
             ws
           </label>
           <button className="btn btn--sm" disabled={busy || !rulePath.trim() || !ruleTarget.trim()} onClick={() => void handleAddRule()}>
-            + Tambah
+            {busy && <span className="spinner" />} + Tambah
           </button>
         </div>
       </section>

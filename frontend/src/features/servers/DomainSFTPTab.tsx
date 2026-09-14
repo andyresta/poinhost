@@ -68,7 +68,7 @@ export function DomainSFTPTab({ serverId, domain }: { serverId: string; domain: 
 
       <div className="files-panel__toolbar">
         <button className="btn btn--sm" disabled={busy} onClick={() => void load()}>
-          <RotateCw size={13} /> Refresh
+          {busy ? <span className="spinner" /> : <RotateCw size={13} />} Refresh
         </button>
         <button className="btn btn--sm btn--primary" onClick={() => setShowForm((v) => !v)}>
           + Akun SFTP
@@ -80,7 +80,7 @@ export function DomainSFTPTab({ serverId, domain }: { serverId: string; domain: 
           <input placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} />
           <input type="password" placeholder="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           <button className="btn btn--sm btn--primary" disabled={busy || !username.trim() || !password.trim()} onClick={() => void handleCreate()}>
-            Buat
+            {busy && <span className="spinner" />} Buat
           </button>
         </div>
       )}
@@ -106,7 +106,7 @@ export function DomainSFTPTab({ serverId, domain }: { serverId: string; domain: 
               </td>
               <td className="files-panel__row-actions">
                 <button disabled={busy} onClick={() => void handleDelete(a.username)}>
-                  <Trash2 size={14} />
+                  {busy ? <span className="spinner" /> : <Trash2 size={14} />}
                 </button>
               </td>
             </tr>

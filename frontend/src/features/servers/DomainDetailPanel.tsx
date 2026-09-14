@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   GetWebsitePHPStatus,
   SetWebsitePHP,
@@ -21,22 +22,9 @@ import { DomainDNSTab } from './DomainDNSTab';
 import { DomainSFTPTab } from './DomainSFTPTab';
 import { DomainCronTab } from './DomainCronTab';
 import { DatabaseManagerPanel } from './DatabaseManagerPanel';
-import { X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, CornerDownRight, Lock, Plus, Pause, Play, Trash2 } from 'lucide-react';
 
 const SSL_EMAIL_KEY = 'poinhost.website.sslEmail';
-
-const TABS = [
-  { key: 'php', label: 'PHP' },
-  { key: 'ssl', label: 'SSL' },
-  { key: 'files', label: 'Files' },
-  { key: 'logs', label: 'Logs' },
-  { key: 'proxy', label: 'Proxy' },
-  { key: 'database', label: 'Database' },
-  { key: 'cron', label: 'Cron' },
-  { key: 'dns', label: 'DNS' },
-  { key: 'sftp', label: 'SFTP' },
-] as const;
-type TabKey = (typeof TABS)[number]['key'];
 
 interface StreamLineEvent {
   type: 'line' | 'end' | 'error';
@@ -166,11 +154,11 @@ function PHPTab({ serverId, domain, onChanged }: { serverId: string; domain: str
                   <td className="files-panel__row-actions">
                     {active ? (
                       <button className="btn btn--sm" disabled={busy === '__disable__'} onClick={() => void deactivate()}>
-                        Nonaktifkan
+                        {busy === '__disable__' && <span className="spinner" />} Nonaktifkan
                       </button>
                     ) : (
                       <button className="btn btn--sm btn--primary" disabled={busy === v.version} onClick={() => void activate(v.version)}>
-                        Pakai untuk domain ini
+                        {busy === v.version && <span className="spinner" />} Pakai untuk domain ini
                       </button>
                     )}
                   </td>
@@ -185,7 +173,7 @@ function PHPTab({ serverId, domain, onChanged }: { serverId: string; domain: str
         <div className="docker-engine">
           <p>Repo paket PHP (multi-versi) belum disiapkan di server ini.</p>
           <button className="btn btn--primary" disabled={installing === '__repo__'} onClick={() => void setupRepo()}>
-            {installing === '__repo__' ? 'Menyiapkan…' : 'Siapkan repo PHP'}
+            {installing === '__repo__' && <span className="spinner" />} {installing === '__repo__' ? 'Menyiapkan…' : 'Siapkan repo PHP'}
           </button>
         </div>
       )}
@@ -196,7 +184,7 @@ function PHPTab({ serverId, domain, onChanged }: { serverId: string; domain: str
           <div className="files-panel__toolbar">
             {status.available.map((v) => (
               <button key={v} className="btn btn--sm" disabled={!!installing} onClick={() => void installVersion(v)}>
-                {installing === v ? 'Menginstal…' : `Install PHP ${v}`}
+                {installing === v && <span className="spinner" />} {installing === v ? 'Menginstal…' : `Install PHP ${v}`}
               </button>
             ))}
           </div>
@@ -342,7 +330,7 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
         {!status.canInstall && <p className="overview__error">Distro server ini belum didukung instalasi otomatis.</p>}
         {status.canInstall && (
           <button className="btn btn--primary" disabled={installing} onClick={() => void installCertbot()}>
-            {installing ? 'Menginstal…' : 'Install Certbot'}
+            {installing && <span className="spinner" />} {installing ? 'Menginstal…' : 'Install Certbot'}
           </button>
         )}
         {error && <p className="overview__error">{error}</p>}
@@ -360,9 +348,7 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
           {status.sslEnabled ? 'SSL aktif' : status.certificate.exists ? 'Sertifikat siap, belum aktif' : 'SSL belum aktif'}
         </span>
       </p>
-      {status.sans && status.sans.length > 0 && (
-        <p className="chmod-path">Mencakup: {status.sans.join(', ')}</p>
-      )}
+      {status.sans && status.sans.length > 0 && <p className="chmod-path">Mencakup: {status.sans.join(', ')}</p>}
       {status.certificate.notAfter && <p className="chmod-path">Berlaku sampai: {status.certificate.notAfter}</p>}
 
       {status.certificate.exists && (
@@ -373,7 +359,7 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
           </span>
           {!status.autoRenewEnabled && (
             <button className="btn btn--sm" style={{ marginLeft: 8 }} disabled={busy} onClick={() => void enableAutoRenew()}>
-              Pasang auto-renew
+              {busy && <span className="spinner" />} Pasang auto-renew
             </button>
           )}
         </p>
@@ -385,27 +371,25 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
             <span>Email (untuk Let's Encrypt)</span>
             <input type="email" placeholder="admin@contoh.com" value={email} onChange={(e) => setEmail(e.target.value)} />
           </label>
-          <p className="chmod-path">
-            Pastikan DNS domain ini sudah diarahkan ke IP server sebelum menerbitkan sertifikat.
-          </p>
+          <p className="chmod-path">Pastikan DNS domain ini sudah diarahkan ke IP server sebelum menerbitkan sertifikat.</p>
           <button className="btn btn--primary" disabled={busy} onClick={() => void issueAndEnable()}>
-            {busy ? 'Memproses…' : "Terbitkan & Aktifkan SSL"}
+            {busy && <span className="spinner" />} {busy ? 'Memproses…' : "Terbitkan & Aktifkan SSL"}
           </button>
         </>
       )}
 
       {status.certificate.exists && !status.sslEnabled && (
         <button className="btn btn--primary" disabled={busy} onClick={() => void enable()}>
-          Aktifkan SSL
+          {busy && <span className="spinner" />} Aktifkan SSL
         </button>
       )}
       {status.certificate.exists && status.sslEnabled && (
         <div className="files-panel__toolbar">
           <button className="btn btn--sm" disabled={busy} onClick={() => void renew()}>
-            Perbarui sertifikat
+            {busy && <span className="spinner" />} Perbarui sertifikat
           </button>
           <button className="btn btn--sm btn--danger" disabled={busy} onClick={() => void disable()}>
-            Nonaktifkan SSL
+            {busy && <span className="spinner" />} Nonaktifkan SSL
           </button>
         </div>
       )}
@@ -413,56 +397,136 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
   );
 }
 
-// Panel detail satu domain — sub-nav lengkap 9 tab (PHP, SSL, Files, Logs,
-// Proxy, DNS, SFTP, Cron, Database), semuanya berfungsi penuh. Ini
-// melengkapi seluruh menu Website yang ada di homepoin (lihat
-// ARCHITECTURE.md §Website untuk detail tiap tab & perbedaan arsitekturnya).
-export function DomainDetailModal({
-  serverId,
-  domain,
-  onClose,
-  onChanged,
+// AccordionSection satu bagian collapse (PHP/SSL/Files/dst). Konten anak
+// baru di-mount pertama kali section dibuka (bukan langsung semua 9 section
+// sekaligus saat domain dipilih) — tiap tab bikin panggilan status sendiri
+// di useEffect-nya, mount serentak berarti ~9 round-trip SSH sekaligus
+// padahal user mungkin cuma mau lihat satu. Sekali dibuka, kontennya TETAP
+// ter-mount (disembunyikan lewat atribut `hidden`, bukan unmount) supaya
+// buka-tutup berikutnya tidak fetch ulang.
+function AccordionSection({
+  title,
+  defaultOpen,
+  children,
 }: {
-  serverId: string;
-  domain: string;
-  onClose: () => void;
-  onChanged: () => void;
+  title: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
 }) {
-  const [tab, setTab] = useState<TabKey>('php');
+  const [open, setOpen] = useState(!!defaultOpen);
+  const [mounted, setMounted] = useState(!!defaultOpen);
 
   return (
-    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal-card modal-card--editor">
-        <div className="modal-card__header">
-          <h2>{domain}</h2>
-          <button className="modal-card__close" onClick={onClose}>
-            <X size={18} />
-          </button>
+    <div className="accordion-section">
+      <button
+        className="accordion-section__head"
+        onClick={() => {
+          setOpen((o) => !o);
+          setMounted(true);
+        }}
+      >
+        <ChevronRight size={14} className={`accordion-section__chevron${open ? ' accordion-section__chevron--open' : ''}`} />
+        <span>{title}</span>
+      </button>
+      {mounted && (
+        <div className="accordion-section__body" hidden={!open}>
+          {children}
         </div>
-        <div className="modal-card__body modal-card__body--editor">
-          <div className="subnav">
-            {TABS.map((t) => (
-              <button key={t.key} className={tab === t.key ? 'active' : ''} onClick={() => setTab(t.key)}>
-                {t.label}
-              </button>
-            ))}
-          </div>
+      )}
+    </div>
+  );
+}
 
-          {tab === 'php' && <PHPTab serverId={serverId} domain={domain} onChanged={onChanged} />}
-          {tab === 'ssl' && <SSLTab serverId={serverId} domain={domain} onChanged={onChanged} />}
-          {tab === 'files' && <DomainFilesTab serverId={serverId} domain={domain} />}
-          {tab === 'logs' && <DomainLogsTab serverId={serverId} domain={domain} />}
-          {tab === 'proxy' && <DomainProxyTab serverId={serverId} domain={domain} />}
-          {tab === 'dns' && <DomainDNSTab serverId={serverId} domain={domain} />}
-          {tab === 'sftp' && <DomainSFTPTab serverId={serverId} domain={domain} />}
-          {tab === 'cron' && <DomainCronTab serverId={serverId} domain={domain} />}
-          {tab === 'database' && <DatabaseManagerPanel serverId={serverId} domain={domain} />}
-        </div>
-        <div className="modal-card__footer">
-          <button className="btn btn--ghost" onClick={onClose}>
-            Tutup
+// Panel detail satu domain — accordion collapse untuk 9 fitur (PHP, SSL,
+// Files, Logs, Proxy, DNS, SFTP, Cron, Database), dirender INLINE menggantikan
+// daftar domain di WebsitePanel (bukan modal overlay) — permintaan user
+// eksplisit: modal per-fitur "kurang baik secara UI" untuk sebanyak ini.
+// Melengkapi seluruh menu Website homepoin (lihat ARCHITECTURE.md §Website).
+export function DomainDetailPanel({
+  serverId,
+  domain,
+  onBack,
+  onChanged,
+  onToggleEnabled,
+  onAddSubdomain,
+  onDelete,
+  busy,
+}: {
+  serverId: string;
+  domain: website.DomainInfo;
+  onBack: () => void;
+  onChanged: () => void;
+  onToggleEnabled: () => void;
+  onAddSubdomain: () => void;
+  onDelete: () => void;
+  busy: boolean;
+}) {
+  const name = domain.domain;
+
+  return (
+    <div className="domain-detail-panel">
+      <div className="domain-detail-panel__header">
+        <button className="btn btn--ghost btn--sm" onClick={onBack}>
+          <ArrowLeft size={14} /> Kembali
+        </button>
+        <h2 className="domain-detail-panel__title">
+          {domain.isSubdomain && <CornerDownRight size={14} />}
+          {name}
+        </h2>
+        <span className={`docker-badge ${domain.enabled ? 'docker-badge--running' : 'docker-badge--stopped'}`}>
+          {domain.enabled ? 'Aktif' : 'Nonaktif'}
+        </span>
+        {domain.phpEnabled && <span className="docker-badge">PHP {domain.phpVersion}</span>}
+        {domain.sslEnabled && (
+          <span className="docker-badge docker-badge--running">
+            <Lock size={11} /> SSL
+          </span>
+        )}
+        <div className="domain-detail-panel__actions">
+          {!domain.isSubdomain && (
+            <button title="Tambah subdomain" disabled={busy} onClick={onAddSubdomain}>
+              <Plus size={14} />
+            </button>
+          )}
+          <button title={domain.enabled ? 'Nonaktifkan' : 'Aktifkan'} disabled={busy} onClick={onToggleEnabled}>
+            {busy ? <span className="spinner" /> : domain.enabled ? <Pause size={14} /> : <Play size={14} />}
+          </button>
+          <button title="Hapus" disabled={busy} onClick={onDelete}>
+            <Trash2 size={14} />
           </button>
         </div>
+      </div>
+
+      <div className="accordion">
+        <AccordionSection title="PHP" defaultOpen>
+          <PHPTab serverId={serverId} domain={name} onChanged={onChanged} />
+        </AccordionSection>
+        <AccordionSection title="SSL">
+          <SSLTab serverId={serverId} domain={name} onChanged={onChanged} />
+        </AccordionSection>
+        <AccordionSection title="Files">
+          <DomainFilesTab serverId={serverId} domain={name} />
+        </AccordionSection>
+        <AccordionSection title="Logs">
+          <DomainLogsTab serverId={serverId} domain={name} />
+        </AccordionSection>
+        <AccordionSection title="Proxy">
+          <DomainProxyTab serverId={serverId} domain={name} />
+        </AccordionSection>
+        <AccordionSection title="Database">
+          <DatabaseManagerPanel serverId={serverId} domain={name} />
+        </AccordionSection>
+        <AccordionSection title="Cron">
+          <DomainCronTab serverId={serverId} domain={name} />
+        </AccordionSection>
+        {!domain.isSubdomain && (
+          <AccordionSection title="DNS">
+            <DomainDNSTab serverId={serverId} domain={name} />
+          </AccordionSection>
+        )}
+        <AccordionSection title="SFTP">
+          <DomainSFTPTab serverId={serverId} domain={name} />
+        </AccordionSection>
       </div>
     </div>
   );

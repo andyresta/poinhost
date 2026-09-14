@@ -270,10 +270,10 @@ export function ServerFormModal({
 
         <div className="modal-card__footer">
           <button className="btn btn--ghost" onClick={() => void handleTest()} disabled={busy}>
-            {testState === 'testing' ? 'Menguji…' : 'Tes Koneksi'}
+            {testState === 'testing' && <span className="spinner" />} {testState === 'testing' ? 'Menguji…' : 'Tes Koneksi'}
           </button>
           <button className="btn btn--primary" onClick={() => void handleSave()} disabled={!canSave || busy}>
-            Simpan
+            {busy && testState !== 'testing' && <span className="spinner" />} Simpan
           </button>
         </div>
         {!canSave && (
@@ -324,7 +324,7 @@ function ConnectionStatus({
       {detail.oldFingerprint && <code className="connection-status__fp">lama: {detail.oldFingerprint}</code>}
       {detail.fingerprint && <code className="connection-status__fp">baru: {detail.fingerprint}</code>}
       <button className="btn btn--sm" onClick={onTrust} disabled={busy}>
-        Percayai Host Key
+        {busy && <span className="spinner" />} Percayai Host Key
       </button>
     </div>
   );

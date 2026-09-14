@@ -60,7 +60,7 @@ export function SubdomainModal({
             Batal
           </button>
           <button className="btn btn--primary" disabled={busy || !label.trim()} onClick={() => void handleConfirm()}>
-            {busy ? 'Membuat…' : 'Buat'}
+            {busy && <span className="spinner" />} {busy ? 'Membuat…' : 'Buat'}
           </button>
         </div>
       </div>

@@ -64,7 +64,7 @@ export function CompressModal({
             Batal
           </button>
           <button className="btn btn--primary" disabled={busy || !name.trim()} onClick={() => void handleConfirm()}>
-            Kompres
+            {busy && <span className="spinner" />} Kompres
           </button>
         </div>
       </div>

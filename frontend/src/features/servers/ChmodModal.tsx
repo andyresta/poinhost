@@ -105,7 +105,7 @@ export function ChmodModal({
             Batal
           </button>
           <button className="btn btn--primary" disabled={busy} onClick={() => void handleConfirm()}>
-            Terapkan
+            {busy && <span className="spinner" />} Terapkan
           </button>
         </div>
       </div>

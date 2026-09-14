@@ -208,10 +208,10 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
                   <Pencil size={14} />
                 </button>
                 <button title={job.enabled ? 'Nonaktifkan' : 'Aktifkan'} disabled={busy === job.id} onClick={() => void handleToggle(job)}>
-                  {job.enabled ? <Pause size={14} /> : <Play size={14} />}
+                  {busy === job.id ? <span className="spinner" /> : job.enabled ? <Pause size={14} /> : <Play size={14} />}
                 </button>
                 <button title="Hapus" disabled={busy === job.id} onClick={() => void handleDelete(job)}>
-                  <Trash2 size={14} />
+                  {busy === job.id ? <span className="spinner" /> : <Trash2 size={14} />}
                 </button>
               </td>
             </tr>
@@ -305,7 +305,7 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
                 Batal
               </button>
               <button className="btn btn--primary" disabled={busy === '__form__'} onClick={() => void handleSubmit()}>
-                {busy === '__form__' ? 'Menyimpan…' : 'Simpan'}
+                {busy === '__form__' && <span className="spinner" />} {busy === '__form__' ? 'Menyimpan…' : 'Simpan'}
               </button>
             </div>
           </div>

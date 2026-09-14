@@ -115,7 +115,7 @@ export function EditFileModal({
             Tutup
           </button>
           <button className="btn btn--primary" disabled={!dirty || saving || loading} onClick={() => void handleSave()}>
-            {saving ? 'Menyimpan…' : 'Simpan'}
+            {saving && <span className="spinner" />} {saving ? 'Menyimpan…' : 'Simpan'}
           </button>
         </div>
       </div>

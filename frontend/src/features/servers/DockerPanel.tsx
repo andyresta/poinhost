@@ -163,7 +163,7 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
             <>
               <div className="files-panel__toolbar">
                 <button className="btn btn--sm" disabled={loading} onClick={() => void loadContainers()}>
-                  <RotateCw size={13} /> Refresh
+                  {loading ? <span className="spinner" /> : <RotateCw size={13} />} Refresh
                 </button>
                 {engine.version && <span className="docker-panel__version">Docker {engine.version}</span>}
               </div>
@@ -194,14 +194,14 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
                           {c.state === 'running' ? (
                             <>
                               <button title="Stop" disabled={busyId === c.id} onClick={() => void runAction(c.id, () => StopDockerContainer(serverId, c.id))}>
-                                <Square size={14} />
+                                {busyId === c.id ? <span className="spinner" /> : <Square size={14} />}
                               </button>
                               <button
                                 title="Restart"
                                 disabled={busyId === c.id}
                                 onClick={() => void runAction(c.id, () => RestartDockerContainer(serverId, c.id))}
                               >
-                                <RotateCw size={14} />
+                                {busyId === c.id ? <span className="spinner" /> : <RotateCw size={14} />}
                               </button>
                               <button title="Exec" onClick={() => setExecTarget(c)}>
                                 <SquareTerminal size={14} />
@@ -212,7 +212,7 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
                             </>
                           ) : (
                             <button title="Start" disabled={busyId === c.id} onClick={() => void runAction(c.id, () => StartDockerContainer(serverId, c.id))}>
-                              <Play size={14} />
+                              {busyId === c.id ? <span className="spinner" /> : <Play size={14} />}
                             </button>
                           )}
                           <button title="Log" onClick={() => setLogsTarget(c)}>
@@ -222,7 +222,7 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
                             <Settings size={14} />
                           </button>
                           <button title="Hapus" disabled={busyId === c.id} onClick={() => void handleRemove(c)}>
-                            <Trash2 size={14} />
+                            {busyId === c.id ? <span className="spinner" /> : <Trash2 size={14} />}
                           </button>
                         </td>
                       </tr>

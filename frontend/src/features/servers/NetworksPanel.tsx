@@ -74,7 +74,7 @@ export function NetworksPanel({ serverId }: { serverId: string }) {
     <div className="files-panel">
       <div className="files-panel__toolbar">
         <button className="btn btn--sm" disabled={loading} onClick={() => void load()}>
-          <RotateCw size={13} /> Refresh
+          {loading ? <span className="spinner" /> : <RotateCw size={13} />} Refresh
         </button>
         <button className="btn btn--sm btn--primary" onClick={() => setShowForm((v) => !v)}>
           + Network
@@ -102,7 +102,7 @@ export function NetworksPanel({ serverId }: { serverId: string }) {
             attachable
           </label>
           <button className="btn btn--sm btn--primary" disabled={busy || !form.name.trim()} onClick={() => void handleCreate()}>
-            Buat
+            {busy && <span className="spinner" />} Buat
           </button>
         </div>
       )}
@@ -128,7 +128,7 @@ export function NetworksPanel({ serverId }: { serverId: string }) {
                 <td className="files-panel__row-actions">
                   {!n.builtin && (
                     <button title="Hapus" disabled={busy} onClick={() => void handleRemove(n.name)}>
-                      <Trash2 size={14} />
+                      {busy ? <span className="spinner" /> : <Trash2 size={14} />}
                     </button>
                   )}
                 </td>

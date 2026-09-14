@@ -254,7 +254,7 @@ export function RecreateContainerModal({
             Batal
           </button>
           <button className="btn btn--primary" disabled={loading || saving} onClick={() => void handleSave()}>
-            {saving ? 'Menerapkan…' : 'Terapkan (recreate)'}
+            {saving && <span className="spinner" />} {saving ? 'Menerapkan…' : 'Terapkan (recreate)'}
           </button>
         </div>
       </div>

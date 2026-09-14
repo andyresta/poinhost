@@ -65,7 +65,7 @@ export function SearchModal({
               placeholder="mis. nginx.conf, .env, backup"
             />
             <button className="btn btn--primary btn--sm" disabled={loading || !query.trim()} onClick={() => void handleSearch()}>
-              {loading ? 'Mencari…' : 'Cari'}
+              {loading && <span className="spinner" />} {loading ? 'Mencari…' : 'Cari'}
             </button>
           </div>
 

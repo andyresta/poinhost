@@ -51,6 +51,7 @@ func (s *Service) listDomains(serverID string) ([]DomainInfo, error) {
 	}
 
 	domains := parseVhostBlocks(res.Stdout)
+	inferMissingParents(domains)
 	sort.Slice(domains, func(i, j int) bool { return domains[i].Domain < domains[j].Domain })
 
 	s.cacheMu.Lock()
@@ -87,6 +88,57 @@ func parseVhostBlocks(stdout string) []DomainInfo {
 		}
 	}
 	return domains
+}
+
+// inferMissingParents mengisi Parent yang kosong lewat pencocokan akhiran
+// nama domain terhadap domain lain di server yang sama (persis algoritma
+// `findParentDomain` homepoin) — HANYA untuk entri yang marker vhost-nya
+// SENDIRI sudah bilang subdomain (`IsSubdomain=true`, lihat parseVhostFile)
+// tapi belum punya Parent. Ini kasus nyata untuk subdomain lama buatan
+// homepoin: marker `# homepoin-managed subdomain: ...` TIDAK pernah
+// menyertakan field "parent=" (beda dari marker poinhost sendiri yang
+// selalu menulisnya) — akibatnya sebelum fungsi ini ada, subdomain itu
+// tampil sebagai website sendiri di daftar (WebsitePanel.tsx mengelompokkan
+// berdasar Parent, subdomain tanpa Parent jatuh ke baris "orphan" yang
+// dirender rata seperti domain top-level, bukan terindentasi di bawah
+// induknya). Domain yang marker-nya SENDIRI bilang top-level (IsSubdomain
+// masih false) sengaja TIDAK disentuh sama sekali — tidak ada tebak-tebakan
+// nama untuk domain yang sudah eksplisit menyatakan dirinya sendiri.
+func inferMissingParents(domains []DomainInfo) {
+	names := make(map[string]struct{}, len(domains))
+	for _, d := range domains {
+		names[d.Domain] = struct{}{}
+	}
+	for i := range domains {
+		if !domains[i].IsSubdomain || domains[i].Parent != "" {
+			continue
+		}
+		if parent := findParentDomain(domains[i].Domain, names); parent != "" {
+			domains[i].Parent = parent
+		}
+	}
+}
+
+// findParentDomain mencari domain "induk" terpanjang dari `names` yang
+// merupakan akhiran dari `domain` — mis. untuk "dev.example.com" dengan
+// names={"example.com"}, hasilnya "example.com".
+func findParentDomain(domain string, names map[string]struct{}) string {
+	best := ""
+	rest := domain
+	for {
+		idx := strings.Index(rest, ".")
+		if idx < 0 {
+			break
+		}
+		rest = rest[idx+1:]
+		if rest == "" {
+			break
+		}
+		if _, ok := names[rest]; ok && len(rest) > len(best) {
+			best = rest
+		}
+	}
+	return best
 }
 
 // List mengembalikan status Nginx + daftar domain di satu server.

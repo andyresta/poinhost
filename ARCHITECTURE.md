@@ -167,9 +167,10 @@ poinhost/
     │   │   │                     # DockerPanel, NetworksPanel, EngineInstallWizard,
     │   │   │                     # ContainerLogsModal/StatsModal/ExecModal, RecreateContainerModal,
     │   │   │                     # WebsitePanel, WebsiteEngineWizard, CreateWebsiteModal,
-    │   │   │                     # SubdomainModal, DomainDetailModal (9 tab: PHP/SSL/
-    │   │   │                     # Files/Logs/Proxy/DNS/SFTP/Cron/Database),
-    │   │   │                     # MySQLExplorerModal, PGExplorerModal (§14), BackupModal (§15)
+    │   │   │                     # SubdomainModal, DomainDetailPanel (accordion inline,
+    │   │   │                     # bukan modal — §18: PHP/SSL/Files/Logs/Proxy/DNS/SFTP/
+    │   │   │                     # Cron/Database), MySQLExplorer, PGExplorer (§14, §18),
+    │   │   │                     # BackupModal (§15)
     │   │   └── tabs/              # TabBar & TabContent (keep-alive per tab)
     │   └── App.tsx
     └── wailsjs/                  # auto-generated binding Go<->TS (`wails generate module`)
@@ -1775,7 +1776,107 @@ ditemukan murni sebagai efek samping verifikasi visual. Perbaikan:
 }
 ```
 
-## 18. Yang BELUM di-porting di skeleton ini (roadmap)
+## 18. Perbaikan UX round berikutnya: subdomain warisan, spinner, scroll modal, accordion domain, split tab database
+
+Lima laporan user dalam satu sesi, dikerjakan sebagai satu batch karena
+saling terkait (beberapa perubahan struktural yang sama menyentuh beberapa
+laporan sekaligus).
+
+### Subdomain warisan homepoin tampil sebagai website sendiri
+
+Bug lanjutan dari §12: domain lama buatan homepoin sudah bisa dikenali
+sejak perbaikan sebelumnya, TAPI subdomain-nya (mis. `blog.example.com`)
+masih tampil sebagai baris rata di daftar, bukan terindentasi di bawah
+`example.com`. Sebabnya: marker metadata subdomain homepoin
+(`# homepoin-managed subdomain: ...`) TIDAK PERNAH menyertakan field
+`parent=` (beda dari marker poinhost sendiri yang selalu menulisnya) —
+`IsSubdomain` terbaca benar (`true`), tapi `Parent` kosong, dan
+`WebsitePanel.tsx` mengelompokkan baris berdasarkan `Parent` yang cocok
+dengan `domain` induknya.
+
+Diperbaiki dengan `inferMissingParents` (`domains.go`) — pencocokan
+akhiran nama domain terhadap domain lain di server yang sama, port
+langsung dari algoritma `findParentDomain` milik homepoin sendiri (riset
+kode homepoin lagi, sama seperti riset marker sebelumnya). HANYA berlaku
+untuk entri yang `IsSubdomain` SUDAH true dari marker vhost-nya sendiri
+tapi `Parent` masih kosong — domain top-level (`IsSubdomain=false`) sama
+sekali tidak disentuh, supaya tidak ada tebak-tebakan nama yang salah
+mengelompokkan dua domain top-level yang kebetulan namanya bersufiks sama.
+
+### Spinner loading di tombol eksekusi
+
+Sebelumnya banyak tombol aksi (simpan, hapus, install, dst) cuma
+`disabled` + ganti teks ("Menyimpan…") tanpa indikator visual berputar —
+gampang terlihat seperti tombolnya tidak merespons klik sama sekali.
+Ditambahkan `.spinner` (CSS murni, border-based, `@keyframes spin`) di
+`App.css`, dipasang di depan label tombol yang sedang busy:
+`{busy && <span className="spinner" />} Label` — pola dipakai konsisten
+di ~25 file (modal generik seperti PromptModal/CompressModal/ChmodModal,
+tab-tab domain, DockerPanel per-container action, dst). Untuk tombol
+ikon-only yang state busy-nya per-baris (`busyId === c.id`, bukan flag
+global), ikon-nya DIGANTI jadi spinner selama busy (bukan ditambah di
+depan) supaya tidak mengubah lebar tombol.
+
+### Modal edit environment Docker tidak bisa di-scroll
+
+`.modal-card--editor` (dipakai EditFileModal DAN RecreateContainerModal)
+punya tinggi tetap (`80vh`) + `overflow: hidden` di level kartu — didesain
+untuk CodeMirror (`EditFileModal`) yang mengisi `height: 100%` dan urus
+scroll internal sendiri. `RecreateContainerModal` numpang class yang sama
+tapi isinya form biasa (bisa berapa pun env var/port/volume, TIDAK
+auto-scroll sendiri) — begitu env var lebih dari muat satu layar, sisanya
+(termasuk section Port/Volume/Memory dan tombol "Terapkan") ke-clip oleh
+`overflow: hidden`, tidak ada cara mencapainya. Diperbaiki dengan
+`overflow-y: auto` di `.modal-card__body--editor` — tidak berdampak ke
+CodeMirror (yang selalu presisi 100% tinggi wadahnya, tidak pernah
+overflow wadah itu sendiri), tapi mengaktifkan scroll untuk konten yang
+memang lebih tinggi dari box-nya.
+
+### Detail domain: accordion inline, bukan modal 9-tab
+
+Permintaan eksplisit: modal dengan 9 tab (PHP/SSL/Files/Logs/Proxy/
+Database/Cron/DNS/SFTP) "kurang baik secara UI". `DomainDetailModal.tsx`
+(modal + `<div className="subnav">` TANPA styling khusus sama sekali —
+salah satu penyebab kesan kurang baik itu) dihapus, diganti
+`DomainDetailPanel.tsx` — dirender INLINE di `WebsitePanel.tsx`
+menggantikan tabel daftar domain (drill-down, bukan overlay): klik
+"Kelola" pada satu domain mengganti tampilan panel jadi header (tombol
+kembali + nama domain + badge status/PHP/SSL + aksi cepat
+tambah-subdomain/toggle-aktif/hapus) plus `<div className="accordion">`
+berisi satu `AccordionSection` collapse per fitur.
+
+Konten tiap section BARU di-mount saat PERTAMA kali dibuka (`mounted`
+state di `AccordionSection`, ditoggle visible via atribut `hidden` bukan
+unmount) — kalau semua 9 section dimuat serentak begitu domain dipilih,
+itu ~9 round-trip SSH sekaligus (tiap tab motret status sendiri di
+`useEffect`), padahal user mungkin cuma mau lihat satu. Sekali dibuka,
+tetap ter-mount supaya tutup-buka berikutnya tidak fetch ulang.
+
+### Explorer MySQL/PostgreSQL: tab "Users & Akses" vs "Data", bukan campur + modal
+
+`DatabaseManagerPanel.tsx` sebelumnya mencampur DUA concern berbeda di
+satu scroll panjang (status/install, akses Docker, provisioning
+database/user/grants, DAN kredensial-untuk-Explore) — lalu tombol
+"Explore" (browse tabel/baris) membuka modal terpisah lagi
+(`MySQLExplorerModal`/`PGExplorerModal`) di atas semuanya. User
+eksplisit minta dipisah: satu tempat urus SIAPA yang boleh akses, satu
+tempat urus BROWSE isinya.
+
+Diselesaikan dengan segmented tab baru di dalam panel yang sama ("Users &
+Akses" / "Data") — BUKAN modal lagi untuk sisi Data: `MySQLExplorerModal`/
+`PGExplorerModal` dihapus, isinya dipindah ke `MySQLExplorer.tsx`/
+`PGExplorer.tsx` (komponen sama persis, cuma tanpa wrapper
+`modal-overlay`/`modal-card`) yang dirender langsung sebagai konten tab
+"Data". Tab ini menampilkan selector "Browse sebagai: <kredensial>" (dari
+`ListWebsiteDBCredentials`, bukan cuma satu kredensial tetap) — klik
+"Explore" di baris user pada tab "Users & Akses" langsung lompat ke tab
+"Data" dengan kredensial itu terpilih (`openExplore`), bukan lagi
+membuka modal baru. `.db-explorer` yang tadinya mewarisi tinggi dari
+`.modal-card--explorer` (kelas ini jadi tidak terpakai, dihapus) sekarang
+punya tinggi eksplisit sendiri (`60vh`) supaya tetap punya area scroll
+yang jelas walau dirender inline di dalam accordion/tab, bukan modal.
+
+## 19. Yang BELUM di-porting di skeleton ini (roadmap)
 
 Skeleton ini sengaja dibatasi ke fondasi (sshpool + session/tab + 1 modul
 contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
@@ -1827,7 +1928,7 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   menampilkan indikator "reconnecting" per tab saat restore — perlu
   ditambah saat modul overview/monitoring di-porting.
 
-## 19. Menjalankan (development)
+## 20. Menjalankan (development)
 
 Butuh dependency native Wails (Linux: `libwebkit2gtk`, `libgtk-3-dev`,
 `pkg-config`, `build-essential`; lihat `wails doctor`). Sandbox CI/dev
