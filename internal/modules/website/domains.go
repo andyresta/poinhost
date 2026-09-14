@@ -9,8 +9,9 @@ import (
 )
 
 const listVhostsScript = `set +e
-for f in /etc/nginx/conf.d/` + confPrefix + `*.conf /etc/nginx/conf.d/` + confPrefix + `*.conf.disabled; do
+for f in /etc/nginx/conf.d/` + confPrefix + `*.conf /etc/nginx/conf.d/` + confPrefix + `*.conf.disabled /etc/nginx/conf.d/` + legacyConfPrefix + `*.conf /etc/nginx/conf.d/` + legacyConfPrefix + `*.conf.disabled; do
   [ -f "$f" ] || continue
+  case "$f" in */` + legacyPortConfPrefix + `*) continue ;; esac
   echo "===POINHOST_VHOST_START==="
   echo "PATH=$f"
   cat "$f"
@@ -24,6 +25,14 @@ exit 0`
 // ARCHITECTURE.md §Website: itu N+1 round-trip untuk N domain). Hasilnya
 // di-cache singkat (statusCacheTTL) karena dipanggil dari List/PHP-status/
 // SSL-status yang sering dibuka bergantian dalam satu sesi klik.
+//
+// Ikut men-scan prefix legacyConfPrefix (vhost lama buatan homepoin) supaya
+// domain yang sudah ada di server SEBELUM pindah ke poinhost tetap muncul
+// & bisa dikelola langsung — bukan "hilang" sampai dibuat ulang manual.
+// Begitu domain itu diedit lewat poinhost (PHP/SSL/proxy), isinya ditulis
+// ulang ke format marker poinhost sendiri (lihat buildMetaComment), tapi
+// nama filenya (prefix homepoin-) sengaja TIDAK diganti — tidak ada alasan
+// rename selain kosmetik, dan rename berarti round-trip SSH tambahan.
 func (s *Service) listDomains(serverID string) ([]DomainInfo, error) {
 	s.cacheMu.Lock()
 	entry, ok := s.domainCache[serverID]
@@ -320,6 +329,7 @@ func (s *Service) Delete(req DeleteDomainRequest) error {
 	s.mutex.Lock(req.ServerID)
 	defer s.mutex.Unlock(req.ServerID)
 
+	enabledPath, disabledPath := configFilePathVariants(info.ConfigPath)
 	rmRoot := ""
 	if req.RemoveRoot && info.Root != "" {
 		rmRoot = "rm -rf " + shellQuote(info.Root) + "\n"
@@ -328,7 +338,7 @@ func (s *Service) Delete(req DeleteDomainRequest) error {
 rm -f %s %s
 %snginx -t
 systemctl reload nginx || systemctl restart nginx
-`, shellQuote(configFilePath(domain, true)), shellQuote(configFilePath(domain, false)), rmRoot)
+`, shellQuote(enabledPath), shellQuote(disabledPath), rmRoot)
 
 	if _, err := s.run(access, script, 20*time.Second); err != nil {
 		return err
@@ -343,6 +353,10 @@ func (s *Service) SetEnabled(req SetEnabledRequest) error {
 	if err != nil {
 		return err
 	}
+	info, err := s.getDomain(req.ServerID, domain)
+	if err != nil {
+		return err
+	}
 	access, err := s.resolveAccess(req.ServerID)
 	if err != nil {
 		return err
@@ -351,7 +365,11 @@ func (s *Service) SetEnabled(req SetEnabledRequest) error {
 	s.mutex.Lock(req.ServerID)
 	defer s.mutex.Unlock(req.ServerID)
 
-	from, to := configFilePath(domain, !req.Enabled), configFilePath(domain, req.Enabled)
+	enabledPath, disabledPath := configFilePathVariants(info.ConfigPath)
+	from, to := disabledPath, enabledPath
+	if !req.Enabled {
+		from, to = enabledPath, disabledPath
+	}
 	script := fmt.Sprintf(`set -e
 FROM=%s
 TO=%s
