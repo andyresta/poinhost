@@ -5,7 +5,7 @@ import { website } from '../../../wailsjs/go/models';
 import { WebsiteEngineWizard } from './WebsiteEngineWizard';
 import { CreateWebsiteModal } from './CreateWebsiteModal';
 import { SubdomainModal } from './SubdomainModal';
-import { DomainDetailModal } from './DomainDetailModal';
+import { DomainDetailPanel } from './DomainDetailPanel';
 
 // Menu Website untuk SATU tab — mengelola domain/vhost Nginx, PHP-FPM, dan
 // SSL Let's Encrypt di server. Mekanismenya diporting dari homepoin (sudah
@@ -62,6 +62,8 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
   }
   for (const orphan of orphanSubs) rows.push({ domain: orphan, indent: false });
 
+  const detailInfo = detailDomain ? domains.find((d) => d.domain === detailDomain) ?? null : null;
+
   async function toggleEnabled(d: website.DomainInfo) {
     setBusyDomain(d.domain);
     setError(null);
@@ -81,6 +83,7 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
     setError(null);
     try {
       await DeleteWebsite(new website.DeleteDomainRequest({ serverId, domain: deleteTarget.domain, removeRoot }));
+      if (detailDomain === deleteTarget.domain) setDetailDomain(null);
       setDeleteTarget(null);
       setRemoveRoot(false);
       await load();
@@ -109,11 +112,24 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
         <WebsiteEngineWizard serverId={serverId} status={nginx} onChange={() => void load()} />
       )}
 
-      {nginx?.installed && nginx.active && (
+      {nginx?.installed && nginx.active && detailInfo && (
+        <DomainDetailPanel
+          serverId={serverId}
+          domain={detailInfo}
+          onBack={() => setDetailDomain(null)}
+          onChanged={() => void load()}
+          onToggleEnabled={() => void toggleEnabled(detailInfo)}
+          onAddSubdomain={() => setSubdomainParent(detailInfo.domain)}
+          onDelete={() => setDeleteTarget(detailInfo)}
+          busy={busyDomain === detailInfo.domain}
+        />
+      )}
+
+      {nginx?.installed && nginx.active && !detailInfo && (
         <>
           <div className="files-panel__toolbar">
             <button className="btn btn--sm" disabled={loading} onClick={() => void load()}>
-              <RotateCw size={13} /> Refresh
+              {loading ? <span className="spinner" /> : <RotateCw size={13} />} Refresh
             </button>
             <button className="btn btn--sm btn--primary" onClick={() => setShowCreate(true)}>
               + Buat Website
@@ -184,7 +200,7 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
                         disabled={busyDomain === d.domain}
                         onClick={() => void toggleEnabled(d)}
                       >
-                        {d.enabled ? <Pause size={14} /> : <Play size={14} />}
+                        {busyDomain === d.domain ? <span className="spinner" /> : d.enabled ? <Pause size={14} /> : <Play size={14} />}
                       </button>
                       <button title="Hapus" disabled={busyDomain === d.domain} onClick={() => setDeleteTarget(d)}>
                         <Trash2 size={14} />
@@ -244,20 +260,11 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
                 Batal
               </button>
               <button className="btn btn--danger" disabled={busyDomain === deleteTarget.domain} onClick={() => void handleDelete()}>
-                Hapus
+                {busyDomain === deleteTarget.domain && <span className="spinner" />} Hapus
               </button>
             </div>
           </div>
         </div>
-      )}
-
-      {detailDomain && (
-        <DomainDetailModal
-          serverId={serverId}
-          domain={detailDomain}
-          onClose={() => setDetailDomain(null)}
-          onChanged={() => void load()}
-        />
       )}
     </div>
   );

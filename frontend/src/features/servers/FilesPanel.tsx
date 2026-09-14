@@ -204,7 +204,7 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
     <div className="files-panel">
       <div className="files-panel__toolbar">
         <button className="btn btn--sm" disabled={path === rootPath || loading} onClick={() => void load(result?.parent ?? rootPath)}>
-          <ArrowUp size={13} /> Naik
+          {loading ? <span className="spinner" /> : <ArrowUp size={13} />} Naik
         </button>
         <button className="btn btn--sm" disabled={busy} onClick={() => setModal('newFolder')}>
           + Folder
@@ -213,13 +213,13 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
           + File
         </button>
         <button className="btn btn--sm" disabled={busy} onClick={() => void handleUpload()}>
-          <Upload size={13} /> Upload
+          {busy ? <span className="spinner" /> : <Upload size={13} />} Upload
         </button>
         <button className="btn btn--sm" disabled={busy} onClick={() => setModal('search')}>
           <Search size={13} /> Cari
         </button>
-        <button className="btn btn--sm" disabled={loading} onClick={() => void load(path)}>
-          <RotateCw size={13} />
+        <button className="btn btn--sm" title="Refresh" disabled={loading} onClick={() => void load(path)}>
+          {loading ? <span className="spinner" /> : <RotateCw size={13} />}
         </button>
 
         {server?.useSudo && (
@@ -257,8 +257,8 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
             <button className="btn btn--sm" onClick={() => setModal('compress')}>
               Kompres
             </button>
-            <button className="btn btn--sm btn--danger" onClick={() => void handleDelete()}>
-              Hapus
+            <button className="btn btn--sm btn--danger" disabled={busy} onClick={() => void handleDelete()}>
+              {busy && <span className="spinner" />} Hapus
             </button>
           </div>
         )}
@@ -312,8 +312,8 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
                     </button>
                   )}
                   {!entry.isDir && ARCHIVE_RE.test(entry.name) && (
-                    <button title="Ekstrak di sini" onClick={() => void handleExtract(entry)}>
-                      <Package size={14} />
+                    <button title="Ekstrak di sini" disabled={busy} onClick={() => void handleExtract(entry)}>
+                      {busy ? <span className="spinner" /> : <Package size={14} />}
                     </button>
                   )}
                   <button title="Ubah permission" onClick={() => setChmodTarget(entry)}>

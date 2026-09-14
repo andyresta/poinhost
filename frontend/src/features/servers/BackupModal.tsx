@@ -114,7 +114,7 @@ export function BackupModal({ onClose, onImported }: { onClose: () => void; onIm
               {exportResult && <p className="chmod-path">Tersimpan di: {exportResult}</p>}
 
               <button className="btn btn--primary" disabled={exportBusy} onClick={() => void handleExport()}>
-                {exportBusy ? 'Membuat arsip…' : 'Pilih Lokasi & Simpan'}
+                {exportBusy && <span className="spinner" />} {exportBusy ? 'Membuat arsip…' : 'Pilih Lokasi & Simpan'}
               </button>
             </>
           )}
@@ -140,7 +140,7 @@ export function BackupModal({ onClose, onImported }: { onClose: () => void; onIm
               )}
 
               <button className="btn btn--primary" disabled={importBusy} onClick={() => void handleImport()}>
-                {importBusy ? 'Mengimpor…' : 'Pilih File & Import'}
+                {importBusy && <span className="spinner" />} {importBusy ? 'Mengimpor…' : 'Pilih File & Import'}
               </button>
             </>
           )}

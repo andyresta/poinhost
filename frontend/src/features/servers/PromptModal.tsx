@@ -59,7 +59,7 @@ export function PromptModal({
             Batal
           </button>
           <button className="btn btn--primary" disabled={busy || !value.trim()} onClick={() => void handleConfirm()}>
-            {confirmLabel}
+            {busy && <span className="spinner" />} {confirmLabel}
           </button>
         </div>
       </div>

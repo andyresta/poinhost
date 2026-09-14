@@ -124,7 +124,7 @@ export function CreateWebsiteModal({
             Batal
           </button>
           <button className="btn btn--primary" disabled={busy || !domain.trim()} onClick={() => void handleSubmit()}>
-            {busy ? 'Membuat…' : 'Buat Website'}
+            {busy && <span className="spinner" />} {busy ? 'Membuat…' : 'Buat Website'}
           </button>
         </div>
       </div>

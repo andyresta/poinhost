@@ -97,6 +97,51 @@ func TestConfigFilePathVariants(t *testing.T) {
 	}
 }
 
+func TestInferMissingParentsFillsLegacyHomepoinSubdomainParent(t *testing.T) {
+	// Meniru apa yang benar-benar dihasilkan parseVhostFile untuk subdomain
+	// lama buatan homepoin: IsSubdomain sudah true (dari marker "# homepoin-
+	// managed subdomain: ..."), tapi Parent kosong karena marker homepoin
+	// tidak pernah menyertakan field "parent=" (beda dari marker poinhost).
+	domains := []DomainInfo{
+		{Domain: "example.com", IsSubdomain: false},
+		{Domain: "dev.example.com", IsSubdomain: true, Parent: ""},
+		{Domain: "other.example.org", IsSubdomain: false},
+	}
+	inferMissingParents(domains)
+
+	if domains[1].Parent != "example.com" {
+		t.Fatalf("dev.example.com parent = %q, want example.com", domains[1].Parent)
+	}
+	if domains[0].Parent != "" || domains[0].IsSubdomain {
+		t.Fatalf("top-level domain must stay untouched, got %+v", domains[0])
+	}
+}
+
+func TestInferMissingParentsDoesNotOverrideExplicitParent(t *testing.T) {
+	domains := []DomainInfo{
+		{Domain: "example.com", IsSubdomain: false},
+		{Domain: "app.example.com", IsSubdomain: true, Parent: "example.com"},
+	}
+	inferMissingParents(domains)
+	if domains[1].Parent != "example.com" {
+		t.Fatalf("explicit parent must be preserved, got %q", domains[1].Parent)
+	}
+}
+
+func TestInferMissingParentsSkipsTopLevelDomains(t *testing.T) {
+	// "shop.example.com" ditulis sebagai domain top-level SENDIRI (bukan
+	// subdomain "example.com") — tidak boleh disatukan hanya karena
+	// namanya kebetulan berakhiran nama domain lain di server yang sama.
+	domains := []DomainInfo{
+		{Domain: "example.com", IsSubdomain: false},
+		{Domain: "shop.example.com", IsSubdomain: false, Parent: ""},
+	}
+	inferMissingParents(domains)
+	if domains[1].Parent != "" || domains[1].IsSubdomain {
+		t.Fatalf("top-level domain must not be reclassified, got %+v", domains[1])
+	}
+}
+
 func TestIsManagedVhostFilename(t *testing.T) {
 	cases := map[string]bool{
 		"poinhost-example.com.conf": true,

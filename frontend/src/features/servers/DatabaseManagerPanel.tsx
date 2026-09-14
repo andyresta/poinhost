@@ -23,8 +23,8 @@ import {
 } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
-import { MySQLExplorerModal } from './MySQLExplorerModal';
-import { PGExplorerModal } from './PGExplorerModal';
+import { MySQLExplorer } from './MySQLExplorer';
+import { PGExplorer } from './PGExplorer';
 
 interface StreamLineEvent {
   type: 'line' | 'end' | 'error';
@@ -71,7 +71,14 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
   const [linkedDbs, setLinkedDbs] = useState<string[]>([]);
   const [linkingUser, setLinkingUser] = useState<website.DBUserInfo | null>(null);
   const [linkPassword, setLinkPassword] = useState('');
-  const [exploreTarget, setExploreTarget] = useState<{ engine: 'mysql' | 'postgresql'; username: string; host: string } | null>(null);
+
+  // Dua concern yang tadinya campur di satu layar (siapa yang boleh akses
+  // vs isi datanya sendiri) sekarang tab terpisah — bukan lagi modal Explore
+  // yang muncul di atas semuanya. dataTarget: kredensial mana yang lagi
+  // dibuka di tab Data, diisi otomatis (kredensial pertama utk engine ini)
+  // atau eksplisit lewat tombol "Explore" di baris user tab sebelah.
+  const [panelTab, setPanelTab] = useState<'access' | 'data'>('access');
+  const [dataTarget, setDataTarget] = useState<{ username: string; host: string } | null>(null);
 
   const [dockerAccess, setDockerAccess] = useState<website.DBDockerAccessStatus | null>(null);
   const [dockerAccessBusy, setDockerAccessBusy] = useState(false);
@@ -127,6 +134,22 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
 
   function credentialLabel(username: string, host: string) {
     return engine === 'mysql' ? `${username}@${host || '%'}` : username;
+  }
+
+  const credsForEngine = credentials.filter((c) => c.engine === engine);
+
+  // Ganti engine (MySQL <-> PostgreSQL) berarti daftar kredensial tab Data
+  // ikut berubah total — kembali ke tab "Users & Akses" dan lepas pilihan
+  // lama, bukan diam-diam nyasar nunjukin kredensial engine sebelumnya.
+  useEffect(() => {
+    setPanelTab('access');
+    setDataTarget(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine]);
+
+  function openExplore(username: string, host: string) {
+    setDataTarget({ username, host });
+    setPanelTab('data');
   }
 
   async function handleLinkCredential() {
@@ -331,7 +354,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
         <div className="docker-engine">
           <p>{engine === 'mysql' ? 'MySQL/MariaDB' : 'PostgreSQL'} sudah terpasang tapi tidak aktif.</p>
           <button className="btn btn--primary" disabled={busy} onClick={() => void handleStart()}>
-            Jalankan
+            {busy && <span className="spinner" />} Jalankan
           </button>
         </div>
       )}
@@ -353,7 +376,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                 ))}
               </select>
               <button className="btn btn--primary" disabled={installing} onClick={() => void handleInstall()}>
-                {installing ? 'Menginstal…' : `Install ${engine === 'mysql' ? 'MariaDB' : 'PostgreSQL'}`}
+                {installing && <span className="spinner" />} {installing ? 'Menginstal…' : `Install ${engine === 'mysql' ? 'MariaDB' : 'PostgreSQL'}`}
               </button>
             </div>
           )}
@@ -376,6 +399,17 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
             </p>
           )}
 
+          <div className="segmented" style={{ marginBottom: 14 }}>
+            <button className={`segmented__item${panelTab === 'access' ? ' segmented__item--active' : ''}`} onClick={() => setPanelTab('access')}>
+              Users & Akses
+            </button>
+            <button className={`segmented__item${panelTab === 'data' ? ' segmented__item--active' : ''}`} onClick={() => setPanelTab('data')}>
+              Data
+            </button>
+          </div>
+
+          {panelTab === 'access' && (
+          <>
           <section style={{ marginBottom: 16 }}>
             <div className="files-panel__toolbar">
               <h3 style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.6, margin: 0 }}>Akses dari Docker</h3>
@@ -405,7 +439,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                 {dockerAccess.message && <p className="overview__error">{dockerAccess.message}</p>}
                 {(!dockerAccess.bindAllInterfaces || !dockerAccess.firewallRuleActive) && (
                   <button className="btn btn--sm btn--primary" disabled={dockerAccessBusy} onClick={() => void handleEnsureDockerAccess()}>
-                    {dockerAccessBusy ? 'Menerapkan…' : (<><Boxes size={13} /> Aktifkan akses dari Docker</>)}
+                    {dockerAccessBusy ? (<><span className="spinner" /> Menerapkan…</>) : (<><Boxes size={13} /> Aktifkan akses dari Docker</>)}
                   </button>
                 )}
               </div>
@@ -417,7 +451,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
               <h3 style={{ fontSize: 12, textTransform: 'uppercase', opacity: 0.6, margin: 0 }}>Database</h3>
               <input placeholder="nama_database" value={newDbName} onChange={(e) => setNewDbName(e.target.value)} style={{ marginLeft: 'auto' }} />
               <button className="btn btn--sm btn--primary" disabled={busy || !newDbName.trim()} onClick={() => void handleCreateDb()}>
-                + Buat
+                {busy && <span className="spinner" />} + Buat
               </button>
             </div>
             <table className="files-panel__table">
@@ -432,7 +466,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                           disabled={busy}
                           onClick={() => void handleToggleDomainLink(d.name)}
                         >
-                          {linkedDbs.includes(d.name) ? (<><Link2 size={13} /> Tertaut</>) : (<><Link2 size={13} /> Tautkan</>)}
+                          {busy ? <span className="spinner" /> : <Link2 size={13} />} {linkedDbs.includes(d.name) ? 'Tertaut' : 'Tautkan'}
                         </button>
                       </td>
                     )}
@@ -492,7 +526,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                   <span>Simpan password untuk Explore nanti (lokal, tidak dikirim ke server)</span>
                 </label>
                 <button className="btn btn--sm btn--primary" disabled={busy || !newUser.trim() || !newPassword.trim()} onClick={() => void handleCreateUser()}>
-                  Buat User
+                  {busy && <span className="spinner" />} Buat User
                 </button>
               </div>
             )}
@@ -519,9 +553,9 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                         {cred && (
                           <>
                             <button
-                              title="Explore (browse tabel/baris)"
+                              title="Explore (browse tabel/baris) — buka tab Data"
                               disabled={busy}
-                              onClick={() => setExploreTarget({ engine, username: u.username, host: u.host ?? '%' })}
+                              onClick={() => openExplore(u.username, u.host ?? '%')}
                             >
                               <Search size={14} />
                             </button>
@@ -559,7 +593,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                 <div className="docker-recreate__row">
                   <input type="password" placeholder="password user tersebut" value={linkPassword} onChange={(e) => setLinkPassword(e.target.value)} />
                   <button className="btn btn--sm btn--primary" disabled={busy || !linkPassword.trim()} onClick={() => void handleLinkCredential()}>
-                    Verifikasi & Simpan
+                    {busy && <span className="spinner" />} Verifikasi & Simpan
                   </button>
                   <button className="btn btn--sm btn--ghost" onClick={() => setLinkingUser(null)}>
                     Batal
@@ -568,19 +602,50 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
               </div>
             )}
           </section>
-        </>
-      )}
+          </>
+          )}
 
-      {exploreTarget && exploreTarget.engine === 'mysql' && (
-        <MySQLExplorerModal
-          serverId={serverId}
-          username={exploreTarget.username}
-          host={exploreTarget.host}
-          onClose={() => setExploreTarget(null)}
-        />
-      )}
-      {exploreTarget && exploreTarget.engine === 'postgresql' && (
-        <PGExplorerModal serverId={serverId} username={exploreTarget.username} onClose={() => setExploreTarget(null)} />
+          {panelTab === 'data' && (
+            <section>
+              {credsForEngine.length === 0 ? (
+                <p className="workspace__placeholder">
+                  Belum ada kredensial tersimpan untuk {engine === 'mysql' ? 'MySQL/MariaDB' : 'PostgreSQL'}. Hubungkan kredensial dulu di tab{' '}
+                  <button className="btn btn--sm" onClick={() => setPanelTab('access')}>
+                    Users & Akses
+                  </button>
+                  .
+                </p>
+              ) : (
+                <>
+                  <div className="files-panel__toolbar" style={{ marginBottom: 10 }}>
+                    <span style={{ opacity: 0.6, fontSize: 12 }}>Browse sebagai:</span>
+                    <select
+                      value={dataTarget ? credentialLabel(dataTarget.username, dataTarget.host) : ''}
+                      onChange={(e) => {
+                        const c = credsForEngine.find((c) => credentialLabel(c.username, c.host) === e.target.value);
+                        if (c) setDataTarget({ username: c.username, host: c.host });
+                      }}
+                    >
+                      {credsForEngine.map((c) => (
+                        <option key={credentialLabel(c.username, c.host)} value={credentialLabel(c.username, c.host)}>
+                          {credentialLabel(c.username, c.host)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {(() => {
+                    const active = dataTarget ?? credsForEngine[0];
+                    return engine === 'mysql' ? (
+                      <MySQLExplorer serverId={serverId} username={active.username} host={active.host} />
+                    ) : (
+                      <PGExplorer serverId={serverId} username={active.username} />
+                    );
+                  })()}
+                </>
+              )}
+            </section>
+          )}
+        </>
       )}
     </div>
   );
