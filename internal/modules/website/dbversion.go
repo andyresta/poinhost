@@ -98,7 +98,6 @@ chmod +x /tmp/mariadb_repo_setup
 apt-get install -y ` + pkg + `
 systemctl enable mariadb
 systemctl start mariadb
-mysql -e "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY ''; GRANT ALL ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION; FLUSH PRIVILEGES;" 2>/dev/null || true
 ` + dockerAccess + `
 echo ">> MariaDB ` + version + ` terpasang (repo resmi MariaDB), siap diakses dari container Docker di host ini."
 `, true
@@ -111,7 +110,6 @@ chmod +x /tmp/mariadb_repo_setup
 ` + pm + ` install -y ` + pkg + `
 systemctl enable mariadb
 systemctl start mariadb
-mysql -e "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY ''; GRANT ALL ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION; FLUSH PRIVILEGES;" 2>/dev/null || true
 ` + dockerAccess + `
 echo ">> MariaDB ` + version + ` terpasang (repo resmi MariaDB), siap diakses dari container Docker di host ini."
 `, true

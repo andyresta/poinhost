@@ -328,7 +328,6 @@ func dbInstallScript(engine, pm, version string) (string, bool) {
 apt-get install -y mariadb-server
 systemctl enable mariadb
 systemctl start mariadb
-mysql -e "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY ''; GRANT ALL ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION; FLUSH PRIVILEGES;" 2>/dev/null || true
 ` + dockerAccess + `
 echo ">> MariaDB (MySQL) terpasang, siap diakses dari container Docker di host ini."
 `, true
@@ -337,7 +336,6 @@ echo ">> MariaDB (MySQL) terpasang, siap diakses dari container Docker di host i
 ` + pm + ` install -y mariadb-server
 systemctl enable mariadb
 systemctl start mariadb
-mysql -e "CREATE USER IF NOT EXISTS 'root'@'127.0.0.1' IDENTIFIED BY ''; GRANT ALL ON *.* TO 'root'@'127.0.0.1' WITH GRANT OPTION; FLUSH PRIVILEGES;" 2>/dev/null || true
 ` + dockerAccess + `
 echo ">> MariaDB (MySQL) terpasang, siap diakses dari container Docker di host ini."
 `, true
@@ -369,8 +367,37 @@ echo ">> PostgreSQL terpasang, siap diakses dari container Docker di host ini."
 	}
 }
 
+// runMySQL menjalankan SQL sebagai root lewat UNIX SOCKET lokal (`mysql -u
+// root`, TANPA `-h 127.0.0.1`) — BUKAN salah ketik. Awalnya memakai `-h
+// 127.0.0.1` (TCP) + user `root`@`127.0.0.1` ber-password kosong yang
+// dibuat khusus saat instalasi, tapi itu GAGAL konsisten di server nyata:
+// MariaDB/MySQL menganggap koneksi TCP ke 127.0.0.1 datang dari host
+// "localhost" (lewat /etc/hosts + resolusi nama, `skip_name_resolve` OFF
+// adalah default), lalu mencocokkan ke akun `root@localhost` (auth
+// `unix_socket`, SELALU menolak koneksi TCP) alih-alih `root@127.0.0.1`
+// yang sudah dibuat — bukan `root@127.0.0.1` yang dicoba sama sekali.
+// Dikonfirmasi reproduksi nyata (instal MariaDB 10.11 asli, jalankan
+// bootstrap `CREATE USER 'root'@'127.0.0.1'` persis seperti skrip
+// instalasi, tetap `ERROR 1698: Access denied for user 'root'@'localhost'`
+// walau password sudah benar). Root cause sebenarnya bug lama di SELURUH
+// fitur admin MySQL modul ini (List/Create Database, List/Create User,
+// Grants — semua lewat fungsi ini — bukan cuma tombol "Aktifkan akses dari
+// Docker" yang melaporkannya). Socket lokal (dijalankan sebagai root lewat
+// SSH exec, konteks trust yang sama dipakai di seluruh modul lain) bekerja
+// tanpa syarat apa pun — tidak perlu akun `root@127.0.0.1` berpassword
+// kosong sama sekali (dihapus dari skrip instalasi, lihat dbInstallScript/
+// dbVersionedInstallScript — akun TCP-reachable berpassword kosong itu
+// sendiri sebenarnya beban keamanan yang tidak perlu).
+// mysqlAdminCommand membentuk perintah shell yang dipakai runMySQL — fungsi
+// murni terpisah supaya bisa di-assert langsung di test (lihat
+// database_test.go) bahwa perintah ini TIDAK PERNAH balik memakai `-h
+// 127.0.0.1` (regresi ke bug yang sudah diperbaiki).
+func mysqlAdminCommand(sql string) string {
+	return "mysql -u root --batch --skip-column-names -e " + shellQuote(sql)
+}
+
 func (s *Service) runMySQL(access *websiteAccess, sql string) (string, error) {
-	res, err := s.run(access, "mysql -h 127.0.0.1 -u root --batch --skip-column-names -e "+shellQuote(sql), 20*time.Second)
+	res, err := s.run(access, mysqlAdminCommand(sql), 20*time.Second)
 	if err != nil {
 		return "", err
 	}
