@@ -906,6 +906,52 @@ inilah yang dipakai bahkan untuk domain paling sederhana sekalipun (bukan
 jalur khusus). Metadata rekonstruksi (`# poinhost-managed domain: ... php=
 ... ssl=on ...`) ditulis sebagai komentar di vhost itu sendiri — sama
 seperti homepoin, tidak ada database terpisah untuk "apa isi vhost ini".
+Konsekuensinya: `listDomains()` (dan seluruh menu Website) SELALU baca
+LANGSUNG dari server tiap dipanggil (lewat cache pendek 5 detik di atas,
+bukan tabel SQLite) — tidak ada state domain yang disimpan lokal sama
+sekali, server itu sendiri satu-satunya sumber kebenaran.
+
+### Domain lama buatan homepoin — dikenali & bisa dikelola juga, bukan cuma poinhost-native
+
+Ditemukan lewat laporan user: server yang sebelumnya dipakai lewat
+homepoin, begitu dibuka di poinhost, daftar domainnya kosong — padahal
+situsnya tetap jalan normal di Nginx. Sebabnya: `listDomains()` cuma
+men-scan file bernama `poinhost-<domain>.conf` (lihat `confPrefix` di
+atas), sedangkan homepoin menulis vhost dengan nama
+`homepoin-<domain>.conf` (`confPrefix` beda di kode homepoin sendiri) —
+dua tool ini sengaja saling tidak menyentuh vhost buatan tool lain lewat
+prefix nama file yang berbeda, tapi efeknya domain lama jadi tidak
+terlihat sama sekali dari poinhost sampai dibuat ulang manual.
+
+Diperbaiki dengan mengenali KEDUA prefix (`vhost.go:legacyConfPrefix =
+"homepoin-"`), bukan cuma menampilkannya read-only — dicek dulu format
+metadata vhost homepoin (`internal/modules/servers/hosting/domains/
+parse.go` di repo homepoin) ternyata nyaris identik dengan punya
+poinhost sendiri: marker `# homepoin-managed domain: <domain> php=...
+proxy=... ssl=on ...` dan `# homepoin-proxy path=... target=... ws=1`,
+urutan & arti field SAMA PERSIS dengan `# poinhost-managed domain: ...`
+poinhost (poinhost memang meniru pola self-describing-vhost ini dari
+homepoin sejak awal). Jadi `parseVhostFile` cukup MENORMALKAN baris
+marker "homepoin-" ke "poinhost-" sebelum diproses — bukan menulis
+parser kedua yang terpisah dan bisa drift.
+
+Satu pengecualian: `homepoin-port-*.conf` (file reverse-proxy
+port-forward SERVER-WIDE milik homepoin, modul lain yang kebetulan
+berbagi awalan nama file yang sama) sengaja DIKECUALIKAN dari scan —
+bukan vhost domain, dan poinhost belum punya modul setara (lihat §18
+roadmap).
+
+Operasi tulis (`Delete`/`SetEnabled`) yang tadinya menduga path SELALU
+berprefix `poinhost-` (`configFilePath(domain, ...)`) diperbaiki memakai
+path FILE YANG SESUNGGUHNYA ADA (`configFilePathVariants(info.ConfigPath)`)
+— penting karena domain warisan homepoin path aslinya berprefix
+`homepoin-`, bukan `poinhost-`. Operasi edit (`rewriteVhost`, dipakai
+PHP/SSL/Proxy) sudah otomatis benar sejak awal karena selalu memakai
+`info.ConfigPath` hasil parse, bukan menduga ulang dari nama domain.
+Begitu satu domain warisan diedit lewat poinhost, ISI file-nya ditulis
+ulang ke format marker poinhost sendiri (via `buildMetaComment`) — tapi
+NAMA file-nya (prefix `homepoin-`) sengaja tidak di-rename, tidak ada
+alasan selain kosmetik dan itu berarti round-trip SSH tambahan.
 
 ### PHP-FPM per domain — ubah `fastcgi_pass`, bukan pool config
 

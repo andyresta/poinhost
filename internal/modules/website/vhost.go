@@ -10,6 +10,29 @@ import (
 // (vhost non-poinhost tidak pernah disentuh/ditampilkan sama sekali).
 const confPrefix = "poinhost-"
 
+// legacyConfPrefix awalan file vhost domain buatan homepoin (produk
+// sebelumnya, format vhost & marker metadata-nya nyaris identik — poinhost
+// memang meniru polanya). Dikenali JUGA supaya domain yang sudah dibuat
+// lewat homepoin sebelum pindah ke poinhost tetap kebaca & bisa dikelola,
+// tidak "hilang" begitu saja dari daftar. legacyPortConfPrefix dikecualikan
+// karena itu file proxy port-forward homepoin (modul lain, bukan vhost
+// domain) yang kebetulan berbagi awalan "homepoin-" yang sama.
+const legacyConfPrefix = "homepoin-"
+const legacyPortConfPrefix = "homepoin-port-"
+
+// isManagedVhostFilename true kalau nama file (tanpa suffix .disabled) cocok
+// salah satu prefix vhost domain yang dikenali poinhost (native atau warisan
+// homepoin).
+func isManagedVhostFilename(base string) bool {
+	if !strings.HasSuffix(base, ".conf") {
+		return false
+	}
+	if strings.HasPrefix(base, legacyPortConfPrefix) {
+		return false
+	}
+	return strings.HasPrefix(base, confPrefix) || strings.HasPrefix(base, legacyConfPrefix)
+}
+
 // webRootPath path document root standar untuk domain parent.
 func webRootPath(domain string) string {
 	return "/var/www/" + domain + "/public_html"
@@ -31,6 +54,18 @@ func configFilePath(domain string, enabled bool) string {
 		p += ".disabled"
 	}
 	return p
+}
+
+// configFilePathVariants mengembalikan path enabled & disabled dari path
+// vhost yang SUDAH ADA di server, dari prefix APAPUN (poinhost- ATAU
+// legacyConfPrefix). Dipakai Delete/SetEnabled alih-alih configFilePath
+// (yang selalu menduga prefix poinhost-) supaya operasi mv/rm menyasar file
+// yang sungguh-sungguh ada, termasuk untuk domain warisan homepoin.
+func configFilePathVariants(actualPath string) (enabledPath, disabledPath string) {
+	if strings.HasSuffix(actualPath, ".disabled") {
+		return strings.TrimSuffix(actualPath, ".disabled"), actualPath
+	}
+	return actualPath, actualPath + ".disabled"
 }
 
 // vhostOptions parameter pembangunan satu vhost — SATU builder options-based
@@ -238,7 +273,7 @@ server {
 func parseVhostFile(path, content string, enabled bool) (DomainInfo, bool) {
 	base := path[strings.LastIndex(path, "/")+1:]
 	base = strings.TrimSuffix(base, ".disabled")
-	if !strings.HasPrefix(base, confPrefix) || !strings.HasSuffix(base, ".conf") {
+	if !isManagedVhostFilename(base) {
 		return DomainInfo{}, false
 	}
 
@@ -247,6 +282,13 @@ func parseVhostFile(path, content string, enabled bool) (DomainInfo, bool) {
 
 	for _, raw := range strings.Split(content, "\n") {
 		line := strings.TrimSpace(raw)
+		// Marker metadata homepoin ("# homepoin-managed ...", "# homepoin-proxy
+		// ...") berformat & berarti IDENTIK dengan marker poinhost sendiri —
+		// dinormalkan ke marker poinhost supaya lewat satu jalur parsing yang
+		// sama di bawah, bukan digandakan case-by-case.
+		if strings.HasPrefix(line, "# homepoin-managed ") || strings.HasPrefix(line, "# homepoin-proxy ") {
+			line = "# poinhost-" + strings.TrimPrefix(line, "# homepoin-")
+		}
 		switch {
 		case strings.HasPrefix(line, "# poinhost-managed domain:"):
 			info.Domain = strings.TrimSpace(strings.TrimPrefix(line, "# poinhost-managed domain:"))
