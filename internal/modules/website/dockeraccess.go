@@ -139,7 +139,14 @@ echo "POINHOST_DOCKER_ACCESS_DONE"
 
 func dbDockerAccessStatusScript(engine string) string {
 	if engine == "mysql" {
-		return `BIND=$(mysql -h 127.0.0.1 -u root --batch --skip-column-names -e "SHOW VARIABLES LIKE 'bind_address';" 2>/dev/null | awk '{print $2}')
+		// Lewat unix socket lokal (`mysql -u root`, TANPA `-h`) — bukan
+		// TCP ke 127.0.0.1. Lihat komentar panjang di runMySQL (database.go):
+		// TCP ke 127.0.0.1 gagal konsisten (MariaDB mencocokkan koneksi loopback
+		// itu ke akun `root@localhost`, bukan `root@127.0.0.1`, meski password
+		// benar), dan bind_address sendiri cuma nilai variabel server — bisa
+		// dibaca lewat KONEKSI APA PUN yang berhasil, tidak perlu tes lewat TCP
+		// sungguhan untuk tahu nilainya.
+		return `BIND=$(mysql -u root --batch --skip-column-names -e "SHOW VARIABLES LIKE 'bind_address';" 2>/dev/null | awk '{print $2}')
 echo "BIND=$BIND"
 ` + firewallCheckScript(3306)
 	}

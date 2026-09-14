@@ -1572,10 +1572,69 @@ sengaja tidak diporting (§14 di atas, alasan arsitektur tunnel):
   diakses dari Docker tanpa langkah tambahan apa pun, sesuai permintaan
   user; (2) jalur retrofit mandiri (`EnsureDBDockerAccess` /
   `GetDBDockerAccessStatus`, tab Database menampilkan status +
-  tombol "🐳 Aktifkan akses dari Docker") untuk instalasi yang sudah ada
+  tombol "Aktifkan akses dari Docker") untuk instalasi yang sudah ada
   SEBELUM fitur ini ditambahkan. Keduanya memanggil fungsi pembangun
   skrip yang sama (`dbDockerAccessApplyScript`), jadi hanya ada satu
   implementasi untuk dijaga, bukan dua yang berpotensi berbeda.
+
+### Bug nyata ditemukan: klik "Aktifkan akses dari Docker" untuk MySQL terkesan tidak ada efek
+
+Dilaporkan user ("ketika saya pilih tidak ada efek apapun") — diinvestigasi
+dengan cara paling meyakinkan: instal MariaDB 10.11 SUNGGUHAN (paket resmi
+Ubuntu, versi sama yang dipakai poinhost sendiri) di sandbox ini dan
+menjalankan skrip yang sebenarnya, bukan cuma membaca kode.
+
+Root cause: SELURUH pemeriksaan admin MySQL di modul ini (`runMySQL` di
+`database.go`, dipakai untuk List/Create Database, List/Create User, Set
+Grants — DAN pengecekan `bind_address` di `dockeraccess.go`) memakai
+`mysql -h 127.0.0.1 -u root` (paksa TCP) ke akun `root@127.0.0.1` yang
+sengaja dibuat berpassword kosong saat instalasi. Terbukti di server
+sungguhan: perintah ini GAGAL KONSISTEN dengan
+`ERROR 1698: Access denied for user 'root'@'localhost'` — perhatikan
+identitas yang ditolak adalah `'root'@'localhost'`, BUKAN
+`'root'@'127.0.0.1'` yang sebenarnya login. MariaDB/MySQL (dengan
+`skip_name_resolve` default OFF) mencocokkan koneksi TCP ke `127.0.0.1`
+lewat resolusi `/etc/hosts` (yang di HAMPIR SEMUA distro Linux memetakan
+`127.0.0.1` ke `localhost`) dan memilih akun `root@localhost` (auth
+`unix_socket`, PASTI menolak koneksi TCP apa pun) — bukan mencoba akun
+`root@127.0.0.1` sama sekali, walau password-nya sudah benar (dikonfirmasi
+juga dengan password eksplisit, hasilnya identik).
+
+Akibatnya: skrip `dbDockerAccessApplyScript` (tulis config + restart
+service) SEBENARNYA BERHASIL mengubah `bind-address` jadi `0.0.0.0` — tapi
+`EnsureDBDockerAccess` memanggil `GetDBDockerAccessStatus` untuk membaca
+hasilnya balik, dan pembacaan ITU yang gagal diam-diam (`2>/dev/null`),
+jadi UI tetap melaporkan "belum bisa connect" walau perubahan sungguhan
+sudah terjadi di server — persis keluhan "tidak ada efek apapun". Bug yang
+sama membuat SELURUH fitur admin MySQL (bukan cuma Docker access) rawan
+gagal dengan cara yang sama, tergantung urutan/timing pembuatan akun
+`root@127.0.0.1` saat instalasi.
+
+Perbaikan: ganti SEMUA pemakaian `mysql -h 127.0.0.1 -u root` jadi
+`mysql -u root` (unix socket lokal, tanpa `-h` sama sekali) — dijalankan
+sebagai root lewat SSH exec, konteks trust yang sama dipakai di seluruh
+modul lain, dan MariaDB/MySQL packaging Debian/Ubuntu/RHEL modern SEMUANYA
+mengonfigurasi `root@localhost` dengan auth `unix_socket` otomatis saat
+instalasi — tidak perlu akun tambahan apa pun. Bootstrap
+`CREATE USER 'root'@'127.0.0.1' IDENTIFIED BY ''` di `dbInstallScript`
+(`database.go`) dan `mariaDBVersionedInstallScript` (`dbversion.go`)
+DIHAPUS sepenuhnya, bukan cuma dibiarkan tidak dipakai — akun root
+ber-password kosong yang bisa dijangkau lewat TCP (walau cuma loopback)
+adalah beban keamanan yang sebenarnya tidak pernah diperlukan.
+
+Diverifikasi end-to-end di MariaDB 10.11 sungguhan (bukan cuma unit test):
+`mysql -u root` bekerja dari kondisi benar-benar bersih (root@127.0.0.1
+DIHAPUS dulu, mensimulasikan server yang belum pernah dibootstrap sama
+sekali) untuk `SHOW DATABASES`; siklus penuh tulis-config→restart→baca-
+ulang status via socket terbukti melaporkan `bind_address` berubah dari
+`127.0.0.1` ke `0.0.0.0` dengan benar; dan koneksi TCP sungguhan dari
+alamat NON-loopback (mensimulasikan container Docker) dengan user
+aplikasi biasa (`host='%'`, bukan root) berhasil connect — membuktikan
+mekanisme inti (bind-address + firewall rule) sendiri SELALU bekerja
+sebagaimana mestinya; yang rusak murni pembacaan status oleh poinhost
+sendiri. Ditambahkan test regresi (`database_test.go`) yang meng-assert
+skrip-skrip ini tidak pernah balik memakai `-h 127.0.0.1` atau membuat
+akun `root@127.0.0.1`.
 
 ## 15. Backup: export/import data lintas perangkat (tanpa akun/server)
 
