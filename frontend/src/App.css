@@ -12,6 +12,10 @@
   flex-shrink: 0;
   border-right: 1px solid var(--border);
   overflow-y: auto;
+  transition: width 0.15s ease;
+}
+.app__sidebar--collapsed {
+  width: 56px;
 }
 
 .app__main {
@@ -31,6 +35,11 @@
   align-items: center;
   margin-bottom: 12px;
 }
+.servers-page__header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
 .servers-page__header h1 {
   font-size: 15px;
   margin: 0;
@@ -39,6 +48,23 @@
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.servers-page__collapse-toggle {
+  padding: 6px;
+}
+
+/* Sidebar ciutkan (collapsed) — cuma ikon yang tampak, header & tombol jadi
+   satu kolom sempit supaya muat di lebar .app__sidebar--collapsed (56px). */
+.servers-page--collapsed {
+  padding: 8px 6px;
+}
+.servers-page--collapsed .servers-page__header {
+  flex-direction: column;
+  gap: 6px;
+}
+.servers-page--collapsed .servers-page__header-left,
+.servers-page--collapsed .servers-page__header-actions {
+  flex-direction: column;
 }
 .theme-toggle {
   display: inline-flex;
@@ -65,16 +91,36 @@
 .server-card {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   padding: 8px 10px;
   border-radius: 6px;
   border-left: 3px solid transparent;
   background: var(--surface);
   cursor: pointer;
+  position: relative;
 }
 .server-card:hover {
   background: var(--surface-hover);
+}
+.server-card__body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.server-card__icon {
+  display: none;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  align-items: center;
+  justify-content: center;
+}
+.server-card__icon .status-dot {
+  margin-right: 0;
 }
 .server-card__main {
   min-width: 0;
@@ -123,6 +169,38 @@
   padding: 2px 4px;
 }
 .server-card__actions button:hover {
+  opacity: 1;
+}
+
+/* Mode ciutkan: kartu jadi kotak warna kecil (palet server + status dot).
+   Isi lengkap (nama/host/tags/aksi) muncul sebagai popover saat kartu
+   di-hover — lihat .server-card-popover, dirender via portal ke <body>
+   (bukan absolute di dalam sidebar) supaya tidak terpotong overflow. */
+.servers-page--collapsed .server-card {
+  justify-content: center;
+  padding: 6px;
+}
+.servers-page--collapsed .server-card__icon {
+  display: flex;
+}
+
+/* Portal popover — posisi diatur inline (top/left) dari JS berdasarkan
+   getBoundingClientRect ikon yang di-hover. */
+.server-card-popover {
+  position: fixed;
+  z-index: 30;
+  min-width: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  padding: 10px;
+}
+.server-card-popover .server-card__actions {
   opacity: 1;
 }
 

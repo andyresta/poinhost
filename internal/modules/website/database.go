@@ -186,6 +186,17 @@ if [ -f /etc/apt/sources.list.d/mariadb.list ] || [ -f /etc/yum.repos.d/mariadb.
 // dbversion.go) sebelum fallback ke nama generik `postgresql` (dipakai
 // instalasi bawaan distro/apt, nama service-nya selalu generik apa pun
 // versinya) — supaya status tetap akurat untuk KEDUA jalur instalasi.
+//
+// Debian/Ubuntu (postgresql-common) beda lagi: cluster sebenarnya jalan
+// sebagai instance TEMPLATE `postgresql@<ver>-<cluster>` (default cluster
+// "main"), dan unit generik `postgresql.service` cuma wrapper — kalau
+// cluster itu diaktifkan langsung (mis. lewat pg_ctlcluster / start saat
+// boot) tanpa pernah "start"/"restart" via unit wrapper-nya, `systemctl
+// is-active postgresql` bisa balas "unknown"/inactive walau cluster-nya
+// BENAR-BENAR jalan — makanya dicoba juga nama instance eksplisit
+// (`postgresql@$VER-main`), lalu fallback paling longgar: cek ada/tidaknya
+// instance `postgresql@*` mana pun yang aktif (menutup kasus nama cluster
+// bukan "main" atau VER gagal terbaca).
 const dbStatusScriptPostgres = `BIN=$(command -v psql 2>/dev/null || true)
 echo "BIN=$BIN"
 VER=""
@@ -194,8 +205,12 @@ if [ -n "$BIN" ]; then
   echo "$VLINE"
   VER=$(echo "$VLINE" | grep -oE '[0-9]+' | head -1)
 fi
-echo "ACTIVE=$(systemctl is-active postgresql-$VER 2>/dev/null || systemctl is-active postgresql 2>/dev/null || echo unknown)"
-echo "ENABLED=$(systemctl is-enabled postgresql-$VER 2>/dev/null || systemctl is-enabled postgresql 2>/dev/null || echo unknown)"
+ACTIVE=$(systemctl is-active postgresql-$VER 2>/dev/null || systemctl is-active postgresql@$VER-main 2>/dev/null || systemctl is-active postgresql 2>/dev/null || echo unknown)
+if [ "$ACTIVE" != "active" ] && systemctl list-units --type=service --state=running --no-legend --plain 'postgresql@*' 2>/dev/null | grep -q .; then ACTIVE=active; fi
+echo "ACTIVE=$ACTIVE"
+ENABLED=$(systemctl is-enabled postgresql-$VER 2>/dev/null || systemctl is-enabled postgresql@$VER-main 2>/dev/null || systemctl is-enabled postgresql 2>/dev/null || echo unknown)
+if [ "$ENABLED" != "enabled" ] && systemctl list-unit-files --type=service --state=enabled --no-legend --plain 'postgresql@*' 2>/dev/null | grep -q .; then ENABLED=enabled; fi
+echo "ENABLED=$ENABLED"
 if [ -f /etc/apt/sources.list.d/pgdg.list ] || rpm -q pgdg-redhat-repo >/dev/null 2>&1; then echo "REPO=1"; fi`
 
 // DBStatus membaca status instalasi & service satu engine database.
