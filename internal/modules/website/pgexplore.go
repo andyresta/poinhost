@@ -98,15 +98,21 @@ type PGRowMutateRequest struct {
 // PGQueryRequest menjalankan SATU statement SQL bebas.
 type PGQueryRequest struct {
 	PGTableRequest
-	SQL string `json:"sql"`
+	SQL    string `json:"sql"`
+	Limit  int    `json:"limit,omitempty"`
+	Offset int    `json:"offset,omitempty"`
 }
 
-// PGQueryResult hasil query bebas.
+// PGQueryResult hasil query bebas — Paginated/HasMore/Offset sama artinya
+// dengan MySQLQueryResult (lihat paginateSelectSQL).
 type PGQueryResult struct {
 	Columns      []string    `json:"columns,omitempty"`
 	Rows         [][]*string `json:"rows,omitempty"`
 	RowsAffected int64       `json:"rowsAffected"`
 	IsSelect     bool        `json:"isSelect"`
+	Paginated    bool        `json:"paginated"`
+	HasMore      bool        `json:"hasMore"`
+	Offset       int         `json:"offset"`
 }
 
 // quotePGIdent membungkus identifier PostgreSQL dengan kutip ganda (beda
@@ -252,7 +258,42 @@ func (s *Service) PGExploreListDatabases(req PGExploreRequest) ([]string, error)
 		return nil, err
 	}
 
-	rows, err := db.Query(`SELECT datname FROM pg_database WHERE datistemplate = false AND datname != 'postgres' ORDER BY datname`)
+	// Hanya database yang benar-benar "milik"/diberikan ke role ini:
+	// pemilik database, anggota role pemilik, atau penerima grant eksplisit
+	// di pg_database.datacl. CONNECT lewat PUBLIC SENGAJA tidak dihitung —
+	// PostgreSQL memberi CONNECT ke PUBLIC secara bawaan, jadi kalau itu
+	// dipakai setiap role akan melihat SELURUH database di server (bukan
+	// yang bisa dia kelola). Bandingkan MySQL yang tidak butuh ini: SHOW
+	// DATABASES di sana sudah otomatis tersaring privilege user.
+	const scopedSQL = `
+		SELECT d.datname FROM pg_database d
+		 WHERE d.datistemplate = false AND d.datname <> 'postgres'
+		   AND (d.datdba = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+		        OR pg_has_role(current_user, d.datdba, 'MEMBER')
+		        OR EXISTS (SELECT 1 FROM aclexplode(d.datacl) a
+		                    WHERE a.grantee = (SELECT oid FROM pg_roles WHERE rolname = current_user)))
+		 ORDER BY d.datname`
+	out, err := pgScanDatabaseNames(db, scopedSQL)
+	if err != nil {
+		return nil, err
+	}
+	if len(out) > 0 {
+		return out, nil
+	}
+	// Fallback: database lama (dibuat di luar poinhost) umumnya masih
+	// mengandalkan CONNECT bawaan lewat PUBLIC dan datacl-nya kosong, jadi
+	// filter di atas tidak menemukan apa pun. Daripada Explore tampak
+	// kosong/rusak untuk server yang sudah jalan lama, jatuhkan ke daftar
+	// database yang memang bisa di-connect role ini.
+	return pgScanDatabaseNames(db, `
+		SELECT datname FROM pg_database
+		 WHERE datistemplate = false AND datname <> 'postgres'
+		   AND has_database_privilege(current_user, datname, 'CONNECT')
+		 ORDER BY datname`)
+}
+
+func pgScanDatabaseNames(db *sql.DB, query string) ([]string, error) {
+	rows, err := db.Query(query)
 	if err != nil {
 		return nil, errFmt("daftar database: %v", err)
 	}
@@ -639,6 +680,55 @@ func (s *Service) PGExploreDeleteRow(req PGRowMutateRequest) error {
 	return nil
 }
 
+// pgTranslateMySQLDialect menerjemahkan perintah khas MySQL yang sering
+// diketik karena refleks (`show tables`) ke padanan PostgreSQL-nya, lalu
+// dijalankan apa adanya. Tanpa ini PostgreSQL membalas error mentah yang
+// membingungkan — `unrecognized configuration parameter "tables"` — karena
+// SHOW di PostgreSQL memang untuk MEMBACA PARAMETER KONFIGURASI (SHOW
+// search_path, dst), bukan melihat daftar tabel.
+//
+// Sengaja diterjemahkan, bukan sekadar ditolak dengan pesan "padanannya
+// begini": semuanya perintah baca yang maksudnya tidak ambigu, dan tujuan
+// kotak query ini memang melihat isi database — memaksa user mengetik ulang
+// query katalog PostgreSQL yang panjang cuma jadi penghalang.
+//
+// Statement SHOW yang SAH di PostgreSQL (SHOW search_path, SHOW timezone,
+// dst) TIDAK tersentuh: hanya bentuk-bentuk di bawah yang dicegat.
+func pgTranslateMySQLDialect(sqlText string) (string, bool) {
+	trimmed := strings.TrimRight(strings.TrimSpace(sqlText), "; \t\n")
+	fields := strings.Fields(trimmed)
+	if len(fields) == 0 {
+		return "", false
+	}
+	upper := strings.ToUpper(strings.Join(fields, " "))
+
+	switch {
+	case upper == "SHOW TABLES":
+		return `SELECT tablename AS "Tables_in_schema" FROM pg_tables WHERE schemaname = current_schema() ORDER BY tablename`, true
+	case upper == "SHOW DATABASES":
+		return `SELECT datname AS "Database" FROM pg_database WHERE datistemplate = false ORDER BY datname`, true
+	case upper == "SHOW SCHEMAS":
+		return `SELECT nspname AS "Schema" FROM pg_namespace WHERE nspname NOT LIKE 'pg\_%' AND nspname <> 'information_schema' ORDER BY nspname`, true
+	}
+
+	// DESCRIBE <tabel> / DESC <tabel> / SHOW COLUMNS FROM <tabel>
+	var table string
+	switch {
+	case len(fields) == 2 && (strings.EqualFold(fields[0], "DESCRIBE") || strings.EqualFold(fields[0], "DESC")):
+		table = fields[1]
+	case len(fields) == 4 && strings.EqualFold(fields[0], "SHOW") && strings.EqualFold(fields[1], "COLUMNS") &&
+		(strings.EqualFold(fields[2], "FROM") || strings.EqualFold(fields[2], "IN")):
+		table = fields[3]
+	}
+	if table == "" {
+		return "", false
+	}
+	table = strings.Trim(table, "`\"")
+	return `SELECT column_name AS "Field", data_type AS "Type", is_nullable AS "Null", column_default AS "Default"` +
+		` FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = '` + pgEscape(table) + `'` +
+		` ORDER BY ordinal_position`, true
+}
+
 // PGExploreExecuteQuery menjalankan satu statement SQL bebas — search_path
 // diset ke schema yang dipilih dulu, di koneksi FISIK yang SAMA (lewat
 // db.Conn, bukan db.Exec biasa) supaya konsisten dengan query sesudahnya,
@@ -657,6 +747,11 @@ func (s *Service) PGExploreExecuteQuery(req PGQueryRequest) (*PGQueryResult, err
 	}
 	if !singleStatementSQL(sqlText) {
 		return nil, errFmt("hanya satu statement per eksekusi (pisahkan jadi beberapa kali jalankan)")
+	}
+	// Perintah ala MySQL (show tables, describe x, dst) dijalankan sebagai
+	// padanan PostgreSQL-nya — lihat pgTranslateMySQLDialect.
+	if translated, ok := pgTranslateMySQLDialect(sqlText); ok {
+		sqlText = translated
 	}
 
 	db, _, err := s.openPGExploreStored(req.PGTableRequest)
@@ -677,7 +772,8 @@ func (s *Service) PGExploreExecuteQuery(req PGQueryRequest) (*PGQueryResult, err
 	}
 
 	if isSelectLikeSQL(sqlText) {
-		rows, err := conn.QueryContext(ctx, sqlText)
+		runSQL, paginated := paginateSelectSQL(sqlText, req.Limit, req.Offset)
+		rows, err := conn.QueryContext(ctx, runSQL)
 		if err != nil {
 			return nil, errFmt("query gagal: %v", err)
 		}
@@ -687,8 +783,12 @@ func (s *Service) PGExploreExecuteQuery(req PGQueryRequest) (*PGQueryResult, err
 		if err != nil {
 			return nil, err
 		}
-		result := &PGQueryResult{Columns: cols, IsSelect: true}
+		result := &PGQueryResult{Columns: cols, IsSelect: true, Paginated: paginated, Offset: req.Offset}
 		for rows.Next() {
+			if paginated && len(result.Rows) >= req.Limit {
+				result.HasMore = true
+				break
+			}
 			raw := make([]sql.RawBytes, len(cols))
 			ptrs := make([]interface{}, len(cols))
 			for i := range raw {

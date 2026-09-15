@@ -9,6 +9,8 @@ import {
   RemoveDockerContainer,
 } from '../../../wailsjs/go/main/App';
 import { docker } from '../../../wailsjs/go/models';
+import { useConfirm } from '../../components/ConfirmDialog';
+import { useT } from '../../i18n';
 import { EngineInstallWizard } from './EngineInstallWizard';
 import { NetworksPanel } from './NetworksPanel';
 import { ContainerLogsModal } from './ContainerLogsModal';
@@ -49,11 +51,16 @@ function stateBadgeClass(state: string): string {
 // homepoin sendiri ketiganya belum pernah diimplementasikan (cuma halaman
 // "coming soon" tanpa backend).
 export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: string }) {
+  const confirm = useConfirm();
+  const t = useT();
   const [subTab, setSubTab] = useState<SubTab>('containers');
   const [engine, setEngine] = useState<docker.EngineStatus | null>(null);
   const [engineError, setEngineError] = useState<string | null>(null);
   const [containers, setContainers] = useState<docker.ContainerInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  // Lihat catatan yang sama di WebsitePanel: refresh manual butuh flag
+  // sendiri supaya ada spinner dan daftar lama tidak ikut hilang.
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -75,6 +82,7 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
   }
 
   async function loadContainers() {
+    setRefreshing(true);
     try {
       const res = await ListDockerContainers(serverId);
       setContainers(res.containers);
@@ -83,6 +91,7 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
       setError(String(e));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -125,20 +134,31 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
   }
 
   async function handleRemove(c: docker.ContainerInfo) {
-    if (!confirm(`Hapus container "${c.name}"? Container akan dipaksa berhenti lalu dihapus.`)) return;
+    const ok = await confirm({
+      title: 'Hapus container',
+      message: (
+        <>
+          Hapus container <strong>{c.name}</strong>?
+        </>
+      ),
+      detail: 'Container akan dipaksa berhenti lalu dihapus.',
+      confirmLabel: 'Hapus',
+      danger: true,
+    });
+    if (!ok) return;
     await runAction(c.id, () => RemoveDockerContainer(serverId, c.id));
   }
 
   return (
     <div className="docker-panel">
       <nav className="docker-panel__subnav">
-        {SUB_TABS.map((t) => (
+        {SUB_TABS.map((tab) => (
           <button
-            key={t.key}
-            className={`docker-panel__subnav-item${subTab === t.key ? ' docker-panel__subnav-item--active' : ''}`}
-            onClick={() => setSubTab(t.key)}
+            key={tab.key}
+            className={`docker-panel__subnav-item${subTab === tab.key ? ' docker-panel__subnav-item--active' : ''}`}
+            onClick={() => setSubTab(tab.key)}
           >
-            {t.label}
+            {tab.label}
           </button>
         ))}
       </nav>
@@ -162,8 +182,8 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
           {engine?.installed && engine.active && (
             <>
               <div className="files-panel__toolbar">
-                <button className="btn btn--sm" disabled={loading} onClick={() => void loadContainers()}>
-                  {loading ? <span className="spinner" /> : <RotateCw size={13} />} Refresh
+                <button className="btn btn--sm" disabled={refreshing} onClick={() => void loadContainers()}>
+                  {refreshing ? <span className="spinner" /> : <RotateCw size={13} />} {t('common.refresh')}
                 </button>
                 {engine.version && <span className="docker-panel__version">Docker {engine.version}</span>}
               </div>
@@ -185,11 +205,19 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
                     {containers.map((c) => (
                       <tr key={c.id}>
                         <td className="files-panel__name">{c.name}</td>
-                        <td>{c.image}</td>
+                        <td>
+                          <div className="files-panel__ellipsis" title={c.image}>
+                            {c.image}
+                          </div>
+                        </td>
                         <td>
                           <span className={stateBadgeClass(c.state)}>{c.status || c.state}</span>
                         </td>
-                        <td>{c.ports || '—'}</td>
+                        <td>
+                          <div className="files-panel__ellipsis" title={c.ports}>
+                            {c.ports || '—'}
+                          </div>
+                        </td>
                         <td className="files-panel__row-actions">
                           {c.state === 'running' ? (
                             <>
@@ -236,7 +264,7 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
                     )}
                   </tbody>
                 </table>
-                {loading && <div className="files-panel__loading">Memuat…</div>}
+                {loading && <div className="files-panel__loading">{t('common.loading')}</div>}
               </div>
             </>
           )}

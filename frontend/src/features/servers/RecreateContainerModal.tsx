@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { InspectDockerContainer, RecreateDockerContainer } from '../../../wailsjs/go/main/App';
 import { docker } from '../../../wailsjs/go/models';
+import { useConfirm } from '../../components/ConfirmDialog';
 
 // Docker tidak punya "edit container in place" — satu-satunya cara mengubah
 // env/port/volume/memory container yang sudah ada adalah stop -> rm ->
@@ -22,6 +23,7 @@ export function RecreateContainerModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,13 +50,18 @@ export function RecreateContainerModal({
   }, [serverId, containerId]);
 
   async function handleSave() {
-    if (
-      !confirm(
-        `Terapkan konfigurasi baru ke "${name}"? Container akan di-stop, dihapus, lalu dibuat ulang dengan nama yang sama (data di volume tetap aman, tapi container berhenti sesaat).`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Terapkan konfigurasi baru',
+      message: (
+        <>
+          Terapkan konfigurasi baru ke <strong>{name}</strong>?
+        </>
+      ),
+      detail:
+        'Container akan di-stop, dihapus, lalu dibuat ulang dengan nama yang sama — data di volume tetap aman, tapi container berhenti sesaat.',
+      confirmLabel: 'Terapkan',
+    });
+    if (!ok) return;
     setSaving(true);
     setError(null);
     try {

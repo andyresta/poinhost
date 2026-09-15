@@ -1,4 +1,5 @@
 import { useThemeStore } from '../../store/theme';
+import { useT } from '../../i18n';
 
 // Ikon SVG polos (bukan emoji) — matahari/bulan, satu ikon yang menunjukkan
 // tema TUJUAN kalau diklik (bukan tema yang sedang aktif), pola umum
@@ -21,6 +22,7 @@ function MoonIcon() {
 }
 
 export function ThemeToggle() {
+  const t = useT();
   const mode = useThemeStore((s) => s.mode);
   const toggle = useThemeStore((s) => s.toggle);
   const isDark = mode === 'dark';
@@ -28,8 +30,8 @@ export function ThemeToggle() {
   return (
     <button
       className="btn btn--sm theme-toggle"
-      title={isDark ? 'Pakai tema terang' : 'Pakai tema gelap'}
-      aria-label={isDark ? 'Pakai tema terang' : 'Pakai tema gelap'}
+      title={isDark ? t('sidebar.theme.toLight') : t('sidebar.theme.toDark')}
+      aria-label={isDark ? t('sidebar.theme.toLight') : t('sidebar.theme.toDark')}
       onClick={toggle}
     >
       {isDark ? <SunIcon /> : <MoonIcon />}

@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { EditorView } from '@codemirror/view';
 import { langNames, loadLanguage, type LanguageName } from '@uiw/codemirror-extensions-langs';
+import { useThemeStore } from '../../store/theme';
 import { ReadFileContent, WriteFileContent } from '../../../wailsjs/go/main/App';
 import { files } from '../../../wailsjs/go/models';
+import { useConfirm } from '../../components/ConfirmDialog';
 import { X } from 'lucide-react';
 
 // Ekstensi umum yang tidak match langsung ke nama bahasa CodeMirror tapi
@@ -39,6 +41,9 @@ export function EditFileModal({
   asUser?: string;
   onClose: () => void;
 }) {
+  const confirm = useConfirm();
+  // Ikut tema aplikasi — lihat catatan yang sama di SqlQueryBox.
+  const editorTheme = useThemeStore((s) => s.mode);
   const [content, setContent] = useState('');
   const [original, setOriginal] = useState('');
   const [loading, setLoading] = useState(true);
@@ -64,8 +69,16 @@ export function EditFileModal({
     };
   }, [serverId, path, asUser]);
 
-  function handleClose() {
-    if (dirty && !confirm('Ada perubahan yang belum disimpan. Tutup tanpa menyimpan?')) return;
+  async function handleClose() {
+    if (dirty) {
+      const ok = await confirm({
+        title: 'Tutup tanpa menyimpan',
+        message: 'Ada perubahan yang belum disimpan. Tutup tanpa menyimpan?',
+        confirmLabel: 'Tutup tanpa simpan',
+        danger: true,
+      });
+      if (!ok) return;
+    }
     onClose();
   }
 
@@ -85,14 +98,14 @@ export function EditFileModal({
   const langExt = detectLanguage(name);
 
   return (
-    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && handleClose()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && void handleClose()}>
       <div className="modal-card modal-card--editor">
         <div className="modal-card__header">
           <h2>
             {name}
             {dirty && <span className="editor-dirty-dot" title="Belum disimpan"> ●</span>}
           </h2>
-          <button className="modal-card__close" onClick={handleClose}>
+          <button className="modal-card__close" onClick={() => void handleClose()}>
             <X size={18} />
           </button>
         </div>
@@ -103,7 +116,7 @@ export function EditFileModal({
             <CodeMirror
               value={content}
               height="100%"
-              theme="dark"
+              theme={editorTheme}
               extensions={[EditorView.lineWrapping, ...(langExt ? [langExt] : [])]}
               onChange={(value) => setContent(value)}
             />
@@ -111,7 +124,7 @@ export function EditFileModal({
           {error && <p className="overview__error">{error}</p>}
         </div>
         <div className="modal-card__footer">
-          <button className="btn btn--ghost" onClick={handleClose}>
+          <button className="btn btn--ghost" onClick={() => void handleClose()}>
             Tutup
           </button>
           <button className="btn btn--primary" disabled={!dirty || saving || loading} onClick={() => void handleSave()}>

@@ -12,8 +12,14 @@ import {
   SaveWebsiteDBCredential,
 } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
+import { useConfirm } from '../../components/ConfirmDialog';
+import { SqlQueryBox } from './SqlQueryBox';
+import { useT } from '../../i18n';
 
 const PAGE_SIZE = 100;
+// Halaman hasil kotak query lebih kecil dari browse tabel — lihat alasannya
+// di MySQLExplorer.
+const QUERY_PAGE_SIZE = 50;
 
 // Explorer PostgreSQL — sama filosofinya dengan MySQLExplorer.tsx (koneksi
 // driver asli, tidak dial ulang tiap klik, COUNT(*)/kolom tidak diambil
@@ -28,6 +34,8 @@ const PAGE_SIZE = 100;
 // Dulu ini modal terpisah (PGExplorerModal) — dipindah jadi konten tab
 // "Data" di DatabaseManagerPanel (bukan lagi overlay), pasangan MySQLExplorer.
 export function PGExplorer({ serverId, username }: { serverId: string; username: string }) {
+  const confirm = useConfirm();
+  const t = useT();
   const exploreReq: website.PGExploreRequest = { serverId, username };
 
   const [databases, setDatabases] = useState<string[] | null>(null);
@@ -53,6 +61,7 @@ export function PGExplorer({ serverId, username }: { serverId: string; username:
   const [queryText, setQueryText] = useState('');
   const [queryResult, setQueryResult] = useState<website.PGQueryResult | null>(null);
   const [queryBusy, setQueryBusy] = useState(false);
+  const [queryOffset, setQueryOffset] = useState(0);
 
   function tableReq(): website.PGTableRequest {
     return { serverId, username, database: selectedDb ?? '', schema };
@@ -206,7 +215,7 @@ export function PGExplorer({ serverId, username }: { serverId: string; username:
 
   async function handleDeleteRow(rowIndex: number) {
     if (!rowsResult || !selectedDb || !selectedTable) return;
-    if (!confirm('Hapus baris ini?')) return;
+    if (!(await confirm({ title: t('explore.deleteRow'), message: t('explore.deleteRowConfirm'), confirmLabel: t('common.delete'), danger: true }))) return;
     const where = rowWhere(rowsResult.rows[rowIndex]);
     setBusy(true);
     setError(null);
@@ -245,12 +254,21 @@ export function PGExplorer({ serverId, username }: { serverId: string; username:
     }
   }
 
-  async function handleRunQuery() {
+  // Paginasi dilakukan SERVER (lihat paginateSelectSQL di backend), bukan
+  // dengan menarik seluruh hasil lalu memotong di sini.
+  async function handleRunQuery(offset = 0) {
     if (!selectedDb || !queryText.trim()) return;
     setQueryBusy(true);
     setError(null);
     try {
-      setQueryResult(await PGExploreExecuteQuery(new website.PGQueryRequest({ serverId, username, database: selectedDb, schema, sql: queryText })));
+      const res = await PGExploreExecuteQuery(
+        new website.PGQueryRequest({
+          serverId, username, database: selectedDb, schema, sql: queryText,
+          limit: QUERY_PAGE_SIZE, offset,
+        }),
+      );
+      setQueryResult(res);
+      setQueryOffset(offset);
     } catch (e) {
       handleError(e);
     } finally {
@@ -278,8 +296,8 @@ export function PGExplorer({ serverId, username }: { serverId: string; username:
   return (
     <div className="db-explorer">
       <div className="db-explorer__sidebar">
-        <h4>Database</h4>
-        {databases === null && <p className="workspace__placeholder">Memuat…</p>}
+        <h4>{t('explore.databases')}</h4>
+        {databases === null && <p className="workspace__placeholder">{t('common.loading')}</p>}
         {databases?.map((db) => (
           <button
             key={db}
@@ -314,7 +332,7 @@ export function PGExplorer({ serverId, username }: { serverId: string; username:
                 {t.name}
               </button>
             ))}
-            {tables.length === 0 && <p className="workspace__placeholder">Tidak ada tabel.</p>}
+            {tables.length === 0 && <p className="workspace__placeholder">{t('explore.noTables')}</p>}
           </>
         )}
       </div>
@@ -324,20 +342,23 @@ export function PGExplorer({ serverId, username }: { serverId: string; username:
 
         {selectedDb && (
           <div>
-            <textarea
-              className="db-explorer__query-box"
-              placeholder={`Jalankan query bebas di "${selectedDb}"."${schema}" (satu statement)…`}
+            <SqlQueryBox
               value={queryText}
-              onChange={(e) => setQueryText(e.target.value)}
+              onChange={setQueryText}
+              onRun={(off) => void handleRunQuery(off)}
+              busy={queryBusy}
+              pageSize={QUERY_PAGE_SIZE}
+              offset={queryResult?.offset ?? queryOffset}
+              rowCount={queryResult?.rows?.length ?? 0}
+              paginated={!!queryResult?.paginated}
+              hasMore={!!queryResult?.hasMore}
+              database={`${selectedDb}.${schema}`}
             />
-            <div className="db-explorer__toolbar">
-              <button className="btn btn--sm btn--primary" disabled={queryBusy || !queryText.trim()} onClick={() => void handleRunQuery()}>
-                {queryBusy && <span className="spinner" />} {queryBusy ? 'Menjalankan…' : 'Jalankan Query'}
-              </button>
-              {queryResult && !queryResult.isSelect && <span>{queryResult.rowsAffected} baris terpengaruh.</span>}
-            </div>
+            {queryResult && !queryResult.isSelect && (
+              <p className="chmod-path">{t('explore.rowsAffected', { count: queryResult.rowsAffected })}</p>
+            )}
             {queryResult?.isSelect && queryResult.columns && (
-              <div className="db-explorer__grid-wrap" style={{ maxHeight: 180, marginTop: 6 }}>
+              <div className="db-explorer__grid-wrap" style={{ maxHeight: 220, marginTop: 6 }}>
                 <table className="db-explorer__grid">
                   <thead>
                     <tr>
@@ -363,13 +384,13 @@ export function PGExplorer({ serverId, username }: { serverId: string; username:
           </div>
         )}
 
-        {!selectedTable && selectedDb && <p className="workspace__placeholder">Pilih tabel di panel kiri untuk browse isinya.</p>}
+        {!selectedTable && selectedDb && <p className="workspace__placeholder">{t('explore.pickTable')}</p>}
 
         {selectedTable && rowsResult && (
           <>
             <div className="db-explorer__toolbar">
               <strong>{selectedTable}</strong>
-              <span style={{ opacity: 0.6 }}>{rowsResult.total} baris</span>
+              <span style={{ opacity: 0.6 }}>{t('explore.rowCount', { count: rowsResult.total })}</span>
               <button
                 title="Muat ulang halaman ini + hitung ulang total (data mungkin berubah dari tempat lain)"
                 onClick={() => void loadRows(selectedTable, page, { skipTotal: false })}
@@ -377,7 +398,7 @@ export function PGExplorer({ serverId, username }: { serverId: string; username:
                 <RotateCw size={14} />
               </button>
               <button className="btn btn--sm btn--primary" style={{ marginLeft: 'auto' }} onClick={() => setShowInsertForm((v) => !v)}>
-                + Baris
+                {t('explore.addRow')}
               </button>
             </div>
 
@@ -457,7 +478,7 @@ export function PGExplorer({ serverId, username }: { serverId: string; username:
                   {rowsResult.rows.length === 0 && (
                     <tr>
                       <td colSpan={rowsResult.columns.length + 1} className="files-panel__empty">
-                        Tabel kosong.
+                        {t('explore.emptyTable')}
                       </td>
                     </tr>
                   )}
@@ -467,17 +488,17 @@ export function PGExplorer({ serverId, username }: { serverId: string; username:
 
             <div className="db-explorer__pagination">
               <button className="btn btn--sm" disabled={page <= 0} onClick={() => void loadRows(selectedTable, page - 1, { skipTotal: true })}>
-                <ChevronLeft size={13} /> Sebelumnya
+                <ChevronLeft size={13} /> {t('explore.prev')}
               </button>
               <span>
-                Halaman {page + 1} / {totalPages}
+                {t('explore.page', { page: page + 1, total: totalPages })}
               </span>
               <button
                 className="btn btn--sm"
                 disabled={page + 1 >= totalPages}
                 onClick={() => void loadRows(selectedTable, page + 1, { skipTotal: true })}
               >
-                Berikutnya <ChevronRight size={13} />
+                {t('explore.next')} <ChevronRight size={13} />
               </button>
             </div>
           </>

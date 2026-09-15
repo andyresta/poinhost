@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import {
   GetWebsitePHPStatus,
   SetWebsitePHP,
@@ -22,7 +21,9 @@ import { DomainDNSTab } from './DomainDNSTab';
 import { DomainSFTPTab } from './DomainSFTPTab';
 import { DomainCronTab } from './DomainCronTab';
 import { DatabaseManagerPanel } from './DatabaseManagerPanel';
-import { ArrowLeft, ChevronRight, CornerDownRight, Lock, Plus, Pause, Play, Trash2 } from 'lucide-react';
+import { ArrowLeft, CornerDownRight, Lock, Plus, Pause, Play, Trash2 } from 'lucide-react';
+import { DomainFeatureGrid, featureLabel, type FeatureKey } from './DomainFeatureGrid';
+import { useT } from '../../i18n';
 
 const SSL_EMAIL_KEY = 'poinhost.website.sslEmail';
 
@@ -397,45 +398,6 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
   );
 }
 
-// AccordionSection satu bagian collapse (PHP/SSL/Files/dst). Konten anak
-// baru di-mount pertama kali section dibuka (bukan langsung semua 9 section
-// sekaligus saat domain dipilih) — tiap tab bikin panggilan status sendiri
-// di useEffect-nya, mount serentak berarti ~9 round-trip SSH sekaligus
-// padahal user mungkin cuma mau lihat satu. Sekali dibuka, kontennya TETAP
-// ter-mount (disembunyikan lewat atribut `hidden`, bukan unmount) supaya
-// buka-tutup berikutnya tidak fetch ulang.
-function AccordionSection({
-  title,
-  defaultOpen,
-  children,
-}: {
-  title: string;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}) {
-  const [open, setOpen] = useState(!!defaultOpen);
-  const [mounted, setMounted] = useState(!!defaultOpen);
-
-  return (
-    <div className="accordion-section">
-      <button
-        className="accordion-section__head"
-        onClick={() => {
-          setOpen((o) => !o);
-          setMounted(true);
-        }}
-      >
-        <ChevronRight size={14} className={`accordion-section__chevron${open ? ' accordion-section__chevron--open' : ''}`} />
-        <span>{title}</span>
-      </button>
-      {mounted && (
-        <div className="accordion-section__body" hidden={!open}>
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // Panel detail satu domain — accordion collapse untuk 9 fitur (PHP, SSL,
 // Files, Logs, Proxy, DNS, SFTP, Cron, Database), dirender INLINE menggantikan
@@ -451,6 +413,7 @@ export function DomainDetailPanel({
   onAddSubdomain,
   onDelete,
   busy,
+  initialFeature,
 }: {
   serverId: string;
   domain: website.DomainInfo;
@@ -460,21 +423,55 @@ export function DomainDetailPanel({
   onAddSubdomain: () => void;
   onDelete: () => void;
   busy: boolean;
+  initialFeature?: FeatureKey | null;
 }) {
   const name = domain.domain;
+  const t = useT();
+
+  // Dashboard grid ikon (model Plesk). Panel ini biasanya dibuka SUDAH pada
+  // satu fitur (initialFeature) karena gridnya dipilih lebih dulu inline di
+  // daftar domain — "Menu" balik ke grid di sini. Reset setiap ganti
+  // domain/fitur supaya tidak nyangkut di halaman fitur domain SEBELUMNYA.
+  const [activeFeature, setActiveFeature] = useState<FeatureKey | null>(initialFeature ?? null);
+  useEffect(() => {
+    setActiveFeature(initialFeature ?? null);
+  }, [name, initialFeature]);
+
+  function renderFeature(key: FeatureKey) {
+    switch (key) {
+      case 'php':
+        return <PHPTab serverId={serverId} domain={name} onChanged={onChanged} />;
+      case 'ssl':
+        return <SSLTab serverId={serverId} domain={name} onChanged={onChanged} />;
+      case 'files':
+        return <DomainFilesTab serverId={serverId} domain={name} />;
+      case 'logs':
+        return <DomainLogsTab serverId={serverId} domain={name} />;
+      case 'proxy':
+        return <DomainProxyTab serverId={serverId} domain={name} />;
+      case 'database':
+        return <DatabaseManagerPanel serverId={serverId} domain={name} />;
+      case 'cron':
+        return <DomainCronTab serverId={serverId} domain={name} />;
+      case 'dns':
+        return <DomainDNSTab serverId={serverId} domain={name} />;
+      case 'sftp':
+        return <DomainSFTPTab serverId={serverId} domain={name} />;
+    }
+  }
 
   return (
     <div className="domain-detail-panel">
       <div className="domain-detail-panel__header">
         <button className="btn btn--ghost btn--sm" onClick={onBack}>
-          <ArrowLeft size={14} /> Kembali
+          <ArrowLeft size={14} /> {t('common.back')}
         </button>
         <h2 className="domain-detail-panel__title">
           {domain.isSubdomain && <CornerDownRight size={14} />}
           {name}
         </h2>
         <span className={`docker-badge ${domain.enabled ? 'docker-badge--running' : 'docker-badge--stopped'}`}>
-          {domain.enabled ? 'Aktif' : 'Nonaktif'}
+          {domain.enabled ? t('common.active') : t('common.inactive')}
         </span>
         {domain.phpEnabled && <span className="docker-badge">PHP {domain.phpVersion}</span>}
         {domain.sslEnabled && (
@@ -484,50 +481,32 @@ export function DomainDetailPanel({
         )}
         <div className="domain-detail-panel__actions">
           {!domain.isSubdomain && (
-            <button title="Tambah subdomain" disabled={busy} onClick={onAddSubdomain}>
+            <button title={t('web.addSubdomain')} disabled={busy} onClick={onAddSubdomain}>
               <Plus size={14} />
             </button>
           )}
-          <button title={domain.enabled ? 'Nonaktifkan' : 'Aktifkan'} disabled={busy} onClick={onToggleEnabled}>
+          <button title={domain.enabled ? t('web.disable') : t('web.enable')} disabled={busy} onClick={onToggleEnabled}>
             {busy ? <span className="spinner" /> : domain.enabled ? <Pause size={14} /> : <Play size={14} />}
           </button>
-          <button title="Hapus" disabled={busy} onClick={onDelete}>
+          <button title={t('common.delete')} disabled={busy} onClick={onDelete}>
             <Trash2 size={14} />
           </button>
         </div>
       </div>
 
-      <div className="accordion">
-        <AccordionSection title="PHP" defaultOpen>
-          <PHPTab serverId={serverId} domain={name} onChanged={onChanged} />
-        </AccordionSection>
-        <AccordionSection title="SSL">
-          <SSLTab serverId={serverId} domain={name} onChanged={onChanged} />
-        </AccordionSection>
-        <AccordionSection title="Files">
-          <DomainFilesTab serverId={serverId} domain={name} />
-        </AccordionSection>
-        <AccordionSection title="Logs">
-          <DomainLogsTab serverId={serverId} domain={name} />
-        </AccordionSection>
-        <AccordionSection title="Proxy">
-          <DomainProxyTab serverId={serverId} domain={name} />
-        </AccordionSection>
-        <AccordionSection title="Database">
-          <DatabaseManagerPanel serverId={serverId} domain={name} />
-        </AccordionSection>
-        <AccordionSection title="Cron">
-          <DomainCronTab serverId={serverId} domain={name} />
-        </AccordionSection>
-        {!domain.isSubdomain && (
-          <AccordionSection title="DNS">
-            <DomainDNSTab serverId={serverId} domain={name} />
-          </AccordionSection>
-        )}
-        <AccordionSection title="SFTP">
-          <DomainSFTPTab serverId={serverId} domain={name} />
-        </AccordionSection>
-      </div>
+      {activeFeature === null ? (
+        <DomainFeatureGrid isSubdomain={domain.isSubdomain} onSelect={setActiveFeature} />
+      ) : (
+        <div>
+          <div className="domain-feature-page__header">
+            <button className="btn btn--ghost btn--sm" onClick={() => setActiveFeature(null)}>
+              <ArrowLeft size={14} /> {t('web.menu')}
+            </button>
+            <h3>{featureLabel(activeFeature)}</h3>
+          </div>
+          {renderFeature(activeFeature)}
+        </div>
+      )}
     </div>
   );
 }

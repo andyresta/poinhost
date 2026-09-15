@@ -15,6 +15,8 @@ import {
   ListSystemUsers,
 } from '../../../wailsjs/go/main/App';
 import { files, sshpool } from '../../../wailsjs/go/models';
+import { useConfirm } from '../../components/ConfirmDialog';
+import { useT } from '../../i18n';
 import { useTabsStore } from '../../store/tabs';
 import { PromptModal } from './PromptModal';
 import { CompressModal } from './CompressModal';
@@ -71,6 +73,8 @@ function breadcrumbParts(p: string, root: string): { label: string; path: string
 // root domain itu, lihat DomainFilesTab.tsx), kosongkan untuk modul Files
 // biasa (root filesystem penuh, mulai dari "/").
 export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; rootPath?: string }) {
+  const confirm = useConfirm();
+  const t = useT();
   const server = useTabsStore((s) => s.servers.find((x) => x.id === serverId));
 
   const [path, setPath] = useState(rootPath);
@@ -184,7 +188,14 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
 
   async function handleDelete() {
     if (selected.size === 0) return;
-    if (!confirm(`Hapus ${selected.size} item terpilih? Tindakan ini tidak bisa dibatalkan.`)) return;
+    const ok = await confirm({
+      title: 'Hapus item terpilih',
+      message: `Hapus ${selected.size} item terpilih?`,
+      detail: 'Tindakan ini tidak bisa dibatalkan.',
+      confirmLabel: 'Hapus',
+      danger: true,
+    });
+    if (!ok) return;
     await withBusy(async () => {
       await DeleteFiles(new files.DeleteRequest({ serverId, paths: [...selected], asUser }));
       await load(path);
@@ -334,7 +345,7 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
             )}
           </tbody>
         </table>
-        {loading && <div className="files-panel__loading">Memuat…</div>}
+        {loading && <div className="files-panel__loading">{t('common.loading')}</div>}
       </div>
 
       {modal === 'newFolder' && (

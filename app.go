@@ -17,7 +17,9 @@ import (
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/andyresta/poinhost/internal/modules/docker"
 	"github.com/andyresta/poinhost/internal/modules/files"
+	"github.com/andyresta/poinhost/internal/modules/firewall"
 	"github.com/andyresta/poinhost/internal/modules/servers"
+	"github.com/andyresta/poinhost/internal/modules/services"
 	"github.com/andyresta/poinhost/internal/modules/terminal"
 	"github.com/andyresta/poinhost/internal/modules/website"
 	"github.com/andyresta/poinhost/internal/session"
@@ -44,6 +46,8 @@ type App struct {
 	terminalSvc *terminal.Service
 	filesSvc    *files.Service
 	dockerSvc   *docker.Service
+	servicesSvc *services.Service
+	firewallSvc *firewall.Service
 	websiteSvc  *website.Service
 	backupSvc   *backup.Service
 
@@ -100,6 +104,8 @@ func NewApp() *App {
 	filesSvc := files.NewService(sftpClient, executor, serversSvc)
 
 	dockerSvc := docker.NewService(serversSvc, executor, mutex)
+	servicesSvc := services.NewService(serversSvc, executor, mutex)
+	firewallSvc := firewall.NewService(serversSvc, executor, mutex)
 	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault)
 	backupSvc := backup.NewService(serversSvc, websiteSvc)
 
@@ -114,6 +120,8 @@ func NewApp() *App {
 		terminalSvc: terminalSvc,
 		filesSvc:    filesSvc,
 		dockerSvc:   dockerSvc,
+		servicesSvc: servicesSvc,
+		firewallSvc: firewallSvc,
 		websiteSvc:  websiteSvc,
 		backupSvc:   backupSvc,
 		streams:     make(map[string]context.CancelFunc),
@@ -1006,6 +1014,34 @@ func (a *App) SetWebsiteDatabaseGrants(req website.DBGrantsRequest) error {
 	return a.websiteSvc.DBSetGrants(req)
 }
 
+// DisableWebsiteDBDockerAccess menutup kembali akses Docker->database
+// (database balik hanya mendengarkan localhost).
+func (a *App) DisableWebsiteDBDockerAccess(serverID, engine string) (*website.DBDockerAccessStatus, error) {
+	return a.websiteSvc.DisableDBDockerAccess(serverID, engine)
+}
+
+// DropWebsiteDatabase menghapus satu database beserta isinya (permanen).
+func (a *App) DropWebsiteDatabase(serverID, engine, name string) error {
+	return a.websiteSvc.DBDropDatabase(serverID, engine, name)
+}
+
+// DropWebsiteDatabaseUser menghapus satu user database (permanen). Untuk
+// MySQL, host kosong berarti semua host user tersebut.
+func (a *App) DropWebsiteDatabaseUser(serverID, engine, username, host string) error {
+	return a.websiteSvc.DBDropUser(serverID, engine, username, host)
+}
+
+// GrantWebsiteDatabaseUser memberi satu user akses ke satu database
+// ("assign user" di daftar database).
+func (a *App) GrantWebsiteDatabaseUser(req website.DBDatabaseUserRequest) error {
+	return a.websiteSvc.DBGrantDatabaseUser(req)
+}
+
+// RevokeWebsiteDatabaseUser mencabut akses satu user dari satu database.
+func (a *App) RevokeWebsiteDatabaseUser(req website.DBDatabaseUserRequest) error {
+	return a.websiteSvc.DBRevokeDatabaseUser(req)
+}
+
 // --- MySQL Manager: kredensial lokal (vault) + Explore koneksi driver asli ---
 
 // SaveWebsiteDBCredential menyimpan password satu user database ke vault
@@ -1182,4 +1218,92 @@ func (a *App) ImportBackup(passphrase string) (*backup.ImportSummary, error) {
 		return nil, err
 	}
 	return a.backupSvc.Import(data, passphrase)
+}
+
+// --- Services (systemd) ---
+
+// ListSystemServices mengembalikan seluruh unit systemd di server beserta
+// status jalan & autostart-nya.
+func (a *App) ListSystemServices(serverID string) (*services.ListResponse, error) {
+	return a.servicesSvc.ListServices(serverID)
+}
+
+// SystemServiceAction menjalankan satu aksi systemctl pada satu service:
+// start | stop | restart (state sekarang) atau enable | disable (autostart
+// saat boot). Mengembalikan status terbaru service itu.
+func (a *App) SystemServiceAction(serverID, name, action string) (*services.ServiceInfo, error) {
+	return a.servicesSvc.ServiceAction(serverID, name, action)
+}
+
+// GetSystemService membaca status satu service.
+func (a *App) GetSystemService(serverID, name string) (*services.ServiceInfo, error) {
+	return a.servicesSvc.GetService(serverID, name)
+}
+
+// journalStreamEvent payload event log journald yang dikirim ke
+// "services:journal:<streamID>". Entry-nya sudah terstruktur (bukan baris
+// teks mentah seperti dockerStreamEvent) supaya UI bisa mewarnai per level
+// tanpa menebak-nebak dari isi pesan.
+type journalStreamEvent struct {
+	Type    string                 `json:"type"` // entry | end | error
+	Entry   *services.JournalEntry `json:"entry,omitempty"`
+	Message string                 `json:"message,omitempty"`
+}
+
+// ReadSystemJournal membaca log journald (snapshot) sesuai filter unit,
+// level, dan rentang waktu.
+func (a *App) ReadSystemJournal(req services.JournalRequest) (*services.JournalResponse, error) {
+	return a.servicesSvc.ReadJournal(req)
+}
+
+// StreamSystemJournal mengikuti log journald realtime (`journalctl -f`) lewat
+// event "services:journal:<streamID>" — memakai stream registry yang sama
+// dengan log Docker/Website, jadi dihentikan dengan StopDockerStream.
+func (a *App) StreamSystemJournal(req services.JournalRequest) (string, error) {
+	streamID := uuid.NewString()
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.registerStream(streamID, cancel)
+	eventName := "services:journal:" + streamID
+
+	go func() {
+		err := a.servicesSvc.StreamJournal(ctx, req, func(entry services.JournalEntry) error {
+			runtime.EventsEmit(a.ctx, eventName, journalStreamEvent{Type: "entry", Entry: &entry})
+			return nil
+		})
+		a.stopStream(streamID)
+		if err != nil && !errors.Is(err, context.Canceled) {
+			runtime.EventsEmit(a.ctx, eventName, journalStreamEvent{Type: "error", Message: err.Error()})
+			return
+		}
+		runtime.EventsEmit(a.ctx, eventName, journalStreamEvent{Type: "end"})
+	}()
+
+	return streamID, nil
+}
+
+// --- Firewall ---
+
+// ListFirewallRules mengembalikan status firewall server beserta seluruh
+// aturannya. Backend ditentukan dari yang SEDANG AKTIF, bukan ditebak dari
+// OS — satu server bisa punya ufw, firewalld, dan nftables sekaligus.
+// zone hanya dipakai firewalld; kosongkan untuk memakai zone default server.
+func (a *App) ListFirewallRules(serverID, zone string) (*firewall.ListResponse, error) {
+	return a.firewallSvc.ListRules(serverID, zone)
+}
+
+// AddFirewallRule menambah satu aturan ke backend yang aktif.
+func (a *App) AddFirewallRule(req firewall.RuleRequest) (*firewall.ListResponse, error) {
+	return a.firewallSvc.AddRule(req)
+}
+
+// DeleteFirewallRule menghapus satu aturan berdasarkan ID dari ListFirewallRules.
+func (a *App) DeleteFirewallRule(serverID, ruleID, zone string) (*firewall.ListResponse, error) {
+	return a.firewallSvc.DeleteRule(serverID, ruleID, zone)
+}
+
+// SetFirewallEnabled menyalakan/mematikan firewall. Saat menyalakan, port SSH
+// yang dipakai koneksi ini dibuka lebih dulu di skrip yang sama supaya user
+// tidak terkunci dari servernya sendiri.
+func (a *App) SetFirewallEnabled(serverID string, enabled bool) (*firewall.ListResponse, error) {
+	return a.firewallSvc.SetEnabled(serverID, enabled)
 }

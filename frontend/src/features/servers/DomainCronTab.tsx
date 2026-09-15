@@ -9,6 +9,7 @@ import {
   ReadWebsiteCronLog,
 } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
+import { useConfirm } from '../../components/ConfirmDialog';
 
 const PRESETS: { label: string; value: string }[] = [
   { label: 'Tiap menit', value: '* * * * *' },
@@ -96,6 +97,7 @@ function CronLogModal({ serverId, domain, jobId, onClose }: { serverId: string; 
 }
 
 export function DomainCronTab({ serverId, domain }: { serverId: string; domain: string }) {
+  const confirm = useConfirm();
   const [list, setList] = useState<website.CronListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -130,7 +132,17 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
   }
 
   async function handleDelete(job: website.CronJobInfo) {
-    if (!confirm(`Hapus job "${job.description || job.actionSummary}"?`)) return;
+    const ok = await confirm({
+      title: 'Hapus cron job',
+      message: (
+        <>
+          Hapus job <strong>{job.description || job.actionSummary}</strong>?
+        </>
+      ),
+      confirmLabel: 'Hapus',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(job.id);
     setError(null);
     try {
