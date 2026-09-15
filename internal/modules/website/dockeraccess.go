@@ -42,8 +42,22 @@ type DBDockerAccessStatus struct {
 	FirewallDetected string `json:"firewallDetected,omitempty"`
 	// FirewallRuleActive: aturan allow poinhost (scope dockerBridgeCIDR)
 	// sudah terpasang di firewall yang terdeteksi.
-	FirewallRuleActive bool   `json:"firewallRuleActive"`
-	Message            string `json:"message,omitempty"`
+	FirewallRuleActive bool `json:"firewallRuleActive"`
+	// Enabled: KESIMPULAN akhir "container Docker benar-benar bisa connect".
+	// Sengaja dihitung di backend, bukan dirakit ulang di UI: dulu UI memakai
+	// syarat `bindAllInterfaces && firewallRuleActive`, sehingga di server
+	// TANPA firewall (FirewallDetected "none", FirewallRuleActive selalu
+	// false karena tidak ada tempat memasang aturan) statusnya bilang "sudah
+	// bisa connect" TAPI tombol "Aktifkan" tetap muncul — persis
+	// keambiguan yang dilaporkan. Kalau tidak ada firewall, ya tidak ada
+	// yang perlu dibuka.
+	Enabled bool   `json:"enabled"`
+	Message string `json:"message,omitempty"`
+}
+
+func (st *DBDockerAccessStatus) computeEnabled() {
+	firewallBlocks := st.FirewallDetected != "" && st.FirewallDetected != "none" && !st.FirewallRuleActive
+	st.Enabled = st.BindAllInterfaces && !firewallBlocks
 }
 
 func mysqlDockerConfPath(pm string) string {
@@ -137,6 +151,46 @@ echo "POINHOST_DOCKER_ACCESS_DONE"
 `
 }
 
+// firewallRemoveScript mencabut aturan allow yang DIPASANG poinhost untuk
+// port ini — kebalikan firewallEnsureScript. Aturan lain (punya user
+// sendiri) tidak disentuh sama sekali.
+func firewallRemoveScript(port int) string {
+	p := strconv.Itoa(port)
+	return `if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "^Status: active"; then
+  ufw --force delete allow from ` + dockerBridgeCIDR + ` to any port ` + p + ` proto tcp >/dev/null 2>&1 || true
+elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -qi running; then
+  firewall-cmd --permanent --remove-rich-rule="rule family=\"ipv4\" source address=\"` + dockerBridgeCIDR + `\" port port=\"` + p + `\" protocol=\"tcp\" accept" >/dev/null 2>&1 || true
+  firewall-cmd --reload >/dev/null 2>&1 || true
+fi`
+}
+
+// dbDockerAccessRevertScript mengembalikan database ke keadaan HANYA bisa
+// diakses dari host itu sendiri (localhost) — kebalikan persis dari
+// dbDockerAccessApplyScript, dan hanya membongkar yang poinhost pasang
+// sendiri (file config bermarker, baris pg_hba bermarker, aturan firewall
+// bermarker). Konfigurasi lain milik user tidak ikut diubah.
+func dbDockerAccessRevertScript(engine, pm string) string {
+	if engine == "mysql" {
+		path := mysqlDockerConfPath(pm)
+		return `set -e
+rm -f ` + path + `
+systemctl restart mariadb 2>/dev/null || systemctl restart mysql 2>/dev/null || true
+` + firewallRemoveScript(3306) + `
+echo "POINHOST_DOCKER_ACCESS_REVERTED"
+`
+	}
+	return `set -e
+sudo -u postgres psql -c "ALTER SYSTEM RESET listen_addresses;" >/dev/null
+HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" | tr -d '[:space:]')
+if [ -n "$HBA" ] && grep -q "` + dockerAccessMarker + `" "$HBA" 2>/dev/null; then
+  sed -i '/` + dockerAccessMarker + `/,+1d' "$HBA"
+fi
+systemctl restart postgresql 2>/dev/null || true
+` + firewallRemoveScript(5432) + `
+echo "POINHOST_DOCKER_ACCESS_REVERTED"
+`
+}
+
 func dbDockerAccessStatusScript(engine string) string {
 	if engine == "mysql" {
 		// Lewat unix socket lokal (`mysql -u root`, TANPA `-h`) — bukan
@@ -185,6 +239,7 @@ func (s *Service) GetDBDockerAccessStatus(serverID, engine string) (*DBDockerAcc
 			st.FirewallRuleActive = strings.TrimPrefix(line, "FWRULE=") == "1"
 		}
 	}
+	st.computeEnabled()
 	return st, nil
 }
 
@@ -220,4 +275,30 @@ func (s *Service) EnsureDBDockerAccess(serverID, engine string) (*DBDockerAccess
 		st.Message = "Bind-address sudah diubah ke 0.0.0.0, TAPI tidak ada firewall (ufw/firewalld) aktif yang terdeteksi di server ini — artinya port MySQL kini bisa dijangkau siapa pun yang punya akses jaringan ke server ini, bukan cuma Docker. Aktifkan ufw (atau firewalld), lalu jalankan ini lagi supaya aksesnya benar-benar dibatasi ke jaringan Docker saja."
 	}
 	return st, nil
+}
+
+// DisableDBDockerAccess menutup kembali akses Docker->database: database
+// balik hanya mendengarkan localhost, dan aturan firewall yang dipasang
+// poinhost dicabut. Container Docker setelah ini TIDAK bisa connect lagi.
+func (s *Service) DisableDBDockerAccess(serverID, engine string) (*DBDockerAccessStatus, error) {
+	engine, err := normalizeDBEngine(engine)
+	if err != nil {
+		return nil, err
+	}
+	access, err := s.resolveAccess(serverID)
+	if err != nil {
+		return nil, err
+	}
+	distro, err := s.detectDistro(access)
+	if err != nil {
+		return nil, err
+	}
+
+	s.mutex.Lock(serverID)
+	_, err = s.run(access, dbDockerAccessRevertScript(engine, distro.PackageManager), 30*time.Second)
+	s.mutex.Unlock(serverID)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetDBDockerAccessStatus(serverID, engine)
 }

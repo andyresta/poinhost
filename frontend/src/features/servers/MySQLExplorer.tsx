@@ -12,8 +12,15 @@ import {
   SaveWebsiteDBCredential,
 } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
+import { useConfirm } from '../../components/ConfirmDialog';
+import { SqlQueryBox } from './SqlQueryBox';
+import { useT } from '../../i18n';
 
 const PAGE_SIZE = 100;
+// Halaman hasil kotak query dibuat lebih kecil dari browse tabel: hasil
+// query bebas bisa punya banyak kolom lebar (JOIN, SELECT *), dan area
+// tampilnya juga lebih pendek.
+const QUERY_PAGE_SIZE = 50;
 
 // Explorer MySQL — koneksi driver ASLI (go-sql-driver/mysql) ditunnel lewat
 // SSH, BUKAN exec CLI per halaman, supaya paginasi tabel besar tetap cepat
@@ -28,6 +35,8 @@ const PAGE_SIZE = 100;
 // dari tab "Users & Akses": satu urus SIAPA yang boleh akses, satu urus
 // BROWSE isinya — dua concern yang sebelumnya campur di satu layar.
 export function MySQLExplorer({ serverId, username, host }: { serverId: string; username: string; host: string }) {
+  const confirm = useConfirm();
+  const t = useT();
   const req: website.MySQLExploreRequest = { serverId, username, host };
 
   const [databases, setDatabases] = useState<string[] | null>(null);
@@ -52,12 +61,13 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
   const [queryText, setQueryText] = useState('');
   const [queryResult, setQueryResult] = useState<website.MySQLQueryResult | null>(null);
   const [queryBusy, setQueryBusy] = useState(false);
+  const [queryOffset, setQueryOffset] = useState(0);
 
   function handleError(e: unknown) {
     const msg = String(e);
     if (msg.includes('AUTENTIKASI_GAGAL')) {
       setNeedsPassword(true);
-      setError('Password tersimpan sudah tidak valid (mungkin diganti langsung di server).');
+      setError(t('explore.passwordInvalid'));
     } else {
       setError(msg);
     }
@@ -199,7 +209,7 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
 
   async function handleDeleteRow(rowIndex: number) {
     if (!rowsResult || !selectedDb || !selectedTable) return;
-    if (!confirm('Hapus baris ini?')) return;
+    if (!(await confirm({ title: t('explore.deleteRow'), message: t('explore.deleteRowConfirm'), confirmLabel: t('common.delete'), danger: true }))) return;
     const where = rowWhere(rowsResult.rows[rowIndex]);
     setBusy(true);
     setError(null);
@@ -241,12 +251,28 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
     }
   }
 
-  async function handleRunQuery() {
+  // Paginasi hasil query: yang dikirim ke server cuma limit+offset, dan
+  // SERVER yang memotong hasilnya (lihat paginateSelectSQL di backend) —
+  // bukan menarik seluruh hasil lalu memotong di sini, yang untuk tabel
+  // besar berarti menyeret jutaan baris lewat tunnel SSH.
+  async function handleRunQuery(offset = 0) {
     if (!selectedDb || !queryText.trim()) return;
     setQueryBusy(true);
     setError(null);
     try {
-      setQueryResult(await MySQLExploreExecuteQuery(new website.MySQLQueryRequest({ serverId, username, host, database: selectedDb, sql: queryText })));
+      const res = await MySQLExploreExecuteQuery(
+        new website.MySQLQueryRequest({
+          serverId,
+          username,
+          host,
+          database: selectedDb,
+          sql: queryText,
+          limit: QUERY_PAGE_SIZE,
+          offset,
+        }),
+      );
+      setQueryResult(res);
+      setQueryOffset(offset);
     } catch (e) {
       handleError(e);
     } finally {
@@ -261,11 +287,11 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
       <div>
         <p className="overview__error">{error}</p>
         <label className="form-field">
-          <span>Masukkan ulang password untuk {username}@{host}</span>
+          <span>{t('explore.reenterPassword', { label: `${username}@${host}` })}</span>
           <input type="password" value={reenterPassword} onChange={(e) => setReenterPassword(e.target.value)} />
         </label>
         <button className="btn btn--primary" disabled={busy || !reenterPassword.trim()} onClick={() => void retrySavePassword()}>
-          {busy && <span className="spinner" />} {busy ? 'Memverifikasi…' : 'Simpan & Coba Lagi'}
+          {busy && <span className="spinner" />} {busy ? t('explore.verifying') : t('explore.saveAndRetry')}
         </button>
       </div>
     );
@@ -274,8 +300,8 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
   return (
     <div className="db-explorer">
       <div className="db-explorer__sidebar">
-        <h4>Database</h4>
-        {databases === null && <p className="workspace__placeholder">Memuat…</p>}
+        <h4>{t('explore.databases')}</h4>
+        {databases === null && <p className="workspace__placeholder">{t('common.loading')}</p>}
         {databases?.map((db) => (
           <button
             key={db}
@@ -288,7 +314,7 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
 
         {selectedDb && (
           <>
-            <h4>Tabel di {selectedDb}</h4>
+            <h4>{t('explore.tablesIn', { db: selectedDb })}</h4>
             {tables.map((t) => (
               <button
                 key={t.name}
@@ -299,7 +325,7 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
                 {t.name}
               </button>
             ))}
-            {tables.length === 0 && <p className="workspace__placeholder">Tidak ada tabel.</p>}
+            {tables.length === 0 && <p className="workspace__placeholder">{t('explore.noTables')}</p>}
           </>
         )}
       </div>
@@ -309,20 +335,23 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
 
         {selectedDb && (
           <div>
-            <textarea
-              className="db-explorer__query-box"
-              placeholder={`Jalankan query bebas di database "${selectedDb}" (satu statement)…`}
+            <SqlQueryBox
               value={queryText}
-              onChange={(e) => setQueryText(e.target.value)}
+              onChange={setQueryText}
+              onRun={(off) => void handleRunQuery(off)}
+              busy={queryBusy}
+              pageSize={QUERY_PAGE_SIZE}
+              offset={queryResult?.offset ?? queryOffset}
+              rowCount={queryResult?.rows?.length ?? 0}
+              paginated={!!queryResult?.paginated}
+              hasMore={!!queryResult?.hasMore}
+              database={selectedDb}
             />
-            <div className="db-explorer__toolbar">
-              <button className="btn btn--sm btn--primary" disabled={queryBusy || !queryText.trim()} onClick={() => void handleRunQuery()}>
-                {queryBusy && <span className="spinner" />} {queryBusy ? 'Menjalankan…' : 'Jalankan Query'}
-              </button>
-              {queryResult && !queryResult.isSelect && <span>{queryResult.rowsAffected} baris terpengaruh.</span>}
-            </div>
+            {queryResult && !queryResult.isSelect && (
+              <p className="chmod-path">{t('explore.rowsAffected', { count: queryResult.rowsAffected })}</p>
+            )}
             {queryResult?.isSelect && queryResult.columns && (
-              <div className="db-explorer__grid-wrap" style={{ maxHeight: 180, marginTop: 6 }}>
+              <div className="db-explorer__grid-wrap" style={{ maxHeight: 220, marginTop: 6 }}>
                 <table className="db-explorer__grid">
                   <thead>
                     <tr>
@@ -341,6 +370,13 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
                         ))}
                       </tr>
                     ))}
+                    {(queryResult.rows ?? []).length === 0 && (
+                      <tr>
+                        <td colSpan={queryResult.columns.length} className="files-panel__empty">
+                          {t('explore.noRows')}
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -348,21 +384,21 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
           </div>
         )}
 
-        {!selectedTable && selectedDb && <p className="workspace__placeholder">Pilih tabel di panel kiri untuk browse isinya.</p>}
+        {!selectedTable && selectedDb && <p className="workspace__placeholder">{t('explore.pickTable')}</p>}
 
         {selectedTable && rowsResult && (
           <>
             <div className="db-explorer__toolbar">
               <strong>{selectedTable}</strong>
-              <span style={{ opacity: 0.6 }}>{rowsResult.total} baris</span>
+              <span style={{ opacity: 0.6 }}>{t('explore.rowCount', { count: rowsResult.total })}</span>
               <button
-                title="Muat ulang halaman ini + hitung ulang total (data mungkin berubah dari tempat lain)"
+                title={t('explore.reload')}
                 onClick={() => void loadRows(selectedTable, page, { skipTotal: false })}
               >
                 <RotateCw size={14} />
               </button>
               <button className="btn btn--sm btn--primary" style={{ marginLeft: 'auto' }} onClick={() => setShowInsertForm((v) => !v)}>
-                + Baris
+                {t('explore.addRow')}
               </button>
             </div>
 
@@ -433,7 +469,7 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
                         );
                       })}
                       <td>
-                        <button title="Hapus baris" disabled={busy} onClick={() => void handleDeleteRow(ri)}>
+                        <button title={t('explore.deleteRow')} disabled={busy} onClick={() => void handleDeleteRow(ri)}>
                           <Trash2 size={14} />
                         </button>
                       </td>
@@ -442,7 +478,7 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
                   {rowsResult.rows.length === 0 && (
                     <tr>
                       <td colSpan={rowsResult.columns.length + 1} className="files-panel__empty">
-                        Tabel kosong.
+                        {t('explore.emptyTable')}
                       </td>
                     </tr>
                   )}
@@ -452,17 +488,17 @@ export function MySQLExplorer({ serverId, username, host }: { serverId: string; 
 
             <div className="db-explorer__pagination">
               <button className="btn btn--sm" disabled={page <= 0} onClick={() => void loadRows(selectedTable, page - 1, { skipTotal: true })}>
-                <ChevronLeft size={13} /> Sebelumnya
+                <ChevronLeft size={13} /> {t('explore.prev')}
               </button>
               <span>
-                Halaman {page + 1} / {totalPages}
+                {t('explore.page', { page: page + 1, total: totalPages })}
               </span>
               <button
                 className="btn btn--sm"
                 disabled={page + 1 >= totalPages}
                 onClick={() => void loadRows(selectedTable, page + 1, { skipTotal: true })}
               >
-                Berikutnya <ChevronRight size={13} />
+                {t('explore.next')} <ChevronRight size={13} />
               </button>
             </div>
           </>

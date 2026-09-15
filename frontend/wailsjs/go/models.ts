@@ -727,6 +727,132 @@ export namespace files {
 
 }
 
+export namespace firewall {
+	
+	export class Rule {
+	    id: string;
+	    port: string;
+	    protocol: string;
+	    source: string;
+	    action: string;
+	    ipv6: boolean;
+	    service: string;
+	    servicePorts: string;
+	    owner: string;
+	    comment: string;
+	    raw: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Rule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.port = source["port"];
+	        this.protocol = source["protocol"];
+	        this.source = source["source"];
+	        this.action = source["action"];
+	        this.ipv6 = source["ipv6"];
+	        this.service = source["service"];
+	        this.servicePorts = source["servicePorts"];
+	        this.owner = source["owner"];
+	        this.comment = source["comment"];
+	        this.raw = source["raw"];
+	    }
+	}
+	export class Status {
+	    backend: string;
+	    active: boolean;
+	    editable: boolean;
+	    installed: string[];
+	    defaultIncoming: string;
+	    defaultOutgoing: string;
+	    zone: string;
+	    zones: string[];
+	    sshPort: number;
+	    sshAllowed: boolean;
+	    ownerDetectable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.backend = source["backend"];
+	        this.active = source["active"];
+	        this.editable = source["editable"];
+	        this.installed = source["installed"];
+	        this.defaultIncoming = source["defaultIncoming"];
+	        this.defaultOutgoing = source["defaultOutgoing"];
+	        this.zone = source["zone"];
+	        this.zones = source["zones"];
+	        this.sshPort = source["sshPort"];
+	        this.sshAllowed = source["sshAllowed"];
+	        this.ownerDetectable = source["ownerDetectable"];
+	    }
+	}
+	export class ListResponse {
+	    status: Status;
+	    rules: Rule[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ListResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.status = this.convertValues(source["status"], Status);
+	        this.rules = this.convertValues(source["rules"], Rule);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class RuleRequest {
+	    serverId: string;
+	    port: string;
+	    protocol: string;
+	    source: string;
+	    action: string;
+	    comment: string;
+	    zone: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RuleRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.port = source["port"];
+	        this.protocol = source["protocol"];
+	        this.source = source["source"];
+	        this.action = source["action"];
+	        this.comment = source["comment"];
+	        this.zone = source["zone"];
+	    }
+	}
+
+}
+
 export namespace servers {
 	
 	export class ConnectionTestResult {
@@ -878,6 +1004,145 @@ export namespace servers {
 	        this.metricsCheckedAt = this.convertValues(source["metricsCheckedAt"], null);
 	        this.metricsStale = source["metricsStale"];
 	        this.metricsError = source["metricsError"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+
+export namespace services {
+	
+	export class JournalEntry {
+	    timestamp: string;
+	    priority: number;
+	    unit: string;
+	    identifier: string;
+	    pid: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new JournalEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.timestamp = source["timestamp"];
+	        this.priority = source["priority"];
+	        this.unit = source["unit"];
+	        this.identifier = source["identifier"];
+	        this.pid = source["pid"];
+	        this.message = source["message"];
+	    }
+	}
+	export class JournalRequest {
+	    serverId: string;
+	    unit: string;
+	    priority: string;
+	    since: string;
+	    lines: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new JournalRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.unit = source["unit"];
+	        this.priority = source["priority"];
+	        this.since = source["since"];
+	        this.lines = source["lines"];
+	    }
+	}
+	export class JournalResponse {
+	    entries: JournalEntry[];
+	    systemdAvailable: boolean;
+	    truncated: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new JournalResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.entries = this.convertValues(source["entries"], JournalEntry);
+	        this.systemdAvailable = source["systemdAvailable"];
+	        this.truncated = source["truncated"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ServiceInfo {
+	    name: string;
+	    description: string;
+	    activeState: string;
+	    subState: string;
+	    unitFileState: string;
+	    running: boolean;
+	    enabled: boolean;
+	    canEnable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ServiceInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.activeState = source["activeState"];
+	        this.subState = source["subState"];
+	        this.unitFileState = source["unitFileState"];
+	        this.running = source["running"];
+	        this.enabled = source["enabled"];
+	        this.canEnable = source["canEnable"];
+	    }
+	}
+	export class ListResponse {
+	    services: ServiceInfo[];
+	    systemdAvailable: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new ListResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.services = this.convertValues(source["services"], ServiceInfo);
+	        this.systemdAvailable = source["systemdAvailable"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -1343,6 +1608,8 @@ export namespace website {
 	    domain?: string;
 	    name: string;
 	    encoding?: string;
+	    owner?: string;
+	    ownerHost?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new DBCreateDatabaseRequest(source);
@@ -1355,6 +1622,8 @@ export namespace website {
 	        this.domain = source["domain"];
 	        this.name = source["name"];
 	        this.encoding = source["encoding"];
+	        this.owner = source["owner"];
+	        this.ownerHost = source["ownerHost"];
 	    }
 	}
 	export class DBCreateUserRequest {
@@ -1423,11 +1692,34 @@ export namespace website {
 	        this.charset = source["charset"];
 	    }
 	}
+	export class DBDatabaseUserRequest {
+	    serverId: string;
+	    engine: string;
+	    database: string;
+	    username: string;
+	    host?: string;
+	    privileges?: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DBDatabaseUserRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.engine = source["engine"];
+	        this.database = source["database"];
+	        this.username = source["username"];
+	        this.host = source["host"];
+	        this.privileges = source["privileges"];
+	    }
+	}
 	export class DBDockerAccessStatus {
 	    engine: string;
 	    bindAllInterfaces: boolean;
 	    firewallDetected?: string;
 	    firewallRuleActive: boolean;
+	    enabled: boolean;
 	    message?: string;
 	
 	    static createFrom(source: any = {}) {
@@ -1440,6 +1732,7 @@ export namespace website {
 	        this.bindAllInterfaces = source["bindAllInterfaces"];
 	        this.firewallDetected = source["firewallDetected"];
 	        this.firewallRuleActive = source["firewallRuleActive"];
+	        this.enabled = source["enabled"];
 	        this.message = source["message"];
 	    }
 	}
@@ -1514,6 +1807,10 @@ export namespace website {
 	export class DBUserInfo {
 	    username: string;
 	    host?: string;
+	    hosts?: string[];
+	    databases?: string[];
+	    allDatabases?: boolean;
+	    privileges?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new DBUserInfo(source);
@@ -1523,6 +1820,10 @@ export namespace website {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.username = source["username"];
 	        this.host = source["host"];
+	        this.hosts = source["hosts"];
+	        this.databases = source["databases"];
+	        this.allDatabases = source["allDatabases"];
+	        this.privileges = source["privileges"];
 	    }
 	}
 	export class DNSRecord {
@@ -1765,6 +2066,8 @@ export namespace website {
 	    host?: string;
 	    database: string;
 	    sql: string;
+	    limit?: number;
+	    offset?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new MySQLQueryRequest(source);
@@ -1777,6 +2080,8 @@ export namespace website {
 	        this.host = source["host"];
 	        this.database = source["database"];
 	        this.sql = source["sql"];
+	        this.limit = source["limit"];
+	        this.offset = source["offset"];
 	    }
 	}
 	export class MySQLQueryResult {
@@ -1784,6 +2089,9 @@ export namespace website {
 	    rows?: string[][];
 	    rowsAffected: number;
 	    isSelect: boolean;
+	    paginated: boolean;
+	    hasMore: boolean;
+	    offset: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new MySQLQueryResult(source);
@@ -1795,6 +2103,9 @@ export namespace website {
 	        this.rows = source["rows"];
 	        this.rowsAffected = source["rowsAffected"];
 	        this.isSelect = source["isSelect"];
+	        this.paginated = source["paginated"];
+	        this.hasMore = source["hasMore"];
+	        this.offset = source["offset"];
 	    }
 	}
 	export class MySQLRowMutateRequest {
@@ -1924,6 +2235,8 @@ export namespace website {
 	    database: string;
 	    schema?: string;
 	    sql: string;
+	    limit?: number;
+	    offset?: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new PGQueryRequest(source);
@@ -1936,6 +2249,8 @@ export namespace website {
 	        this.database = source["database"];
 	        this.schema = source["schema"];
 	        this.sql = source["sql"];
+	        this.limit = source["limit"];
+	        this.offset = source["offset"];
 	    }
 	}
 	export class PGQueryResult {
@@ -1943,6 +2258,9 @@ export namespace website {
 	    rows?: string[][];
 	    rowsAffected: number;
 	    isSelect: boolean;
+	    paginated: boolean;
+	    hasMore: boolean;
+	    offset: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new PGQueryResult(source);
@@ -1954,6 +2272,9 @@ export namespace website {
 	        this.rows = source["rows"];
 	        this.rowsAffected = source["rowsAffected"];
 	        this.isSelect = source["isSelect"];
+	        this.paginated = source["paginated"];
+	        this.hasMore = source["hasMore"];
+	        this.offset = source["offset"];
 	    }
 	}
 	export class PGRowMutateRequest {

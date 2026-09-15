@@ -6,6 +6,7 @@ import (
 	"net"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,10 +95,14 @@ type MySQLRowMutateRequest struct {
 }
 
 // MySQLQueryRequest menjalankan SATU statement SQL bebas (kotak query).
+// Limit/Offset dipakai untuk paginasi hasil SELECT — lihat
+// paginateSelectSQL untuk kenapa paginasinya dilakukan di SISI SERVER.
 type MySQLQueryRequest struct {
 	MySQLExploreRequest
 	Database string `json:"database"`
 	SQL      string `json:"sql"`
+	Limit    int    `json:"limit,omitempty"`
+	Offset   int    `json:"offset,omitempty"`
 }
 
 // MySQLQueryResult hasil query bebas — Columns/Rows kosong untuk statement
@@ -107,6 +112,14 @@ type MySQLQueryResult struct {
 	Rows         [][]*string `json:"rows,omitempty"`
 	RowsAffected int64       `json:"rowsAffected"`
 	IsSelect     bool        `json:"isSelect"`
+	// Paginated: hasil ini dipotong server (lihat paginateSelectSQL).
+	// HasMore: masih ada baris sesudah halaman ini — dideteksi dengan
+	// mengambil satu baris LEBIH dari yang ditampilkan, jadi tidak perlu
+	// COUNT(*) yang mahal untuk sekadar tahu tombol "berikutnya" perlu
+	// dinyalakan atau tidak.
+	Paginated bool `json:"paginated"`
+	HasMore   bool `json:"hasMore"`
+	Offset    int  `json:"offset"`
 }
 
 var sqlIdentRE = regexp.MustCompile(`^[A-Za-z0-9_$]{1,64}$`)
@@ -125,6 +138,30 @@ func quoteMySQLIdent(name string) string {
 func singleStatementSQL(q string) bool {
 	trimmed := strings.TrimRight(strings.TrimSpace(q), "; \t\n")
 	return trimmed != "" && !strings.Contains(trimmed, ";")
+}
+
+// paginateSelectSQL membungkus query SELECT user jadi subquery ber-LIMIT
+// supaya SERVER yang memotong hasilnya, bukan aplikasi ini yang menarik
+// seluruh tabel lewat tunnel SSH lalu membuang 99%-nya. Untuk tabel jutaan
+// baris, bedanya bukan "agak lebih cepat" tapi "jalan" vs "menggantung dan
+// memakan memori".
+//
+// limit+1 baris diminta dengan sengaja: kalau baris ekstra itu ikut
+// terbawa, berarti masih ada halaman berikutnya — tahu itu TANPA
+// menjalankan COUNT(*) terpisah yang harus memindai seluruh hasil.
+//
+// Hanya untuk query yang benar-benar diawali SELECT/WITH: SHOW/DESCRIBE
+// tidak sah dijadikan subquery di MySQL, dan hasilnya memang kecil.
+func paginateSelectSQL(q string, limit, offset int) (string, bool) {
+	if limit <= 0 {
+		return q, false
+	}
+	upper := strings.ToUpper(strings.TrimSpace(q))
+	if !strings.HasPrefix(upper, "SELECT") && !strings.HasPrefix(upper, "WITH") {
+		return q, false
+	}
+	inner := strings.TrimRight(strings.TrimSpace(q), "; \t\n")
+	return "SELECT * FROM (" + inner + ") AS poinhost_page LIMIT " + strconv.Itoa(limit+1) + " OFFSET " + strconv.Itoa(offset), true
 }
 
 func isSelectLikeSQL(q string) bool {
@@ -622,7 +659,8 @@ func (s *Service) MySQLExploreExecuteQuery(req MySQLQueryRequest) (*MySQLQueryRe
 	}
 
 	if isSelectLikeSQL(sqlText) {
-		rows, err := conn.QueryContext(ctx, sqlText)
+		runSQL, paginated := paginateSelectSQL(sqlText, req.Limit, req.Offset)
+		rows, err := conn.QueryContext(ctx, runSQL)
 		if err != nil {
 			return nil, errFmt("query gagal: %v", err)
 		}
@@ -632,8 +670,14 @@ func (s *Service) MySQLExploreExecuteQuery(req MySQLQueryRequest) (*MySQLQueryRe
 		if err != nil {
 			return nil, err
 		}
-		result := &MySQLQueryResult{Columns: cols, IsSelect: true}
+		result := &MySQLQueryResult{Columns: cols, IsSelect: true, Paginated: paginated, Offset: req.Offset}
 		for rows.Next() {
+			// Baris ke-(limit+1) cuma penanda "masih ada lagi" — jangan
+			// ikut dikirim ke UI, halamannya tetap sebesar limit.
+			if paginated && len(result.Rows) >= req.Limit {
+				result.HasMore = true
+				break
+			}
 			raw := make([]sql.RawBytes, len(cols))
 			ptrs := make([]interface{}, len(cols))
 			for i := range raw {

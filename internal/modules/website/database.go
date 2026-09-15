@@ -2,6 +2,7 @@ package website
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -45,10 +46,31 @@ type DBDatabaseInfo struct {
 	Charset string `json:"charset,omitempty"`
 }
 
-// DBUserInfo satu user database.
+// DBUserInfo satu user database — kalau user MySQL yang sama terdaftar
+// dengan beberapa host (mis. 'usera'@'localhost' dan 'usera'@'127.0.0.1'),
+// digabung jadi SATU baris di sini (Host jadi gabungan dipisah koma untuk
+// tampilan, Hosts tetap menyimpan daftar aslinya satu-satu — dibutuhkan
+// operasi per-host seperti reapply grants/credential/Explore, yang di
+// MySQL memang terikat host tertentu). PostgreSQL tidak punya konsep host
+// per role sama sekali (Hosts selalu kosong).
 type DBUserInfo struct {
-	Username string `json:"username"`
-	Host     string `json:"host,omitempty"` // relevan untuk MySQL saja
+	Username string   `json:"username"`
+	Host     string   `json:"host,omitempty"`  // gabungan Hosts dipisah ", " — MySQL saja
+	Hosts    []string `json:"hosts,omitempty"` // daftar host asli satu-satu — MySQL saja
+	// Databases: nama-nama database yang bisa diakses user/role ini (hasil
+	// introspeksi grants yang SUDAH diterapkan — bukan cuma yang dipilih
+	// terakhir kali lewat form Buat User/Reapply Grants). AllDatabases true
+	// kalau user/role ini punya akses ke SEMUA database (MySQL: grant
+	// *.*; PostgreSQL: didekati dengan "role muncul di semua database yang
+	// terdaftar" — role Postgres tidak punya grant global tunggal seperti
+	// *.* MySQL).
+	Databases    []string `json:"databases,omitempty"`
+	AllDatabases bool     `json:"allDatabases,omitempty"`
+	// Privileges: key privilege (lihat DBPrivilegeOptions) yang BENAR-BENAR
+	// dipegang user ini sekarang, hasil introspeksi grant aktual — dipakai
+	// dialog "Ubah privilege" supaya centangnya berangkat dari kondisi asli,
+	// bukan dari tebakan/nilai default form.
+	Privileges []string `json:"privileges,omitempty"`
 }
 
 // DBPrivilegeOption satu opsi privilege yang bisa dipilih user (dipetakan
@@ -70,13 +92,31 @@ func DBPrivilegeOptions() []DBPrivilegeOption {
 	}
 }
 
-// DBCreateDatabaseRequest membuat database baru.
+// DBCreateDatabaseRequest membuat database baru. Owner (opsional) = user
+// yang langsung dijadikan pemilik/pemegang akses penuh database ini:
+// PostgreSQL memakai OWNER asli (CREATE DATABASE ... OWNER), MySQL tidak
+// punya konsep pemilik database sama sekali sehingga didekati dengan GRANT
+// ALL ON <db>.* ke user tsb (lihat DBCreateDatabase).
 type DBCreateDatabaseRequest struct {
-	ServerID string `json:"serverId"`
-	Engine   string `json:"engine"`
-	Domain   string `json:"domain,omitempty"` // breadcrumb UI saja
-	Name     string `json:"name"`
-	Encoding string `json:"encoding,omitempty"`
+	ServerID  string `json:"serverId"`
+	Engine    string `json:"engine"`
+	Domain    string `json:"domain,omitempty"` // breadcrumb UI saja
+	Name      string `json:"name"`
+	Encoding  string `json:"encoding,omitempty"`
+	Owner     string `json:"owner,omitempty"`
+	OwnerHost string `json:"ownerHost,omitempty"` // MySQL saja; kosong = semua host user itu
+}
+
+// DBDatabaseUserRequest memberi/mencabut akses satu user ke satu database
+// (fitur "assign user" di daftar database) — dipakai DBGrantDatabaseUser
+// dan DBRevokeDatabaseUser untuk KEDUA engine.
+type DBDatabaseUserRequest struct {
+	ServerID   string   `json:"serverId"`
+	Engine     string   `json:"engine"`
+	Database   string   `json:"database"`
+	Username   string   `json:"username"`
+	Host       string   `json:"host,omitempty"` // MySQL saja; kosong = semua host user itu
+	Privileges []string `json:"privileges,omitempty"`
 }
 
 // DBCreateUserRequest membuat user database baru + grants awal.
@@ -154,23 +194,60 @@ func mysqlPrivilegeSQL(keys []string) string {
 	return strings.Join(parts, ", ")
 }
 
-// postgresPrivilegeSQL memetakan key privilege ke daftar hak PostgreSQL
-// (dipakai per-tabel via ALL TABLES IN SCHEMA, dst).
-func postgresPrivilegeSQL(keys []string) string {
-	set := map[string]string{
-		"read": "SELECT", "write": "INSERT, UPDATE, DELETE", "create": "CREATE",
-		"alter": "", "drop": "", "execute": "EXECUTE",
-	}
+// Privilege PostgreSQL TIDAK seragam lintas jenis objek — inilah sumber bug
+// nyata `invalid privilege type CREATE for relation`: CREATE itu hak
+// SCHEMA/DATABASE, bukan hak tabel; EXECUTE hak FUNGSI; dan sequence cuma
+// kenal USAGE/SELECT/UPDATE. Jadi satu daftar privilege tidak bisa
+// ditempelkan ke semua statement GRANT seperti di MySQL — tiap jenis objek
+// punya pemetaannya sendiri di bawah ini.
+//
+// ALTER dan DROP sengaja tidak dipetakan ke apa pun: PostgreSQL tidak punya
+// grant untuk itu sama sekali (keduanya melekat pada KEPEMILIKAN objek),
+// jadi satu-satunya cara memberikannya adalah menjadikan user pemilik
+// database/schema — lihat opsi pemilik di DBCreateDatabase.
+func postgresPrivilegeParts(keys []string, set map[string][]string, fallback string) string {
+	seen := map[string]bool{}
 	var parts []string
 	for _, k := range keys {
-		if v, ok := set[k]; ok && v != "" {
-			parts = append(parts, v)
+		for _, p := range set[k] {
+			if !seen[p] {
+				seen[p] = true
+				parts = append(parts, p)
+			}
 		}
 	}
 	if len(parts) == 0 {
-		return "SELECT"
+		return fallback
 	}
 	return strings.Join(parts, ", ")
+}
+
+// postgresTablePrivilegeSQL — hak yang sah untuk tabel/view saja.
+func postgresTablePrivilegeSQL(keys []string) string {
+	return postgresPrivilegeParts(keys, map[string][]string{
+		"read":  {"SELECT"},
+		"write": {"INSERT", "UPDATE", "DELETE"},
+		"drop":  {"TRUNCATE"},
+	}, "SELECT")
+}
+
+// postgresSequencePrivilegeSQL — sequence hanya menerima USAGE/SELECT/UPDATE.
+// USAGE+UPDATE dibutuhkan supaya nextval() jalan untuk kolom serial saat
+// user diberi hak tulis.
+func postgresSequencePrivilegeSQL(keys []string) string {
+	return postgresPrivilegeParts(keys, map[string][]string{
+		"read":  {"SELECT"},
+		"write": {"USAGE", "UPDATE"},
+	}, "SELECT")
+}
+
+func hasPrivilegeKey(keys []string, want string) bool {
+	for _, k := range keys {
+		if k == want {
+			return true
+		}
+	}
+	return false
 }
 
 const dbStatusScriptMySQL = `BIN=$(command -v mysql 2>/dev/null || command -v mariadb 2>/dev/null || true)
@@ -471,7 +548,48 @@ func (s *Service) DBListDatabases(serverID, engine string) ([]DBDatabaseInfo, er
 	return out, nil
 }
 
-// DBCreateDatabase membuat database baru.
+// mysqlHostsForUser mengembalikan semua host yang terdaftar untuk satu
+// username MySQL — dipakai operasi yang secara UI berlaku "untuk user itu"
+// (assign/revoke akses database, set owner) padahal grant MySQL selalu
+// per-(user,host): tanpa ini, user yang punya 'x'@'localhost' dan
+// 'x'@'127.0.0.1' cuma kebagian di salah satu host saja dan aksesnya
+// terasa "kadang jalan kadang tidak" tergantung cara aplikasi connect.
+func (s *Service) mysqlHostsForUser(access *websiteAccess, username string) ([]string, error) {
+	res, err := s.runMySQL(access, "SELECT Host FROM mysql.user WHERE User = '"+mysqlEscape(username)+"'")
+	if err != nil {
+		return nil, err
+	}
+	hosts := make([]string, 0)
+	for _, line := range strings.Split(res, "\n") {
+		h := strings.TrimSpace(line)
+		if h != "" {
+			hosts = append(hosts, h)
+		}
+	}
+	if len(hosts) == 0 {
+		return nil, errFmt("user %q tidak ditemukan di server ini", username)
+	}
+	return hosts, nil
+}
+
+// resolveMySQLTargetHosts memilih host mana yang jadi sasaran satu operasi:
+// host eksplisit kalau diisi, atau SEMUA host user itu kalau dikosongkan.
+func (s *Service) resolveMySQLTargetHosts(access *websiteAccess, username, host string) ([]string, error) {
+	if h := strings.TrimSpace(host); h != "" {
+		return []string{h}, nil
+	}
+	return s.mysqlHostsForUser(access, username)
+}
+
+// DBCreateDatabase membuat database baru, opsional langsung dengan pemilik
+// (req.Owner). MySQL tidak punya konsep owner database — didekati dengan
+// GRANT ALL PRIVILEGES ON <db>.* ke user tsb (di semua host-nya kalau
+// OwnerHost dikosongkan). PostgreSQL memakai OWNER asli, DAN sekalian
+// menutup CONNECT dari PUBLIC lalu memberikannya HANYA ke owner — tanpa itu
+// PostgreSQL secara bawaan mengizinkan SEMUA role connect ke database baru,
+// sehingga "database milik user A" tidak benar-benar terbatas ke A (dan
+// daftar database per-user jadi tidak berarti apa-apa). Revoke ini hanya
+// untuk database yang BARU dibuat di sini — database lama tidak disentuh.
 func (s *Service) DBCreateDatabase(req DBCreateDatabaseRequest) error {
 	engine, err := normalizeDBEngine(req.Engine)
 	if err != nil {
@@ -480,6 +598,12 @@ func (s *Service) DBCreateDatabase(req DBCreateDatabaseRequest) error {
 	name, err := normalizeDBName(req.Name)
 	if err != nil {
 		return err
+	}
+	owner := strings.TrimSpace(req.Owner)
+	if owner != "" {
+		if owner, err = normalizeDBUsername(owner); err != nil {
+			return err
+		}
 	}
 	access, err := s.resolveAccess(req.ServerID)
 	if err != nil {
@@ -493,14 +617,474 @@ func (s *Service) DBCreateDatabase(req DBCreateDatabaseRequest) error {
 		if charset == "" {
 			charset = "utf8mb4"
 		}
-		_, err := s.runMySQL(access, "CREATE DATABASE `"+name+"` CHARACTER SET `"+charset+"`")
+		if _, err := s.runMySQL(access, "CREATE DATABASE `"+name+"` CHARACTER SET `"+charset+"`"); err != nil {
+			return err
+		}
+		if owner == "" {
+			return nil
+		}
+		hosts, err := s.resolveMySQLTargetHosts(access, owner, req.OwnerHost)
+		if err != nil {
+			return err
+		}
+		for _, h := range hosts {
+			if _, err := s.runMySQL(access, "GRANT ALL PRIVILEGES ON `"+name+"`.* TO '"+owner+"'@'"+mysqlEscape(h)+"'"); err != nil {
+				return err
+			}
+		}
+		_, err = s.runMySQL(access, "FLUSH PRIVILEGES")
 		return err
 	}
-	_, err = s.runPostgres(access, "", `CREATE DATABASE "`+name+`"`)
+
+	create := `CREATE DATABASE "` + name + `"`
+	if owner != "" {
+		create += ` OWNER "` + owner + `"`
+	}
+	if _, err := s.runPostgres(access, "", create); err != nil {
+		return err
+	}
+	if owner == "" {
+		return nil
+	}
+	scope := `REVOKE CONNECT ON DATABASE "` + name + `" FROM PUBLIC; ` +
+		`GRANT CONNECT ON DATABASE "` + name + `" TO "` + owner + `"`
+	if _, err := s.runPostgres(access, "", scope); err != nil {
+		return err
+	}
+	// Schema public di database baru: pastikan owner benar-benar bisa bikin
+	// tabel di sana (di PostgreSQL <15 schema public dimiliki postgres dan
+	// owner database tidak otomatis dapat CREATE).
+	_, err = s.runPostgres(access, name, `ALTER SCHEMA public OWNER TO "`+owner+`"`)
 	return err
 }
 
-// DBListUsers mengembalikan daftar user database (bukan user sistem/role bawaan).
+// DBDropDatabase menghapus satu database beserta seluruh isinya. PERMANEN
+// — pemanggil (UI) yang wajib mengkonfirmasi dulu.
+//
+// PostgreSQL menolak DROP DATABASE selama masih ada koneksi ke database
+// itu, dan poinhost sendiri kemungkinan besar MASIH memegang koneksi
+// Explore ke sana (lihat dbconnpool.go), jadi: koneksi cache dibuang dulu,
+// lalu dipakai WITH (FORCE) (PostgreSQL 13+) untuk memutus sisa sesi lain;
+// kalau server-nya lebih tua dan menolak sintaks itu, diulang tanpa FORCE.
+func (s *Service) DBDropDatabase(serverID, engine, name string) error {
+	engine, err := normalizeDBEngine(engine)
+	if err != nil {
+		return err
+	}
+	dbName, err := normalizeDBName(name)
+	if err != nil {
+		return err
+	}
+	access, err := s.resolveAccess(serverID)
+	if err != nil {
+		return err
+	}
+	s.mutex.Lock(serverID)
+	defer s.mutex.Unlock(serverID)
+
+	if engine == "mysql" {
+		_, err := s.runMySQL(access, "DROP DATABASE `"+dbName+"`")
+		return err
+	}
+
+	s.evictDBConnsWithPrefix(dbConnCacheKeyPrefix("postgresql", serverID, ""))
+	if _, err := s.runPostgres(access, "", `DROP DATABASE "`+dbName+`" WITH (FORCE)`); err != nil {
+		if _, retryErr := s.runPostgres(access, "", `DROP DATABASE "`+dbName+`"`); retryErr != nil {
+			return retryErr
+		}
+	}
+	return nil
+}
+
+// DBDropUser menghapus satu user database. Untuk MySQL, host kosong berarti
+// SEMUA host user itu (baris user di UI memang sudah digabung per-host).
+//
+// PostgreSQL menolak DROP ROLE selama role itu masih memiliki objek atau
+// memegang privilege di suatu database. Menghapus objeknya jelas TIDAK
+// boleh dilakukan diam-diam (itu data user), jadi yang dipakai resep aman
+// standar PostgreSQL di tiap database: REASSIGN OWNED (kepemilikan pindah
+// ke postgres, tabelnya TETAP ADA) lalu DROP OWNED (tinggal mencabut
+// privilege, karena sesudah reassign role ini sudah tidak memiliki apa pun).
+func (s *Service) DBDropUser(serverID, engine, username, host string) error {
+	engine, err := normalizeDBEngine(engine)
+	if err != nil {
+		return err
+	}
+	user, err := normalizeDBUsername(username)
+	if err != nil {
+		return err
+	}
+	access, err := s.resolveAccess(serverID)
+	if err != nil {
+		return err
+	}
+	s.mutex.Lock(serverID)
+	defer s.mutex.Unlock(serverID)
+
+	// Kredensial lokal + koneksi Explore untuk user ini tidak ada gunanya
+	// lagi begitu user-nya hilang di server.
+	s.evictDBConnsWithPrefix(dbConnCacheKeyPrefix(engine, serverID, user))
+
+	if engine == "mysql" {
+		hosts, err := s.resolveMySQLTargetHosts(access, user, host)
+		if err != nil {
+			return err
+		}
+		for _, h := range hosts {
+			if _, err := s.runMySQL(access, "DROP USER '"+user+"'@'"+mysqlEscape(h)+"'"); err != nil {
+				return err
+			}
+			_ = s.ForgetDBCredential(serverID, engine, user, h)
+		}
+		_, err = s.runMySQL(access, "FLUSH PRIVILEGES")
+		return err
+	}
+
+	databases, err := s.DBListDatabases(serverID, "postgresql")
+	if err != nil {
+		return err
+	}
+	for _, d := range databases {
+		stmts := `REASSIGN OWNED BY "` + user + `" TO postgres; DROP OWNED BY "` + user + `"`
+		if _, err := s.runPostgres(access, d.Name, stmts); err != nil {
+			return err
+		}
+	}
+	if _, err := s.runPostgres(access, "", `DROP ROLE "`+user+`"`); err != nil {
+		return err
+	}
+	_ = s.ForgetDBCredential(serverID, engine, user, "")
+	return nil
+}
+
+// DBGrantDatabaseUser memberi satu user akses ke satu database ("assign
+// user" di daftar database). Privileges kosong = akses baca+tulis standar.
+func (s *Service) DBGrantDatabaseUser(req DBDatabaseUserRequest) error {
+	engine, err := normalizeDBEngine(req.Engine)
+	if err != nil {
+		return err
+	}
+	dbName, err := normalizeDBName(req.Database)
+	if err != nil {
+		return err
+	}
+	username, err := normalizeDBUsername(req.Username)
+	if err != nil {
+		return err
+	}
+	privileges := req.Privileges
+	if len(privileges) == 0 {
+		privileges = []string{"read", "write"}
+	}
+	access, err := s.resolveAccess(req.ServerID)
+	if err != nil {
+		return err
+	}
+	s.mutex.Lock(req.ServerID)
+	defer s.mutex.Unlock(req.ServerID)
+
+	if engine == "mysql" {
+		hosts, err := s.resolveMySQLTargetHosts(access, username, req.Host)
+		if err != nil {
+			return err
+		}
+		priv := mysqlPrivilegeSQL(privileges)
+		for _, h := range hosts {
+			if _, err := s.runMySQL(access, "GRANT "+priv+" ON `"+dbName+"`.* TO '"+username+"'@'"+mysqlEscape(h)+"'"); err != nil {
+				return err
+			}
+		}
+		_, err = s.runMySQL(access, "FLUSH PRIVILEGES")
+		return err
+	}
+
+	// applyGrants sudah sekalian memberi CONNECT ke database sasaran.
+	return s.applyGrants(access, engine, username, "", false, []string{dbName}, privileges)
+}
+
+// DBRevokeDatabaseUser mencabut akses satu user dari satu database.
+func (s *Service) DBRevokeDatabaseUser(req DBDatabaseUserRequest) error {
+	engine, err := normalizeDBEngine(req.Engine)
+	if err != nil {
+		return err
+	}
+	dbName, err := normalizeDBName(req.Database)
+	if err != nil {
+		return err
+	}
+	username, err := normalizeDBUsername(req.Username)
+	if err != nil {
+		return err
+	}
+	access, err := s.resolveAccess(req.ServerID)
+	if err != nil {
+		return err
+	}
+	s.mutex.Lock(req.ServerID)
+	defer s.mutex.Unlock(req.ServerID)
+
+	if engine == "mysql" {
+		hosts, err := s.resolveMySQLTargetHosts(access, username, req.Host)
+		if err != nil {
+			return err
+		}
+		for _, h := range hosts {
+			if _, err := s.runMySQL(access, "REVOKE ALL PRIVILEGES ON `"+dbName+"`.* FROM '"+username+"'@'"+mysqlEscape(h)+"'"); err != nil {
+				return err
+			}
+		}
+		_, err = s.runMySQL(access, "FLUSH PRIVILEGES")
+		return err
+	}
+
+	stmts := []string{
+		`ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM "` + username + `"`,
+		`ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM "` + username + `"`,
+		`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "` + username + `"`,
+		`REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM "` + username + `"`,
+		`REVOKE ALL ON SCHEMA public FROM "` + username + `"`,
+	}
+	if _, err := s.runPostgres(access, dbName, strings.Join(stmts, "; ")); err != nil {
+		return err
+	}
+	_, err = s.runPostgres(access, "", `REVOKE CONNECT ON DATABASE "`+dbName+`" FROM "`+username+`"`)
+	return err
+}
+
+var mysqlGranteeRE = regexp.MustCompile(`^'(.*)'@'(.*)'$`)
+
+// mysqlGlobalGrantQuery mencari user yang punya privilege GLOBAL (ON *.*).
+// Filter USAGE-nya WAJIB — lihat komentar mysqlUserDatabaseAccess dan
+// TestMySQLGlobalGrantDetectionExcludesUsage.
+const mysqlGlobalGrantQuery = "SELECT DISTINCT GRANTEE, PRIVILEGE_TYPE FROM information_schema.USER_PRIVILEGES WHERE PRIVILEGE_TYPE <> 'USAGE'"
+
+// privilegeKeyForSQL memetakan nama privilege dari katalog server BALIK ke
+// key yang dipakai UI (lihat DBPrivilegeOptions) — arah kebalikan dari
+// mysqlPrivilegeSQL/postgresTablePrivilegeSQL. Dipakai supaya dialog "Ubah
+// privilege" bisa menampilkan centang sesuai kondisi nyata di server.
+// Berlaku untuk kedua engine: nama privilege SQL-nya memang sama.
+func privilegeKeyForSQL(name string) (string, bool) {
+	switch strings.ToUpper(strings.TrimSpace(name)) {
+	case "SELECT":
+		return "read", true
+	case "INSERT", "UPDATE", "DELETE":
+		return "write", true
+	case "CREATE":
+		return "create", true
+	case "ALTER":
+		return "alter", true
+	case "DROP", "TRUNCATE":
+		return "drop", true
+	case "EXECUTE":
+		return "execute", true
+	}
+	return "", false
+}
+
+// sortPrivilegeKeys mengurutkan key privilege mengikuti urutan tampilan di
+// UI (DBPrivilegeOptions), bukan alfabetis — supaya daftarnya terbaca sama
+// di mana pun ditampilkan.
+func sortPrivilegeKeys(set map[string]bool) []string {
+	out := make([]string, 0, len(set))
+	for _, opt := range DBPrivilegeOptions() {
+		if set[opt.Key] {
+			out = append(out, opt.Key)
+		}
+	}
+	return out
+}
+
+// parseMySQLGrantee mem-parsing kolom GRANTEE information_schema (format
+// `'user'@'host'`, kutip tunggal di dalam string aslinya di-escape jadi `''`
+// oleh MySQL sendiri) jadi (username, host) terpisah.
+func parseMySQLGrantee(grantee string) (username, host string, ok bool) {
+	m := mysqlGranteeRE.FindStringSubmatch(grantee)
+	if m == nil {
+		return "", "", false
+	}
+	unescape := func(s string) string { return strings.ReplaceAll(s, "''", "'") }
+	return unescape(m[1]), unescape(m[2]), true
+}
+
+// mysqlUserDatabaseAccess mengembalikan (a) set username yang punya grant
+// GLOBAL (ON *.*, berlaku ke semua database) dan (b) map username -> set
+// nama database yang punya grant EKSPLISIT di database itu (union lintas
+// semua host user tsb — ditampilkan sebagai satu daftar per username,
+// konsisten dengan DBUserInfo yang sudah digabung per-host). Query ringan
+// terhadap information_schema, BUKAN "SHOW GRANTS" per user (yang perlu
+// satu round-trip exec per user — tidak scalable kalau user banyak).
+//
+// PENTING (bug nyata yang pernah terjadi): USER_PRIVILEGES TIDAK boleh
+// dibaca apa adanya sebagai "punya akses semua database". SETIAP user MySQL
+// selalu punya baris `USAGE ON *.*` di sana — itu representasi "tidak punya
+// privilege apa-apa", bukan akses global. Tanpa filter ini SEMUA user
+// tampil "Semua database". Yang benar-benar berarti global cuma privilege
+// selain USAGE.
+func (s *Service) mysqlUserDatabaseAccess(access *websiteAccess) (allDBUsers map[string]bool, dbByUser map[string]map[string]bool, privByUser map[string]map[string]bool, err error) {
+	allDBUsers = map[string]bool{}
+	dbByUser = map[string]map[string]bool{}
+	privByUser = map[string]map[string]bool{}
+
+	notePriv := func(username, privilegeType string) {
+		if key, ok := privilegeKeyForSQL(privilegeType); ok {
+			if privByUser[username] == nil {
+				privByUser[username] = map[string]bool{}
+			}
+			privByUser[username][key] = true
+		}
+	}
+
+	globalRes, err := s.runMySQL(access, mysqlGlobalGrantQuery)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for _, line := range strings.Split(globalRes, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		username, _, ok := parseMySQLGrantee(parts[0])
+		if !ok {
+			continue
+		}
+		allDBUsers[username] = true
+		if len(parts) == 2 {
+			notePriv(username, parts[1])
+		}
+	}
+
+	// Grant level-database (mysql.db) DAN level-tabel (mysql.tables_priv) —
+	// dua-duanya berarti "user ini bisa masuk ke database tsb".
+	schemaRes, err := s.runMySQL(access, `
+		SELECT DISTINCT GRANTEE, TABLE_SCHEMA, PRIVILEGE_TYPE FROM information_schema.SCHEMA_PRIVILEGES WHERE PRIVILEGE_TYPE <> 'USAGE'
+		UNION
+		SELECT DISTINCT GRANTEE, TABLE_SCHEMA, PRIVILEGE_TYPE FROM information_schema.TABLE_PRIVILEGES WHERE PRIVILEGE_TYPE <> 'USAGE'`)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for _, line := range strings.Split(schemaRes, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		username, _, ok := parseMySQLGrantee(parts[0])
+		if !ok {
+			continue
+		}
+		if dbByUser[username] == nil {
+			dbByUser[username] = map[string]bool{}
+		}
+		dbByUser[username][parts[1]] = true
+		if len(parts) == 3 {
+			notePriv(username, parts[2])
+		}
+	}
+	return allDBUsers, dbByUser, privByUser, nil
+}
+
+// pgRoleAccessSQL mencari role yang punya hak apa pun di SATU database:
+// pemilik database, pemilik/penerima grant di schema public, atau penerima
+// grant di tabel/view mana pun. Sengaja lewat aclexplode di katalog (bukan
+// information_schema.role_table_grants) karena view information_schema
+// hanya menampilkan baris yang grantor/grantee-nya "currently enabled
+// role" — dijalankan sebagai postgres hasilnya bisa tidak lengkap; katalog
+// pg_class/pg_namespace selalu lengkap apa adanya.
+// Kolom kedua = privilege_type (kosong untuk baris kepemilikan: pemilik
+// otomatis punya semua hak, ditandai khusus oleh pemanggil).
+const pgRoleAccessSQL = `
+SELECT DISTINCT pg_get_userbyid(a.grantee), a.privilege_type
+  FROM pg_namespace n, LATERAL aclexplode(n.nspacl) a
+ WHERE n.nspname = 'public' AND a.grantee <> 0
+UNION
+SELECT DISTINCT pg_get_userbyid(a.grantee), a.privilege_type
+  FROM pg_class c, LATERAL aclexplode(c.relacl) a
+ WHERE c.relkind IN ('r','v','m','p','S') AND a.grantee <> 0
+UNION
+SELECT DISTINCT pg_get_userbyid(a.grantee), a.privilege_type
+  FROM pg_proc p, LATERAL aclexplode(p.proacl) a
+ WHERE a.grantee <> 0
+UNION
+SELECT pg_get_userbyid(n.nspowner), '' FROM pg_namespace n WHERE n.nspname = 'public'
+UNION
+SELECT pg_get_userbyid(d.datdba), '' FROM pg_database d WHERE d.datname = current_database()`
+
+// postgresUserDatabaseAccess mengembalikan map rolname -> set nama database
+// yang bisa dikelola role itu. PostgreSQL TIDAK punya grant global tunggal
+// setara *.* MySQL, dan koneksi psql selalu terikat SATU database, jadi
+// satu-satunya cara tahu "role ini bisa akses database mana saja" adalah
+// tanya LANGSUNG ke tiap database (satu exec per database).
+//
+// CONNECT sengaja TIDAK dipakai sebagai sinyal: secara bawaan PostgreSQL
+// memberi CONNECT ke PUBLIC untuk semua database, jadi kalau itu dipakai
+// SEMUA role akan tampak bisa akses SEMUA database (persis masalah yang
+// dilaporkan di sisi MySQL). Yang dipakai: kepemilikan + grant eksplisit.
+func (s *Service) postgresUserDatabaseAccess(access *websiteAccess, databases []DBDatabaseInfo) (dbByUser, privByUser map[string]map[string]bool, err error) {
+	dbByUser = map[string]map[string]bool{}
+	privByUser = map[string]map[string]bool{}
+	for _, d := range databases {
+		res, err := s.runPostgres(access, d.Name, pgRoleAccessSQL)
+		if err != nil {
+			return nil, nil, err
+		}
+		for _, line := range strings.Split(res, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			parts := strings.SplitN(line, "\t", 2)
+			role := strings.TrimSpace(parts[0])
+			if role == "" || role == "postgres" {
+				continue
+			}
+			if dbByUser[role] == nil {
+				dbByUser[role] = map[string]bool{}
+			}
+			dbByUser[role][d.Name] = true
+
+			if privByUser[role] == nil {
+				privByUser[role] = map[string]bool{}
+			}
+			privilegeType := ""
+			if len(parts) == 2 {
+				privilegeType = strings.TrimSpace(parts[1])
+			}
+			if privilegeType == "" {
+				// Baris kepemilikan: pemilik schema/database praktis bisa
+				// melakukan apa pun di sana.
+				for _, opt := range DBPrivilegeOptions() {
+					privByUser[role][opt.Key] = true
+				}
+				continue
+			}
+			if key, ok := privilegeKeyForSQL(privilegeType); ok {
+				privByUser[role][key] = true
+			}
+		}
+	}
+	return dbByUser, privByUser, nil
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// DBListUsers mengembalikan daftar user database (bukan user sistem/role
+// bawaan) — satu baris per username. Untuk MySQL, user yang sama terdaftar
+// di beberapa host (mis. 'usera'@'localhost' dan 'usera'@'127.0.0.1')
+// DIGABUNG jadi satu baris (lihat DBUserInfo), dan setiap baris disertai
+// daftar database yang benar-benar bisa diakses (bukan cuma yang dipilih
+// terakhir kali di form — introspeksi grants aktual saat ini), untuk KEDUA
+// engine.
 func (s *Service) DBListUsers(serverID, engine string) ([]DBUserInfo, error) {
 	engine, err := normalizeDBEngine(engine)
 	if err != nil {
@@ -516,6 +1100,8 @@ func (s *Service) DBListUsers(serverID, engine string) ([]DBUserInfo, error) {
 		if err != nil {
 			return nil, err
 		}
+		hostsByUser := map[string]map[string]bool{}
+		order := make([]string, 0)
 		for _, line := range strings.Split(res, "\n") {
 			line = strings.TrimSpace(line)
 			if line == "" {
@@ -525,11 +1111,43 @@ func (s *Service) DBListUsers(serverID, engine string) ([]DBUserInfo, error) {
 			if len(parts) != 2 {
 				continue
 			}
-			out = append(out, DBUserInfo{Username: parts[0], Host: parts[1]})
+			username, host := parts[0], parts[1]
+			if hostsByUser[username] == nil {
+				hostsByUser[username] = map[string]bool{}
+				order = append(order, username)
+			}
+			hostsByUser[username][host] = true
+		}
+
+		allDBUsers, dbByUser, privByUser, err := s.mysqlUserDatabaseAccess(access)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, username := range order {
+			hosts := sortedKeys(hostsByUser[username])
+			u := DBUserInfo{
+				Username:     username,
+				Host:         strings.Join(hosts, ", "),
+				Hosts:        hosts,
+				Databases:    sortedKeys(dbByUser[username]),
+				AllDatabases: allDBUsers[username],
+				Privileges:   sortPrivilegeKeys(privByUser[username]),
+			}
+			out = append(out, u)
 		}
 		return out, nil
 	}
+
 	res, err := s.runPostgres(access, "", "SELECT rolname FROM pg_roles WHERE rolname NOT LIKE 'pg\\_%' AND rolname != 'postgres' AND rolcanlogin = true")
+	if err != nil {
+		return nil, err
+	}
+	databases, err := s.DBListDatabases(serverID, "postgresql")
+	if err != nil {
+		return nil, err
+	}
+	dbByUser, privByUser, err := s.postgresUserDatabaseAccess(access, databases)
 	if err != nil {
 		return nil, err
 	}
@@ -538,7 +1156,13 @@ func (s *Service) DBListUsers(serverID, engine string) ([]DBUserInfo, error) {
 		if name == "" {
 			continue
 		}
-		out = append(out, DBUserInfo{Username: name})
+		dbs := sortedKeys(dbByUser[name])
+		out = append(out, DBUserInfo{
+			Username:     name,
+			Databases:    dbs,
+			AllDatabases: len(databases) > 0 && len(dbs) == len(databases),
+			Privileges:   sortPrivilegeKeys(privByUser[name]),
+		})
 	}
 	return out, nil
 }
@@ -614,6 +1238,16 @@ func (s *Service) DBSetGrants(req DBGrantsRequest) error {
 	return s.applyGrants(access, engine, username, req.Host, req.AllDBs, req.Databases, req.Privileges)
 }
 
+// applyGrants MENYETEL privilege user ke persis daftar yang diberikan —
+// bukan sekadar menambahkan. Tiap sasaran dicabut dulu (REVOKE ALL) baru
+// diberi ulang, karena GRANT saja tidak pernah bisa MENURUNKAN hak: tanpa
+// revoke, menghapus centang "Tulis" lalu menerapkan ulang tidak berefek apa
+// pun dan user tetap bisa menulis (bug nyata yang bikin fitur "terapkan
+// ulang grants" terasa tidak berguna).
+//
+// REVOKE-nya sengaja best-effort: MySQL mengembalikan error kalau grant
+// yang dicabut memang belum pernah ada (mis. user yang baru dibuat), dan
+// itu bukan kegagalan — targetnya "akhirnya privilege user = daftar ini".
 func (s *Service) applyGrants(access *websiteAccess, engine, username, host string, allDBs bool, databases, privileges []string) error {
 	if engine == "mysql" {
 		if host == "" {
@@ -621,6 +1255,7 @@ func (s *Service) applyGrants(access *websiteAccess, engine, username, host stri
 		}
 		priv := mysqlPrivilegeSQL(privileges)
 		if allDBs {
+			_, _ = s.runMySQL(access, "REVOKE ALL PRIVILEGES ON *.* FROM '"+username+"'@'"+host+"';")
 			_, err := s.runMySQL(access, "GRANT "+priv+" ON *.* TO '"+username+"'@'"+host+"'; FLUSH PRIVILEGES;")
 			return err
 		}
@@ -629,6 +1264,7 @@ func (s *Service) applyGrants(access *websiteAccess, engine, username, host stri
 			if err != nil {
 				return err
 			}
+			_, _ = s.runMySQL(access, "REVOKE ALL PRIVILEGES ON `"+db+"`.* FROM '"+username+"'@'"+host+"';")
 			if _, err := s.runMySQL(access, "GRANT "+priv+" ON `"+db+"`.* TO '"+username+"'@'"+host+"';"); err != nil {
 				return err
 			}
@@ -637,7 +1273,17 @@ func (s *Service) applyGrants(access *websiteAccess, engine, username, host stri
 		return err
 	}
 
-	priv := postgresPrivilegeSQL(privileges)
+	// Satu daftar privilege dipecah per jenis objek — lihat catatan panjang
+	// di postgresPrivilegeParts: menempelkan daftar yang sama ke tabel,
+	// sequence, dan schema sekaligus persis yang dulu memicu error
+	// `invalid privilege type CREATE for relation`.
+	tablePriv := postgresTablePrivilegeSQL(privileges)
+	seqPriv := postgresSequencePrivilegeSQL(privileges)
+	schemaPriv := "USAGE"
+	if hasPrivilegeKey(privileges, "create") {
+		schemaPriv = "USAGE, CREATE"
+	}
+
 	targets := databases
 	if allDBs {
 		dbs, err := s.DBListDatabases(access.serverID, "postgresql")
@@ -654,12 +1300,37 @@ func (s *Service) applyGrants(access *websiteAccess, engine, username, host stri
 		if err != nil {
 			return err
 		}
+		// CONNECT diberikan eksplisit: database yang dibuat lewat poinhost
+		// menutup CONNECT dari PUBLIC (lihat DBCreateDatabase), jadi tanpa
+		// baris ini grant tabel/schema-nya benar tapi user tetap tidak bisa
+		// masuk ke database-nya sama sekali.
+		if _, err := s.runPostgres(access, "", `GRANT CONNECT ON DATABASE "`+db+`" TO "`+username+`"`); err != nil {
+			return err
+		}
+		// Cabut dulu supaya hasil akhirnya PERSIS daftar privilege yang
+		// diminta (GRANT saja tidak pernah bisa menurunkan hak). Di
+		// PostgreSQL REVOKE atas hak yang belum pernah diberikan bukan
+		// error, jadi aman juga untuk user yang baru dibuat.
 		stmts := []string{
-			`GRANT ALL ON SCHEMA public TO "` + username + `"`,
-			`GRANT ` + priv + ` ON ALL TABLES IN SCHEMA public TO "` + username + `"`,
-			`GRANT ` + priv + ` ON ALL SEQUENCES IN SCHEMA public TO "` + username + `"`,
-			`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ` + priv + ` ON TABLES TO "` + username + `"`,
-			`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ` + priv + ` ON SEQUENCES TO "` + username + `"`,
+			`ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM "` + username + `"`,
+			`ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM "` + username + `"`,
+			`ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM "` + username + `"`,
+			`REVOKE ALL ON ALL TABLES IN SCHEMA public FROM "` + username + `"`,
+			`REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM "` + username + `"`,
+			`REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM "` + username + `"`,
+			`REVOKE ALL ON SCHEMA public FROM "` + username + `"`,
+
+			`GRANT ` + schemaPriv + ` ON SCHEMA public TO "` + username + `"`,
+			`GRANT ` + tablePriv + ` ON ALL TABLES IN SCHEMA public TO "` + username + `"`,
+			`GRANT ` + seqPriv + ` ON ALL SEQUENCES IN SCHEMA public TO "` + username + `"`,
+			`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ` + tablePriv + ` ON TABLES TO "` + username + `"`,
+			`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ` + seqPriv + ` ON SEQUENCES TO "` + username + `"`,
+		}
+		if hasPrivilegeKey(privileges, "execute") {
+			stmts = append(stmts,
+				`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO "`+username+`"`,
+				`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO "`+username+`"`,
+			)
 		}
 		if _, err := s.runPostgres(access, db, strings.Join(stmts, "; ")); err != nil {
 			return err

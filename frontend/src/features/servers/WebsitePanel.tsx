@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { RotateCw, CornerDownRight, Lock, Settings, Plus, Pause, Play, Trash2, X } from 'lucide-react';
 import { ListWebsites, CreateWebsiteSubdomain, DeleteWebsite, SetWebsiteEnabled } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
@@ -6,6 +6,8 @@ import { WebsiteEngineWizard } from './WebsiteEngineWizard';
 import { CreateWebsiteModal } from './CreateWebsiteModal';
 import { SubdomainModal } from './SubdomainModal';
 import { DomainDetailPanel } from './DomainDetailPanel';
+import { DomainFeatureGrid, type FeatureKey } from './DomainFeatureGrid';
+import { useT } from '../../i18n';
 
 // Menu Website untuk SATU tab — mengelola domain/vhost Nginx, PHP-FPM, dan
 // SSL Let's Encrypt di server. Mekanismenya diporting dari homepoin (sudah
@@ -15,8 +17,15 @@ import { DomainDetailPanel } from './DomainDetailPanel';
 // pindah-pindah menu di sini — bukan soal SSH re-handshake, yang di
 // poinhost memang tidak pernah terjadi lagi sejak awal).
 export function WebsitePanel({ serverId }: { serverId: string }) {
+  const t = useT();
   const [list, setList] = useState<website.ListResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  // refreshing dipisah dari loading: loading menggantikan SELURUH panel
+  // dengan layar "Memuat…" (hanya pantas untuk load pertama), sedangkan
+  // refresh manual harus tetap menampilkan daftar lama + spinner di
+  // tombolnya. Sebelumnya load() tidak pernah menyalakan flag apa pun di
+  // AWAL, jadi klik Refresh terasa tidak melakukan apa-apa.
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyDomain, setBusyDomain] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -27,15 +36,23 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
   const [deleteTarget, setDeleteTarget] = useState<website.DomainInfo | null>(null);
   const [removeRoot, setRemoveRoot] = useState(false);
   const [detailDomain, setDetailDomain] = useState<string | null>(null);
+  // Alur ala Plesk: tombol gear TIDAK langsung pindah halaman — ia membuka
+  // grid ikon fitur INLINE di bawah baris domainnya (expandedDomain), baru
+  // setelah satu ikon dipilih berpindah ke halaman fitur itu
+  // (detailDomain + detailFeature).
+  const [expandedDomain, setExpandedDomain] = useState<string | null>(null);
+  const [detailFeature, setDetailFeature] = useState<FeatureKey | null>(null);
 
   async function load() {
     setError(null);
+    setRefreshing(true);
     try {
       setList(await ListWebsites(serverId));
     } catch (e) {
       setError(String(e));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -100,7 +117,7 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
     await load();
   }
 
-  if (loading) return <p className="workspace__placeholder">Memuat…</p>;
+  if (loading) return <p className="workspace__placeholder">{t('common.loading')}</p>;
 
   const nginx = list?.nginx;
 
@@ -116,7 +133,11 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
         <DomainDetailPanel
           serverId={serverId}
           domain={detailInfo}
-          onBack={() => setDetailDomain(null)}
+          initialFeature={detailFeature}
+          onBack={() => {
+            setDetailDomain(null);
+            setDetailFeature(null);
+          }}
           onChanged={() => void load()}
           onToggleEnabled={() => void toggleEnabled(detailInfo)}
           onAddSubdomain={() => setSubdomainParent(detailInfo.domain)}
@@ -128,14 +149,14 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
       {nginx?.installed && nginx.active && !detailInfo && (
         <>
           <div className="files-panel__toolbar">
-            <button className="btn btn--sm" disabled={loading} onClick={() => void load()}>
-              {loading ? <span className="spinner" /> : <RotateCw size={13} />} Refresh
+            <button className="btn btn--sm" disabled={refreshing} onClick={() => void load()}>
+              {refreshing ? <span className="spinner" /> : <RotateCw size={13} />} {t('common.refresh')}
             </button>
             <button className="btn btn--sm btn--primary" onClick={() => setShowCreate(true)}>
-              + Buat Website
+              {t('web.createWebsite')}
             </button>
             <input
-              placeholder="Cari domain…"
+              placeholder={t('web.searchDomain')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               style={{ marginLeft: 'auto', maxWidth: 220 }}
@@ -165,48 +186,67 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
             <table className="files-panel__table">
               <thead>
                 <tr>
-                  <th>Domain</th>
+                  <th>{t('web.domain')}</th>
                   <th>PHP</th>
                   <th>SSL</th>
-                  <th>Status</th>
+                  <th>{t('common.status')}</th>
                   <th className="files-panel__col-actions" />
                 </tr>
               </thead>
               <tbody>
                 {rows.map(({ domain: d, indent }) => (
-                  <tr key={d.domain}>
-                    <td className="files-panel__name" style={indent ? { paddingLeft: 28 } : undefined}>
-                      {indent && <CornerDownRight size={12} />}
-                      {d.domain}
-                    </td>
-                    <td>{d.phpEnabled ? `PHP ${d.phpVersion}` : '—'}</td>
-                    <td>{d.sslEnabled ? (<><Lock size={12} /> Aktif</>) : '—'}</td>
-                    <td>
-                      <span className={`docker-badge ${d.enabled ? 'docker-badge--running' : 'docker-badge--stopped'}`}>
-                        {d.enabled ? 'Aktif' : 'Nonaktif'}
-                      </span>
-                    </td>
-                    <td className="files-panel__row-actions">
-                      <button title="Kelola" onClick={() => setDetailDomain(d.domain)}>
-                        <Settings size={14} />
-                      </button>
-                      {!d.isSubdomain && (
-                        <button title="Tambah subdomain" onClick={() => setSubdomainParent(d.domain)}>
-                          <Plus size={14} />
+                  <Fragment key={d.domain}>
+                    <tr>
+                      <td className="files-panel__name" style={indent ? { paddingLeft: 28 } : undefined}>
+                        {indent && <CornerDownRight size={12} />}
+                        {d.domain}
+                      </td>
+                      <td>{d.phpEnabled ? `PHP ${d.phpVersion}` : '—'}</td>
+                      <td>{d.sslEnabled ? (<><Lock size={12} /> Aktif</>) : '—'}</td>
+                      <td>
+                        <span className={`docker-badge ${d.enabled ? 'docker-badge--running' : 'docker-badge--stopped'}`}>
+                          {d.enabled ? t('common.active') : t('common.inactive')}
+                        </span>
+                      </td>
+                      <td className="files-panel__row-actions">
+                        <button
+                          title={expandedDomain === d.domain ? t('web.closeMenu') : t('web.manage')}
+                          onClick={() => setExpandedDomain(expandedDomain === d.domain ? null : d.domain)}
+                        >
+                          <Settings size={14} />
                         </button>
-                      )}
-                      <button
-                        title={d.enabled ? 'Nonaktifkan' : 'Aktifkan'}
-                        disabled={busyDomain === d.domain}
-                        onClick={() => void toggleEnabled(d)}
-                      >
-                        {busyDomain === d.domain ? <span className="spinner" /> : d.enabled ? <Pause size={14} /> : <Play size={14} />}
-                      </button>
-                      <button title="Hapus" disabled={busyDomain === d.domain} onClick={() => setDeleteTarget(d)}>
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
+                        {!d.isSubdomain && (
+                          <button title={t('web.addSubdomain')} onClick={() => setSubdomainParent(d.domain)}>
+                            <Plus size={14} />
+                          </button>
+                        )}
+                        <button
+                          title={d.enabled ? t('web.disable') : t('web.enable')}
+                          disabled={busyDomain === d.domain}
+                          onClick={() => void toggleEnabled(d)}
+                        >
+                          {busyDomain === d.domain ? <span className="spinner" /> : d.enabled ? <Pause size={14} /> : <Play size={14} />}
+                        </button>
+                        <button title={t('common.delete')} disabled={busyDomain === d.domain} onClick={() => setDeleteTarget(d)}>
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedDomain === d.domain && (
+                      <tr className="domain-row-expansion">
+                        <td colSpan={5}>
+                          <DomainFeatureGrid
+                            isSubdomain={d.isSubdomain}
+                            onSelect={(key) => {
+                              setDetailFeature(key);
+                              setDetailDomain(d.domain);
+                              setExpandedDomain(null);
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
                 {rows.length === 0 && (
                   <tr>

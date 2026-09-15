@@ -12,6 +12,7 @@
   color-scheme: light;
 
   --bg: #f6f3ed;
+  --scrim: rgba(246, 243, 237, 0.72);
   --surface: #ffffff;
   --surface-hover: #efe8db;
   --surface-active: #e6ddcb;
@@ -46,6 +47,7 @@
   color-scheme: dark;
 
   --bg: #1a1712;
+  --scrim: rgba(26, 23, 18, 0.72);
   --surface: #242019;
   --surface-hover: #2d271e;
   --surface-active: #383024;

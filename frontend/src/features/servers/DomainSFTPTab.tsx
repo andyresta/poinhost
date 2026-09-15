@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { RotateCw, Trash2 } from 'lucide-react';
 import { ListWebsiteSFTPAccounts, CreateWebsiteSFTPAccount, DeleteWebsiteSFTPAccount } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
+import { useConfirm } from '../../components/ConfirmDialog';
 
 // Tab SFTP — akun Linux ter-chroot (bukan reuse user SSH panel) khusus
 // untuk satu domain: chroot default ke folder induk document root, home
 // login default ke /public_html. Dipakai kalau ingin memberi klien/developer
 // akses upload file TANPA akses shell/SSH penuh ke server.
 export function DomainSFTPTab({ serverId, domain }: { serverId: string; domain: string }) {
+  const confirm = useConfirm();
   const [list, setList] = useState<website.SFTPListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -46,7 +48,18 @@ export function DomainSFTPTab({ serverId, domain }: { serverId: string; domain: 
   }
 
   async function handleDelete(user: string) {
-    if (!confirm(`Hapus akun SFTP "${user}"? User Linux-nya akan ikut dihapus.`)) return;
+    const ok = await confirm({
+      title: 'Hapus akun SFTP',
+      message: (
+        <>
+          Hapus akun SFTP <strong>{user}</strong>?
+        </>
+      ),
+      detail: 'User Linux-nya akan ikut dihapus.',
+      confirmLabel: 'Hapus',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {

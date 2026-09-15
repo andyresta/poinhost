@@ -6,7 +6,9 @@ import { ServerFormModal } from './ServerFormModal';
 import { BackupModal } from './BackupModal';
 import { StatusDot } from './StatusDot';
 import { ThemeToggle } from './ThemeToggle';
-import { ArrowLeftRight, Pencil, Plus, Trash2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LangToggle } from './LangToggle';
+import { useT } from '../../i18n';
+import { ArrowLeftRight, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { servers } from '../../../wailsjs/go/models';
 
 // Panel kiri: kartu server (bukan daftar teks polos seperti homepoin) +
@@ -16,8 +18,8 @@ import type { servers } from '../../../wailsjs/go/models';
 export function ServersPage() {
   const { servers: list, tabs, statuses, loadServers, openTab, setActiveTab, deleteServer } =
     useTabsStore();
+  const t = useT();
   const collapsed = useSidebarStore((s) => s.collapsed);
-  const toggleCollapsed = useSidebarStore((s) => s.toggle);
   const [modal, setModal] = useState<{ mode: 'create' | 'edit'; server?: servers.Server } | null>(
     null,
   );
@@ -89,10 +91,10 @@ export function ServersPage() {
         </div>
 
         <div className="server-card__side">
-          {tabCount > 0 && <span className="server-card__tab-count">{tabCount} tab</span>}
+          {tabCount > 0 && <span className="server-card__tab-count">{t('sidebar.tabCount', { count: tabCount })}</span>}
           <div className="server-card__actions">
             <button
-              title="Edit"
+              title={t('sidebar.edit')}
               onClick={(e) => {
                 e.stopPropagation();
                 setModal({ mode: 'edit', server });
@@ -101,7 +103,7 @@ export function ServersPage() {
               <Pencil size={13} />
             </button>
             <button
-              title="Hapus"
+              title={t('sidebar.delete')}
               onClick={(e) => {
                 e.stopPropagation();
                 setConfirmDelete(server);
@@ -120,26 +122,24 @@ export function ServersPage() {
   return (
     <div className={`servers-page${collapsed ? ' servers-page--collapsed' : ''}`}>
       <div className="servers-page__header">
-        <div className="servers-page__header-left">
-          <button
-            className="btn btn--sm servers-page__collapse-toggle"
-            title={collapsed ? 'Perluas panel' : 'Ciutkan panel'}
-            aria-label={collapsed ? 'Perluas panel' : 'Ciutkan panel'}
-            onClick={toggleCollapsed}
-          >
-            {collapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
-          </button>
-          {!collapsed && <h1>Servers</h1>}
-        </div>
-        <div className="servers-page__header-actions">
+        <div className="servers-page__header-left">{!collapsed && <h1>PoinHost</h1>}</div>
+        <div className="servers-page__header-toggles">
+          <LangToggle />
           <ThemeToggle />
-          <button className="btn btn--sm" title="Export/Import data (pindah ke perangkat lain)" onClick={() => setShowBackup(true)}>
-            <ArrowLeftRight size={13} /> {!collapsed && 'Backup'}
-          </button>
-          <button className="btn btn--primary btn--sm" title="Tambah server" onClick={() => setModal({ mode: 'create' })}>
-            <Plus size={13} /> {!collapsed && 'Tambah'}
-          </button>
         </div>
+      </div>
+
+      {/* Aksi panel (tambah server / backup) sengaja SEBARIS SENDIRI di
+          bawah judul, bukan berdesakan dengan judul + toggle tema: di lebar
+          sidebar 260px ketiganya dalam satu baris bikin label tombolnya
+          terpotong. */}
+      <div className="servers-page__actions">
+        <button className="btn btn--primary btn--sm" title={t('sidebar.addServer')} onClick={() => setModal({ mode: 'create' })}>
+          <Plus size={13} /> {!collapsed && t('common.add')}
+        </button>
+        <button className="btn btn--sm" title={t('sidebar.backupTitle')} onClick={() => setShowBackup(true)}>
+          <ArrowLeftRight size={13} /> {!collapsed && t('sidebar.backup')}
+        </button>
       </div>
 
       <ul className="server-cards">
@@ -165,9 +165,7 @@ export function ServersPage() {
           );
         })}
         {list.length === 0 && !collapsed && (
-          <li className="servers-page__empty">
-            Belum ada server. Klik <strong>+ Tambah</strong> untuk mulai.
-          </li>
+          <li className="servers-page__empty">{t('sidebar.empty')}</li>
         )}
       </ul>
 
@@ -200,13 +198,12 @@ export function ServersPage() {
           <div className="modal-card modal-card--small">
             <div className="modal-card__body">
               <p>
-                Hapus server <strong>{confirmDelete.name}</strong>? Semua tab yang menunjuk ke
-                server ini akan ikut ditutup.
+                {t('sidebar.deleteConfirm', { name: confirmDelete.name })}
               </p>
             </div>
             <div className="modal-card__footer">
               <button className="btn btn--ghost" onClick={() => setConfirmDelete(null)}>
-                Batal
+                {t('common.cancel')}
               </button>
               <button
                 className="btn btn--danger"
@@ -215,7 +212,7 @@ export function ServersPage() {
                   setConfirmDelete(null);
                 }}
               >
-                Hapus
+                {t('common.delete')}
               </button>
             </div>
           </div>

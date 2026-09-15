@@ -2,10 +2,14 @@ import { useEffect, useState } from 'react';
 import { RotateCw, Trash2 } from 'lucide-react';
 import { ListDockerNetworks, CreateDockerNetwork, RemoveDockerNetwork } from '../../../wailsjs/go/main/App';
 import { docker } from '../../../wailsjs/go/models';
+import { useConfirm } from '../../components/ConfirmDialog';
+import { useT } from '../../i18n';
 
 const emptyForm = { name: '', driver: 'bridge', subnet: '', gateway: '', internal: false, attachable: false };
 
 export function NetworksPanel({ serverId }: { serverId: string }) {
+  const confirm = useConfirm();
+  const t = useT();
   const [networks, setNetworks] = useState<docker.NetworkInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +61,17 @@ export function NetworksPanel({ serverId }: { serverId: string }) {
   }
 
   async function handleRemove(name: string) {
-    if (!confirm(`Hapus network "${name}"?`)) return;
+    const ok = await confirm({
+      title: 'Hapus network',
+      message: (
+        <>
+          Hapus network <strong>{name}</strong>?
+        </>
+      ),
+      confirmLabel: 'Hapus',
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -143,7 +157,7 @@ export function NetworksPanel({ serverId }: { serverId: string }) {
             )}
           </tbody>
         </table>
-        {loading && <div className="files-panel__loading">Memuat…</div>}
+        {loading && <div className="files-panel__loading">{t('common.loading')}</div>}
       </div>
     </div>
   );
