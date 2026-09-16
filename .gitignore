@@ -1,3 +1,14 @@
 build/bin
 node_modules
 frontend/dist
+
+# Data aplikasi. Normalnya tersimpan di folder data OS (AppData/XDG), BUKAN di
+# repo — tapi tetap diabaikan di sini sebagai jaring pengaman: file ini berisi
+# daftar server beserta metadata kredensialnya.
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Arsip backup poinhost (terenkripsi, tapi tetap tidak untuk repo).
+*.poinhostbkp

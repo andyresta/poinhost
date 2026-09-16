@@ -155,17 +155,27 @@ type SSLCertificateInfo struct {
 
 // SSLStatus status SSL untuk satu domain (parent) beserta keluarga SAN-nya.
 type SSLStatus struct {
-	Domain           string             `json:"domain"`
-	IsParent         bool               `json:"isParent"`
-	CertbotInstalled bool               `json:"certbotInstalled"`
-	CanInstall       bool               `json:"canInstall"`
-	DistroID         string             `json:"distroId,omitempty"`
-	DistroName       string             `json:"distroName,omitempty"`
-	PackageManager   string             `json:"packageManager,omitempty"`
-	SSLEnabled       bool               `json:"sslEnabled"`
-	CanIssue         bool               `json:"canIssue"`
-	CanEnable        bool               `json:"canEnable"`
-	SANs             []string           `json:"sans,omitempty"`
+	Domain           string `json:"domain"`
+	IsParent         bool   `json:"isParent"`
+	CertbotInstalled bool   `json:"certbotInstalled"`
+	CanInstall       bool   `json:"canInstall"`
+	DistroID         string `json:"distroId,omitempty"`
+	DistroName       string `json:"distroName,omitempty"`
+	PackageManager   string `json:"packageManager,omitempty"`
+	SSLEnabled       bool   `json:"sslEnabled"`
+	CanIssue         bool   `json:"canIssue"`
+	CanEnable        bool   `json:"canEnable"`
+	// SANs domain yang AKAN diminta kalau sertifikat diterbitkan ulang
+	// sekarang (domain induk + www + seluruh subdomain yang terdaftar).
+	// Ini RENCANA, bukan isi sertifikat yang sekarang — lihat
+	// Certificate.Domains untuk yang benar-benar tercakup.
+	SANs []string `json:"sans,omitempty"`
+	// MissingSANs domain yang sudah terdaftar di aplikasi tapi BELUM ada di
+	// sertifikat yang sekarang. Selama daftar ini tidak kosong, HTTPS untuk
+	// domain tersebut tidak akan bekerja walau statusnya "SSL aktif" —
+	// dan `certbot renew` TIDAK akan memperbaikinya, karena renew tidak
+	// pernah mengubah daftar domain. Harus diterbitkan ulang.
+	MissingSANs      []string           `json:"missingSans,omitempty"`
 	Certificate      SSLCertificateInfo `json:"certificate"`
 	NginxInstalled   bool               `json:"nginxInstalled"`
 	AutoRenewEnabled bool               `json:"autoRenewEnabled"`

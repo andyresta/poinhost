@@ -73,6 +73,14 @@ type Status struct {
 	// OwnerDetectable false di firewalld: rich rule tidak punya kolom
 	// komentar, jadi asal-usul aturan tidak bisa dipastikan di sana.
 	OwnerDetectable bool `json:"ownerDetectable"`
+	// DockerSubnets seluruh bridge network Docker yang TERDETEKSI di server,
+	// beserta status cakupannya masing-masing. Dideteksi, bukan diasumsikan:
+	// pool alamat Docker bisa diubah lewat daemon.json dan network bisa
+	// dibuat dengan subnet sembarang.
+	DockerSubnets []DockerSubnet `json:"dockerSubnets"`
+	// DockerDBAllowed true hanya kalau SELURUH subnet di atas sudah tercakup
+	// untuk SEMUA port database.
+	DockerDBAllowed bool `json:"dockerDbAllowed"`
 }
 
 // ListResponse hasil ListRules.

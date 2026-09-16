@@ -253,7 +253,7 @@ func (s *Service) provisionDomain(access *websiteAccess, domain, root string, op
 	disabledPath := configFilePath(domain, false)
 	vhostContent := buildVhostConfig(opts)
 	vhostB64 := base64.StdEncoding.EncodeToString([]byte(vhostContent))
-	indexB64 := base64.StdEncoding.EncodeToString([]byte(defaultIndexHTML))
+	indexB64 := base64.StdEncoding.EncodeToString([]byte(defaultIndexHTML(domain)))
 
 	script := fmt.Sprintf(`set -e
 ENABLED=%s

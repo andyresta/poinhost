@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import { RotateCw, Plus, Trash2, ShieldCheck, ShieldOff, TriangleAlert, Lock } from 'lucide-react';
+import { RotateCw, Plus, Trash2, ShieldCheck, ShieldOff, TriangleAlert, Lock, Boxes, Check, RefreshCw } from 'lucide-react';
 import {
   ListFirewallRules,
   AddFirewallRule,
   DeleteFirewallRule,
   SetFirewallEnabled,
+  AllowDockerDatabaseAccess,
+  ReloadFirewall,
 } from '../../../wailsjs/go/main/App';
 import { firewall } from '../../../wailsjs/go/models';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -34,6 +36,10 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
   // baru terisi kalau user memilih sendiri, supaya kita tidak memaksa
   // --zone= dengan tebakan.
   const [zone, setZone] = useState('');
+  // Daftar subnet disembunyikan secara default: di server dengan belasan
+  // network, menampilkan semuanya sekaligus memenuhi panel padahal yang
+  // perlu ditindaklanjuti cuma yang belum tercakup.
+  const [showNets, setShowNets] = useState(false);
 
   function apply(res: firewall.ListResponse) {
     setStatus(res.status);
@@ -122,6 +128,45 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
     apply(await AddFirewallRule(new firewall.RuleRequest({ serverId, zone, ...rule })));
   }
 
+  // Jalan pintas untuk kegagalan yang paling tidak kelihatan: port container
+  // yang di-publish tetap terbuka, tapi koneksi container KE database di host
+  // kena kebijakan deny — aplikasi lalu menggantung sampai timeout, bukan
+  // menolak dengan jelas.
+  async function handleAllowDockerDB() {
+    const ok = await confirm({
+      title: t('fw.dockerDb'),
+      message: t('fw.dockerDbConfirm'),
+      detail: t('fw.dockerDbDetail'),
+      confirmLabel: t('fw.dockerDbApply'),
+    });
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      apply(await AllowDockerDatabaseAccess(serverId, zone));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Reload dibutuhkan terutama sesudah Docker restart: Docker menyisipkan
+  // ulang aturan iptables-nya dan itu bisa mengubah urutan relatif terhadap
+  // rantai firewall. Reload menyusun ulang tanpa jeda "semua terbuka" seperti
+  // kalau firewall dimatikan lalu dinyalakan lagi.
+  async function handleReload() {
+    setBusy(true);
+    setError(null);
+    try {
+      apply(await ReloadFirewall(serverId));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <p className="workspace__placeholder">{t('common.loading')}</p>;
 
   if (status && status.backend === 'none') {
@@ -135,6 +180,7 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
   }
 
   const editable = status?.editable ?? false;
+  const belumTercakup = status?.dockerSubnets?.filter((sn) => !sn.covered).length ?? 0;
 
   return (
     <div className="files-panel">
@@ -197,6 +243,34 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
         <p className="fw-notice">{t('fw.ownerUnknown')}</p>
       )}
 
+      {/* Ringkasan satu baris. Yang perlu ditindaklanjuti hanya jumlah yang
+          BELUM tercakup; daftar lengkapnya dibuka sendiri kalau diperlukan. */}
+      {editable && status && status.dockerSubnets?.length > 0 && (
+        <div className={`fw-notice${belumTercakup > 0 ? ' fw-notice--warn' : ''}`}>
+          <Boxes size={13} />
+          <span>
+            {belumTercakup > 0
+              ? t('fw.dockerNetsMissing', {
+                  n: String(belumTercakup),
+                  total: String(status.dockerSubnets.length),
+                })
+              : t('fw.dockerNetsOk', { total: String(status.dockerSubnets.length) })}
+          </span>
+          <button className="fw-notice__link" onClick={() => setShowNets((v) => !v)}>
+            {showNets ? t('common.hide') : t('common.detail')}
+          </button>
+          {showNets && (
+            <div className="fw-nets">
+              {status.dockerSubnets.map((sn) => (
+                <span key={sn.subnet} className={`fw-tag${sn.covered ? '' : ' fw-tag--missing'}`}>
+                  {sn.network} {sn.subnet} {sn.covered ? '✓' : '✗'}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="files-panel__toolbar">
         <button className="btn btn--sm" disabled={refreshing} onClick={() => void load()}>
           {refreshing ? <span className="spinner" /> : <RotateCw size={13} />} {t('common.refresh')}
@@ -207,6 +281,27 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
             <button className="btn btn--sm" disabled={busy} onClick={() => setShowAdd(true)}>
               <Plus size={13} /> {t('fw.addRule')}
             </button>
+            {/* Sudah terpasang → tombolnya tetap terlihat tapi mati, supaya
+                statusnya jelas dan user tidak menebak perlu ditekan lagi. */}
+            <button
+              className="btn btn--sm"
+              disabled={busy || status?.dockerDbAllowed}
+              title={status?.dockerDbAllowed ? t('fw.dockerDbDone') : t('fw.dockerDbHint')}
+              onClick={() => void handleAllowDockerDB()}
+            >
+              {status?.dockerDbAllowed ? <Check size={13} /> : <Boxes size={13} />}{' '}
+              {status?.dockerDbAllowed ? t('fw.dockerDbDone') : t('fw.dockerDb')}
+            </button>
+
+            <button
+              className="btn btn--sm"
+              disabled={busy || !status?.active}
+              title={t('fw.reloadHint')}
+              onClick={() => void handleReload()}
+            >
+              <RefreshCw size={13} /> {t('fw.reload')}
+            </button>
+
             <button
               className={`btn btn--sm${status?.active ? '' : ' btn--primary'}`}
               disabled={busy}

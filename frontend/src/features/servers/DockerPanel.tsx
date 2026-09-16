@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RotateCw, Square, SquareTerminal, ChartColumn, Play, FileText, Settings, Trash2 } from 'lucide-react';
+import { RotateCw, Square, SquareTerminal, ChartColumn, Play, FileText, Settings, Trash2, FileCog } from 'lucide-react';
 import {
   ListDockerContainers,
   DetectDockerEngine,
@@ -7,6 +7,8 @@ import {
   StopDockerContainer,
   RestartDockerContainer,
   RemoveDockerContainer,
+  GetComposeStatus,
+  ApplyComposeConfig,
 } from '../../../wailsjs/go/main/App';
 import { docker } from '../../../wailsjs/go/models';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -149,6 +151,47 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
     await runAction(c.id, () => RemoveDockerContainer(serverId, c.id));
   }
 
+  // Menerapkan ulang compose. Drift DICEK dan DITAMPILKAN lebih dulu, supaya
+  // user tahu apakah ada yang tertinggal — bukan sekadar menekan tombol dan
+  // berharap. `docker compose up -d` biasa tidak cukup: kalau container-nya
+  // sudah ada, perintah itu cuma men-start-nya tanpa menerapkan konfigurasi
+  // baru. Itulah yang membuat setelan compose bisa tertinggal diam-diam.
+  async function handleApplyCompose(c: docker.ContainerInfo) {
+    setBusyId(c.id);
+    setError(null);
+    try {
+      const info = await GetComposeStatus(serverId, c.id);
+      if (!info.managed) {
+        setError(t('docker.composeNotManaged', { name: c.name }));
+        return;
+      }
+      const keadaan = info.unknown
+        ? t('docker.composeUnknown', { reason: info.message || '-' })
+        : info.drift
+          ? t('docker.composeDrift')
+          : t('docker.composeInSync');
+      const ok = await confirm({
+        title: t('docker.composeApply'),
+        message: t('docker.composeConfirm', { service: info.service }),
+        detail: `${keadaan}
+
+${t('docker.composeDetail', { file: info.configFiles || info.workingDir })}`,
+        confirmLabel: t('docker.composeApply'),
+        danger: true,
+      });
+      if (!ok) return;
+      const after = await ApplyComposeConfig(serverId, c.id);
+      if (after.drift) {
+        setError(t('docker.composeStillDrift'));
+      }
+      await loadContainers();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div className="docker-panel">
       <nav className="docker-panel__subnav">
@@ -248,6 +291,13 @@ export function DockerPanel({ tabId, serverId }: { tabId: string; serverId: stri
                           </button>
                           <button title="Konfigurasi" onClick={() => setConfigTarget(c)}>
                             <Settings size={14} />
+                          </button>
+                          <button
+                            title={t('docker.composeApply')}
+                            disabled={busyId === c.id}
+                            onClick={() => void handleApplyCompose(c)}
+                          >
+                            <FileCog size={14} />
                           </button>
                           <button title="Hapus" disabled={busyId === c.id} onClick={() => void handleRemove(c)}>
                             {busyId === c.id ? <span className="spinner" /> : <Trash2 size={14} />}

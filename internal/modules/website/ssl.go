@@ -21,54 +21,66 @@ type sanTarget struct {
 // tinggal baca dari listDomains yang sudah SATU round-trip & ter-cache,
 // jadi collectSANs pada praktiknya nyaris gratis (lihat riset ARCHITECTURE.md
 // §Website: ini adalah sumber utama lambatnya tab SSL di homepoin).
+// Sertifikat sekarang diterbitkan PER DOMAIN, bukan satu sertifikat gabungan
+// untuk induk beserta seluruh subdomainnya.
+//
+// Cara gabungan sebelumnya punya kelemahan yang mahal: menambah SATU subdomain
+// berarti meminta ulang SELURUH anggota keluarga dalam satu permintaan, dan
+// kalau ada satu saja yang gagal divalidasi, seluruh permintaan gagal. Jadi
+// subdomain yang DNS-nya sudah benar ikut tertahan oleh subdomain lain yang
+// belum siap. Subdomain juga baru tercakup setelah seseorang menerbitkan ulang
+// dari induk, sehingga bisa lama tidak ber-HTTPS tanpa disadari.
+//
+// Dengan per domain, kegagalan satu domain tidak menular. Kuota Let's Encrypt
+// bukan hambatan: batasnya 50 sertifikat per domain terdaftar per minggu.
+//
+// `www` TETAP digabung dengan induknya karena keduanya satu situs yang sama —
+// satu vhost melayani keduanya lewat server_name, jadi memisahkannya justru
+// akan menghasilkan sertifikat yang tidak pernah dipakai.
 func (s *Service) sanTargets(serverID, domain string) ([]sanTarget, error) {
 	domains, err := s.listDomains(serverID)
 	if err != nil {
 		return nil, err
 	}
-	var parentRoot string
-	found := false
 	for _, d := range domains {
-		if d.Domain == domain && !d.IsSubdomain {
-			parentRoot = d.Root
-			found = true
-			break
+		if d.Domain != domain {
+			continue
 		}
-	}
-	if !found {
-		return nil, errFmt("domain %s tidak ditemukan (atau bukan domain induk)", domain)
-	}
-
-	targets := []sanTarget{{FQDN: domain, Root: parentRoot}, {FQDN: "www." + domain, Root: parentRoot}}
-	for _, d := range domains {
-		if d.IsSubdomain && d.Parent == domain {
-			targets = append(targets, sanTarget{FQDN: d.Domain, Root: d.Root})
+		if d.IsSubdomain {
+			return []sanTarget{{FQDN: d.Domain, Root: d.Root}}, nil
 		}
+		return []sanTarget{
+			{FQDN: domain, Root: d.Root},
+			{FQDN: "www." + domain, Root: d.Root},
+		}, nil
 	}
-	return targets, nil
+	return nil, errFmt("domain %s tidak ditemukan", domain)
 }
 
 // vhostFamily mengembalikan semua entri vhost yang perlu ditulis ulang saat
 // SSL diaktifkan/dinonaktifkan untuk satu domain parent — vhost parent itu
 // sendiri (server_name-nya SUDAH mencakup www, jadi www TIDAK punya vhost
 // terpisah) plus vhost tiap subdomain-nya.
+// vhostFamily mengembalikan vhost yang perlu ditulis ulang saat SSL
+// diaktifkan/dinonaktifkan untuk satu domain.
+//
+// Sekarang HANYA vhost domain itu sendiri, sejalan dengan sertifikat yang
+// diterbitkan per domain. Dulu mengaktifkan SSL di induk ikut menulis ulang
+// vhost SELURUH subdomainnya — itu membuat satu tindakan diam-diam mengubah
+// situs lain, dan subdomain yang sertifikatnya belum ada pun ikut diarahkan ke
+// sertifikat induk. `www` tidak punya vhost terpisah (sudah tercakup
+// server_name induk), jadi tidak perlu diikutkan.
 func (s *Service) vhostFamily(serverID, domain string) ([]DomainInfo, error) {
 	domains, err := s.listDomains(serverID)
 	if err != nil {
 		return nil, err
 	}
-	var family []DomainInfo
 	for _, d := range domains {
-		if d.Domain == domain && !d.IsSubdomain {
-			family = append(family, d)
-		} else if d.IsSubdomain && d.Parent == domain {
-			family = append(family, d)
+		if d.Domain == domain {
+			return []DomainInfo{d}, nil
 		}
 	}
-	if len(family) == 0 {
-		return nil, errFmt("domain %s tidak ditemukan", domain)
-	}
-	return family, nil
+	return nil, errFmt("domain %s tidak ditemukan", domain)
 }
 
 const detectCertbotScript = `if command -v certbot >/dev/null 2>&1; then
@@ -78,14 +90,41 @@ else
   echo "CERTBOT=0"
 fi`
 
-func certExistsScript(domain string) string {
+// certExistsScript mencari sertifikat untuk satu domain.
+//
+// Dicari di lineage domain itu sendiri LEBIH DULU, lalu — kalau ini subdomain —
+// jatuh ke lineage induknya. Cadangan itu penting demi setup lama: sebelum
+// sertifikat dipecah per domain, subdomain ikut tercakup lewat SAN sertifikat
+// induk dan tidak punya lineage sendiri. Tanpa cadangan ini, subdomain yang
+// HTTPS-nya sebenarnya berjalan akan dilaporkan "belum ada sertifikat".
+//
+// parent kosong berarti domain ini bukan subdomain.
+func certExistsScript(domain, parent string) string {
+	fallback := ""
+	if parent != "" {
+		fallback = `
+if [ ! -f "$CERT" ] && [ -f /etc/letsencrypt/live/` + parent + `/fullchain.pem ]; then
+  # Hanya dipakai kalau SAN sertifikat induk memang memuat domain ini.
+  if openssl x509 -in /etc/letsencrypt/live/` + parent + `/fullchain.pem -noout -ext subjectAltName 2>/dev/null | grep -q "DNS:` + domain + `"; then
+    CERT=/etc/letsencrypt/live/` + parent + `/fullchain.pem
+    KEY=/etc/letsencrypt/live/` + parent + `/privkey.pem
+    echo "CERT_SHARED=1"
+  fi
+fi`
+	}
 	return `CERT=/etc/letsencrypt/live/` + domain + `/fullchain.pem
-KEY=/etc/letsencrypt/live/` + domain + `/privkey.pem
+KEY=/etc/letsencrypt/live/` + domain + `/privkey.pem` + fallback + `
 if [ -f "$CERT" ] && [ -f "$KEY" ]; then
   echo "CERT_EXISTS=1"
   echo "CERT_PATH=$CERT"
   echo "KEY_PATH=$KEY"
   openssl x509 -enddate -noout -in "$CERT" 2>/dev/null | sed 's/notAfter=/NOT_AFTER=/'
+  # Domain yang BENAR-BENAR tercakup dibaca dari SAN sertifikatnya, bukan
+  # disimpulkan dari daftar subdomain yang terdaftar di aplikasi. Keduanya
+  # sering berbeda: subdomain yang dibuat SESUDAH sertifikat terbit belum
+  # ikut tercakup sampai sertifikatnya diterbitkan ulang.
+  openssl x509 -in "$CERT" -noout -ext subjectAltName 2>/dev/null \
+    | tr ',' '\n' | sed -n 's/.*DNS:\([^ ,]*\).*/CERT_SAN=\1/p'
 else
   echo "CERT_EXISTS=0"
 fi`
@@ -186,22 +225,18 @@ func (s *Service) SSLStatus(serverID, domain string) (*SSLStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	if info.IsSubdomain {
-		return &SSLStatus{Domain: domain, IsParent: false, NginxInstalled: true, Message: "SSL cuma bisa diaktifkan dari domain induk (parent), bukan subdomain — subdomain otomatis ikut tercakup lewat SAN saat SSL induknya diaktifkan"}, nil
-	}
-
 	access, err := s.resolveAccess(serverID)
 	if err != nil {
 		return nil, err
 	}
-	res, err := s.run(access, detectCertbotScript+"\n"+certExistsScript(domain)+"\n"+autoRenewCheckScript, 15*time.Second)
+	res, err := s.run(access, detectCertbotScript+"\n"+certExistsScript(domain, info.Parent)+"\n"+autoRenewCheckScript, 15*time.Second)
 	if err != nil {
 		return nil, err
 	}
 
 	st := &SSLStatus{
 		Domain:         domain,
-		IsParent:       true,
+		IsParent:       !info.IsSubdomain,
 		DistroID:       nginxSt.DistroID,
 		DistroName:     nginxSt.DistroName,
 		PackageManager: nginxSt.PackageManager,
@@ -224,14 +259,29 @@ func (s *Service) SSLStatus(serverID, domain string) (*SSLStatus, error) {
 			st.Certificate.NotAfter = strings.TrimSpace(strings.TrimPrefix(line, "NOT_AFTER="))
 		case line == "AUTORENEW=1":
 			st.AutoRenewEnabled = true
+		case strings.HasPrefix(line, "CERT_SAN="):
+			// Domain yang BENAR-BENAR ada di sertifikat.
+			st.Certificate.Domains = append(st.Certificate.Domains, strings.TrimPrefix(line, "CERT_SAN="))
 		}
 	}
 
+	// SANs = RENCANA (apa yang akan diminta kalau diterbitkan ulang).
+	// Certificate.Domains = FAKTA (isi sertifikat sekarang).
+	//
+	// Dulu keduanya diisi dari sumber yang sama, sehingga panel melaporkan
+	// rencana sebagai fakta: subdomain yang dibuat SESUDAH sertifikat terbit
+	// ditampilkan "tercakup" padahal HTTPS-nya tidak pernah bekerja.
 	if sans, err := s.sanTargets(serverID, domain); err == nil {
+		have := map[string]bool{}
+		for _, d := range st.Certificate.Domains {
+			have[strings.ToLower(strings.TrimPrefix(d, "*."))] = true
+		}
 		for _, t := range sans {
 			st.SANs = append(st.SANs, t.FQDN)
+			if st.Certificate.Exists && !have[strings.ToLower(t.FQDN)] {
+				st.MissingSANs = append(st.MissingSANs, t.FQDN)
+			}
 		}
-		st.Certificate.Domains = st.SANs
 	}
 
 	st.CanIssue = st.CertbotInstalled
@@ -242,7 +292,12 @@ func (s *Service) SSLStatus(serverID, domain string) (*SSLStatus, error) {
 // buildIssueCommand menyusun perintah `certbot certonly --webroot` yang
 // mencakup seluruh keluarga SAN dalam SATU permintaan sertifikat.
 func buildIssueCommand(email, certName string, targets []sanTarget, force bool) string {
-	parts := []string{"certbot", "certonly", "--non-interactive", "--agree-tos",
+	// --expand WAJIB ada: tanpa itu, certbot yang menemukan lineage dengan
+	// nama sama tapi daftar domain berbeda akan menolak (atau bertanya, yang
+	// dalam mode non-interactive berarti gagal) alih-alih menambahkan domain
+	// baru. Inilah yang membuat subdomain yang dibuat belakangan tidak pernah
+	// ikut tercakup.
+	parts := []string{"certbot", "certonly", "--non-interactive", "--agree-tos", "--expand",
 		"--cert-name", shellQuote(certName), "--email", shellQuote(email)}
 	if force {
 		parts = append(parts, "--force-renewal")
@@ -269,12 +324,8 @@ func (s *Service) SSLIssue(req SSLIssueRequest) (*SSLStatus, error) {
 	if email == "" {
 		return nil, errFmt("email wajib diisi untuk menerbitkan sertifikat Let's Encrypt")
 	}
-	info, err := s.getDomain(req.ServerID, domain)
-	if err != nil {
+	if _, err := s.getDomain(req.ServerID, domain); err != nil {
 		return nil, err
-	}
-	if info.IsSubdomain {
-		return nil, errFmt("SSL cuma bisa diterbitkan dari domain induk (parent)")
 	}
 
 	targets, err := s.sanTargets(req.ServerID, domain)
@@ -288,6 +339,25 @@ func (s *Service) SSLIssue(req SSLIssueRequest) (*SSLStatus, error) {
 
 	s.mutex.Lock(req.ServerID)
 	defer s.mutex.Unlock(req.ServerID)
+
+	// Vhost ditulis ULANG dulu sebelum certbot jalan.
+	//
+	// Alasannya: vhost yang dibuat versi lama poinhost belum punya blok
+	// `/.well-known/acme-challenge/`. Untuk domain reverse-proxy, permintaan
+	// validasi ikut diteruskan ke aplikasi di belakangnya dan dijawab 404,
+	// sehingga sertifikat pertamanya tidak pernah bisa terbit. Menulis ulang
+	// di sini membuat domain lama ikut terperbaiki tanpa perlu dibuat ulang.
+	//
+	// Isinya tetap sama persis selain penambahan blok itu — options-nya dibaca
+	// dari vhost yang ada sekarang, bukan disusun dari asumsi.
+	if family, ferr := s.vhostFamily(req.ServerID, domain); ferr == nil {
+		for _, member := range family {
+			opts := optionsFromInfo(member)
+			if rerr := s.rewriteVhost(access, member.ConfigPath, opts); rerr != nil {
+				return nil, errFmt("gagal menyiapkan vhost %s untuk validasi: %w", member.Domain, rerr)
+			}
+		}
+	}
 
 	var mkdirs strings.Builder
 	mkdirs.WriteString("set -e\n")
@@ -412,6 +482,23 @@ func (s *Service) SSLRenew(serverID, domain string) (*SSLStatus, error) {
 	access, err := s.resolveAccess(serverID)
 	if err != nil {
 		return nil, err
+	}
+
+	// `certbot renew` HANYA memperpanjang masa berlaku dengan daftar domain
+	// yang sudah ada, dan itu pun dilewati kalau sertifikatnya belum mendekati
+	// kedaluwarsa. Ia TIDAK PERNAH menambah domain baru.
+	//
+	// Jadi kalau ada subdomain yang belum tercakup, menjalankan renew akan
+	// tampak "tidak berefek apa pun" — persis keluhan yang bikin fitur ini
+	// terkesan rusak. Kondisi itu dideteksi lebih dulu dan dijelaskan, bukan
+	// dibiarkan jadi operasi diam yang membingungkan.
+	before, err := s.SSLStatus(serverID, domain)
+	if err == nil && len(before.MissingSANs) > 0 {
+		// Pesannya sengaja pendek: penjelasan panjang sudah tidak perlu karena
+		// panel menyediakan tombol "Terbitkan ulang" tepat di sebelah daftar
+		// domain yang belum tercakup.
+		return before, errFmt("perpanjangan tidak menambah domain — pakai Terbitkan ulang untuk %s",
+			strings.Join(before.MissingSANs, ", "))
 	}
 
 	s.mutex.Lock(serverID)

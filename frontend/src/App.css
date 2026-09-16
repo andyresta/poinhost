@@ -1774,3 +1774,27 @@ button svg {
   margin-right: 6px;
   color: var(--accent);
 }
+/* Subnet Docker yang BELUM tercakup aturan firewall — ditandai warna warning
+   supaya terlihat sebagai pekerjaan yang tersisa, bukan sekadar informasi. */
+.fw-tag--missing {
+  color: var(--warning);
+  background: var(--warning-bg);
+}
+/* Ringkasan network Docker: satu baris, detail dibuka sendiri. */
+.fw-notice__link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.fw-nets {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}

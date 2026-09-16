@@ -6,6 +6,14 @@ export function AddFirewallRule(arg1) {
   return window['go']['main']['App']['AddFirewallRule'](arg1);
 }
 
+export function AllowDockerDatabaseAccess(arg1, arg2) {
+  return window['go']['main']['App']['AllowDockerDatabaseAccess'](arg1, arg2);
+}
+
+export function ApplyComposeConfig(arg1, arg2) {
+  return window['go']['main']['App']['ApplyComposeConfig'](arg1, arg2);
+}
+
 export function ChmodFile(arg1) {
   return window['go']['main']['App']['ChmodFile'](arg1);
 }
@@ -94,6 +102,10 @@ export function DetectDockerEngine(arg1) {
   return window['go']['main']['App']['DetectDockerEngine'](arg1);
 }
 
+export function DetectDockerSubnets(arg1) {
+  return window['go']['main']['App']['DetectDockerSubnets'](arg1);
+}
+
 export function DetectNginxEngine(arg1) {
   return window['go']['main']['App']['DetectNginxEngine'](arg1);
 }
@@ -160,6 +172,10 @@ export function ExtractArchive(arg1) {
 
 export function ForgetWebsiteDBCredential(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ForgetWebsiteDBCredential'](arg1, arg2, arg3, arg4);
+}
+
+export function GetComposeStatus(arg1, arg2) {
+  return window['go']['main']['App']['GetComposeStatus'](arg1, arg2);
 }
 
 export function GetSystemService(arg1, arg2) {
@@ -384,6 +400,10 @@ export function RecreateDockerContainer(arg1) {
 
 export function RefreshServerStatus(arg1) {
   return window['go']['main']['App']['RefreshServerStatus'](arg1);
+}
+
+export function ReloadFirewall(arg1) {
+  return window['go']['main']['App']['ReloadFirewall'](arg1);
 }
 
 export function RemoveDockerContainer(arg1, arg2) {

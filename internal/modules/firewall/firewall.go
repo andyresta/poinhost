@@ -78,6 +78,10 @@ func buildListScript(zone string) string {
 		zoneExpr = zone
 	}
 	return `set +e
+if command -v docker >/dev/null 2>&1; then
+  docker network ls -q 2>/dev/null | xargs -r docker network inspect -f '{{range .IPAM.Config}}DOCKERNET={{$.Name}}|{{.Subnet}}|{{.Gateway}}
+{{end}}' 2>/dev/null
+fi
 if command -v ufw >/dev/null 2>&1; then echo "INSTALLED=ufw"; fi
 if command -v firewall-cmd >/dev/null 2>&1; then echo "INSTALLED=firewalld"; fi
 if command -v nft >/dev/null 2>&1; then echo "INSTALLED=nftables"; fi
@@ -194,6 +198,11 @@ func parseList(stdout string, sshPort int) *ListResponse {
 	}
 
 	st.SSHAllowed = sshAllowed(rules, sshPort)
+	// Subnet Docker dideteksi dari server, lalu cakupannya dihitung terhadap
+	// aturan yang benar-benar ada — bukan dicocokkan dengan rentang yang
+	// diasumsikan.
+	st.DockerSubnets = parseDockerSubnets(head)
+	st.DockerDBAllowed = markCoverage(st.DockerSubnets, rules)
 	return &ListResponse{Status: st, Rules: rules}
 }
 
@@ -374,6 +383,39 @@ func (s *Service) SetEnabled(serverID string, enabled bool) (*ListResponse, erro
 	s.mutex.Lock(serverID)
 	defer s.mutex.Unlock(serverID)
 	if _, err := s.run(access, script, 45*time.Second); err != nil {
+		return nil, err
+	}
+	return s.ListRules(serverID, "")
+}
+
+// Reload menerapkan ulang aturan firewall tanpa mematikannya.
+//
+// Dibutuhkan terutama SESUDAH Docker restart: Docker menyisipkan sendiri
+// aturan iptables-nya saat start, dan itu bisa mengubah urutan relatif
+// terhadap rantai ufw. Reload menyusun ulang aturan firewall di atas keadaan
+// terbaru, tanpa jeda "semua terbuka" seperti kalau dimatikan lalu dinyalakan.
+func (s *Service) Reload(serverID string) (*ListResponse, error) {
+	access, err := s.resolveAccess(serverID)
+	if err != nil {
+		return nil, err
+	}
+	backend, err := s.activeBackend(access)
+	if err != nil {
+		return nil, err
+	}
+	var script string
+	switch backend {
+	case "ufw":
+		script = "set -e\nufw reload"
+	case "firewalld":
+		script = "set -e\nfirewall-cmd --reload"
+	default:
+		return nil, fmt.Errorf("firewall di server ini tidak bisa di-reload dari sini (backend: %s)", backend)
+	}
+
+	s.mutex.Lock(serverID)
+	defer s.mutex.Unlock(serverID)
+	if _, err := s.run(access, script, 40*time.Second); err != nil {
 		return nil, err
 	}
 	return s.ListRules(serverID, "")

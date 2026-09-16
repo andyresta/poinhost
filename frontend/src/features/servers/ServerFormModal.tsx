@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { TestServerConnection, TrustServerHostKey } from '../../../wailsjs/go/main/App';
 import { servers } from '../../../wailsjs/go/models';
 import { useTabsStore } from '../../store/tabs';
+import { useT } from '../../i18n';
 
 const COLOR_SWATCHES = [
   'var(--accent)', '#ec4899', '#22c55e', '#f59e0b',
@@ -44,6 +45,7 @@ export function ServerFormModal({
   onClose: () => void;
 }) {
   const saveServer = useTabsStore((s) => s.saveServer);
+  const t = useT();
   const [form, setForm] = useState<servers.SaveServerRequest>(() => toRequest(initial));
   const [tagInput, setTagInput] = useState('');
   const [testState, setTestState] = useState<TestState>('idle');
@@ -127,26 +129,30 @@ export function ServerFormModal({
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card">
         <div className="modal-card__header">
-          <h2>{mode === 'create' ? 'Tambah Server' : `Edit ${initial?.name ?? ''}`}</h2>
-          <button className="modal-card__close" onClick={onClose} aria-label="Tutup">
+          <h2>{mode === 'create' ? t('srv.addServer') : t('srv.editServer', { name: initial?.name ?? '' })}</h2>
+          <button className="modal-card__close" onClick={onClose} aria-label={t('common.close')}>
             <X size={18} />
           </button>
         </div>
 
         <div className="modal-card__body">
           <section className="form-section">
-            <h3>Koneksi</h3>
+            <h3>{t('srv.connection')}</h3>
             <div className="form-grid">
               <label className="form-field form-field--span2">
-                <span>Nama</span>
-                <input value={form.name} onChange={(e) => update('name', e.target.value)} placeholder="VPS Produksi" />
+                <span>{t('common.name')}</span>
+                <input
+                  value={form.name}
+                  onChange={(e) => update('name', e.target.value)}
+                  placeholder={t('srv.namePlaceholder')}
+                />
               </label>
               <label className="form-field form-field--span2">
-                <span>Host</span>
+                <span>{t('srv.host')}</span>
                 <input value={form.host} onChange={(e) => update('host', e.target.value)} placeholder="203.0.113.10" />
               </label>
               <label className="form-field">
-                <span>Port</span>
+                <span>{t('srv.port')}</span>
                 <input
                   type="number"
                   value={form.port}
@@ -154,14 +160,14 @@ export function ServerFormModal({
                 />
               </label>
               <label className="form-field">
-                <span>Username</span>
+                <span>{t('srv.username')}</span>
                 <input value={form.username} onChange={(e) => update('username', e.target.value)} placeholder="root" />
               </label>
             </div>
           </section>
 
           <section className="form-section">
-            <h3>Autentikasi</h3>
+            <h3>{t('srv.auth')}</h3>
             <div className="segmented">
               <button
                 className={`segmented__item${form.authType === 'key' ? ' segmented__item--active' : ''}`}
@@ -179,16 +185,19 @@ export function ServerFormModal({
 
             {form.authType === 'key' ? (
               <label className="form-field">
-                <span>Path kunci privat</span>
+                <span>{t('srv.privateKeyPath')}</span>
                 <input
                   value={form.keyPath}
                   onChange={(e) => update('keyPath', e.target.value)}
-                  placeholder="kosongkan untuk ~/.ssh/id_ed25519"
+                  placeholder={t('srv.keyPathPlaceholder')}
                 />
               </label>
             ) : (
               <label className="form-field">
-                <span>Password{mode === 'edit' ? ' (kosongkan jika tidak berubah)' : ''}</span>
+                <span>
+                  Password
+                  {mode === 'edit' ? t('srv.passwordUnchanged') : ''}
+                </span>
                 <input
                   type="password"
                   value={form.password}
@@ -204,14 +213,14 @@ export function ServerFormModal({
                 checked={form.useSudo}
                 onChange={(e) => update('useSudo', e.target.checked)}
               />
-              <span>User ini punya akses sudo</span>
+              <span>{t('srv.hasSudo')}</span>
             </label>
           </section>
 
           <section className="form-section">
-            <h3>Tampilan &amp; catatan</h3>
+            <h3>{t('srv.appearance')}</h3>
             <div className="form-field">
-              <span>Warna</span>
+              <span>{t('srv.color')}</span>
               <div className="color-swatches">
                 {COLOR_SWATCHES.map((c) => (
                   <button
@@ -226,12 +235,14 @@ export function ServerFormModal({
             </div>
 
             <div className="form-field">
-              <span>Tags</span>
+              <span>{t('srv.tags')}</span>
               <div className="tag-input">
-                {form.tags.map((t) => (
-                  <span key={t} className="tag-chip">
-                    {t}
-                    <button onClick={() => removeTag(t)} aria-label={`Hapus tag ${t}`}>
+                {/* Parameter map dinamai `tag`, BUKAN `t`: `t` sudah dipakai
+                    fungsi terjemahan di scope ini dan akan tertutupi. */}
+                {form.tags.map((tag) => (
+                  <span key={tag} className="tag-chip">
+                    {tag}
+                    <button onClick={() => removeTag(tag)} aria-label={t('srv.removeTag', { tag })}>
                       <X size={11} />
                     </button>
                   </span>
@@ -245,13 +256,13 @@ export function ServerFormModal({
                       addTag();
                     }
                   }}
-                  placeholder="produksi, jakarta, ..."
+                  placeholder={t('srv.tagsPlaceholder')}
                 />
               </div>
             </div>
 
             <label className="form-field">
-              <span>Catatan</span>
+              <span>{t('srv.notes')}</span>
               <textarea
                 value={form.notes}
                 onChange={(e) => update('notes', e.target.value)}
@@ -270,15 +281,14 @@ export function ServerFormModal({
 
         <div className="modal-card__footer">
           <button className="btn btn--ghost" onClick={() => void handleTest()} disabled={busy}>
-            {testState === 'testing' && <span className="spinner" />} {testState === 'testing' ? 'Menguji…' : 'Tes Koneksi'}
+            {testState === 'testing' && <span className="spinner" />}{' '}
+            {testState === 'testing' ? t('srv.testing') : t('srv.testConnection')}
           </button>
           <button className="btn btn--primary" onClick={() => void handleSave()} disabled={!canSave || busy}>
-            {busy && testState !== 'testing' && <span className="spinner" />} Simpan
+            {busy && testState !== 'testing' && <span className="spinner" />} {t('common.save')}
           </button>
         </div>
-        {!canSave && (
-          <p className="modal-card__hint">Tes koneksi harus berhasil dulu sebelum server baru bisa disimpan.</p>
-        )}
+        {!canSave && <p className="modal-card__hint">{t('srv.mustTestFirst')}</p>}
       </div>
     </div>
   );
@@ -295,36 +305,44 @@ function ConnectionStatus({
   onTrust: () => void;
   busy: boolean;
 }) {
+  const t = useT();
   if (state === 'idle') return null;
 
   if (state === 'testing') {
-    return <div className="connection-status connection-status--pending">Menguji koneksi…</div>;
+    return <div className="connection-status connection-status--pending">{t('srv.testingConnection')}</div>;
   }
   if (state === 'ok') {
     return (
       <div className="connection-status connection-status--ok">
-        Terhubung{detail.latency ? ` · ${detail.latency}` : ''}
+        {t('srv.connected')}
+        {detail.latency ? ` · ${detail.latency}` : ''}
       </div>
     );
   }
   if (state === 'error') {
     return (
-      <div className="connection-status connection-status--error">{detail.message ?? 'Koneksi gagal'}</div>
+      <div className="connection-status connection-status--error">
+        {detail.message ?? t('srv.connectionFailed')}
+      </div>
     );
   }
 
   // unknown | mismatch -> perlu konfirmasi fingerprint host key.
   return (
     <div className="connection-status connection-status--warn">
-      <p>
-        {state === 'mismatch'
-          ? 'Fingerprint host berubah dari yang tersimpan sebelumnya. Ini bisa berarti VPS di-rebuild, atau (jarang) ada yang menyamar sebagai server ini.'
-          : 'Host key belum pernah dipercaya sebelumnya.'}
-      </p>
-      {detail.oldFingerprint && <code className="connection-status__fp">lama: {detail.oldFingerprint}</code>}
-      {detail.fingerprint && <code className="connection-status__fp">baru: {detail.fingerprint}</code>}
+      <p>{state === 'mismatch' ? t('srv.fingerprintChanged') : t('srv.hostKeyUntrusted')}</p>
+      {detail.oldFingerprint && (
+        <code className="connection-status__fp">
+          {t('srv.fpOld')}: {detail.oldFingerprint}
+        </code>
+      )}
+      {detail.fingerprint && (
+        <code className="connection-status__fp">
+          {t('srv.fpNew')}: {detail.fingerprint}
+        </code>
+      )}
       <button className="btn btn--sm" onClick={onTrust} disabled={busy}>
-        {busy && <span className="spinner" />} Percayai Host Key
+        {busy && <span className="spinner" />} {t('srv.trustHostKey')}
       </button>
     </div>
   );

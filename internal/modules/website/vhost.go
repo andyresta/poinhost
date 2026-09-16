@@ -2,6 +2,7 @@ package website
 
 import (
 	"fmt"
+	"html"
 	"strings"
 )
 
@@ -247,6 +248,18 @@ server {
 		return b.String()
 	}
 
+	// Blok acme-challenge WAJIB ada juga di varian HTTP-saja, bukan cuma di
+	// varian HTTPS.
+	//
+	// Justru varian inilah yang aktif saat sertifikat PERTAMA diterbitkan, dan
+	// tanpa blok ini permintaan validasi jatuh ke `location /`. Untuk domain
+	// reverse-proxy itu berarti diteruskan ke aplikasi di belakangnya, yang
+	// menjawab 404 — sehingga domain proxy TIDAK PERNAH bisa mendapat
+	// sertifikat pertamanya. Domain static/PHP kebetulan selamat karena
+	// `try_files $uri` menyajikannya dari root.
+	//
+	// `^~` memastikan blok ini menang atas location lain tanpa perlu urutan
+	// tertentu.
 	var b strings.Builder
 	b.WriteString(meta)
 	fmt.Fprintf(&b, `server {
@@ -260,8 +273,12 @@ server {
     access_log /var/log/nginx/%s.access.log;
     error_log /var/log/nginx/%s.error.log;
 
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root %s;
+    }
 %s}
-`, serverNames, o.Root, indexLine, o.Domain, o.Domain, locations)
+`, serverNames, o.Root, indexLine, o.Domain, o.Domain, o.Root, locations)
 	return b.String()
 }
 
@@ -405,10 +422,42 @@ chmod 2775 "$ROOT"
 `, shellQuote(root), shellQuote(sshUser))
 }
 
-const defaultIndexHTML = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Website baru</title></head>
-<body style="font-family:sans-serif;text-align:center;padding-top:10%">
-<h1>Website ini sudah aktif</h1>
-<p>Unggah file ke document root untuk mulai.</p>
+// defaultIndexHTML halaman sementara untuk domain yang baru dibuat.
+//
+// Nama domainnya ikut ditampilkan supaya halaman ini sekaligus jadi konfirmasi
+// vhost MANA yang sedang melayani permintaan — berguna saat beberapa domain
+// diarahkan ke server yang sama dan salah satunya salah sasaran.
+//
+// Warnanya sengaja ditahan: satu aksen saja, mengikuti prefers-color-scheme
+// supaya tidak menyilaukan di perangkat bertema gelap.
+func defaultIndexHTML(domain string) string {
+	safe := html.EscapeString(domain)
+	return `<!doctype html>
+<html lang="id"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>` + safe + `</title>
+<style>
+:root{--bg:#f6f3ed;--fg:#2a2620;--muted:#7c7364;--accent:#b85c3a;--card:#fff;--line:#e0d8c7}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1712;--fg:#ece5d8;--muted:#8f8672;--accent:#d97c57;--card:#242019;--line:#3c3324}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+background:var(--bg);color:var(--fg);font:16px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}
+.card{width:100%;max-width:420px;padding:40px 32px;text-align:center;
+background:var(--card);border:1px solid var(--line);border-radius:14px}
+.dot{display:inline-block;width:9px;height:9px;margin-right:8px;border-radius:50%;
+background:var(--accent);vertical-align:middle}
+h1{margin:0 0 6px;font-size:20px;font-weight:600;word-break:break-all}
+p{margin:0;font-size:14px;color:var(--muted)}
+.foot{margin-top:24px;padding-top:16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.foot b{color:var(--accent);font-weight:600}
+</style></head>
+<body>
+<main class="card">
+<h1><span class="dot"></span>` + safe + `</h1>
+<p>Website aktif. Unggah file ke document root untuk mulai.</p>
+<div class="foot">Domain dikelola oleh <b>PoinHost</b></div>
+</main>
 </body></html>
 `
+}

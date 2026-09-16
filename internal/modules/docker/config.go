@@ -223,7 +223,7 @@ func inspectToDetail(inv *inspectRaw) (*ContainerInspectResponse, *createTemplat
 			continue
 		}
 		if ports[i].HostIP == "127.0.0.1" {
-			ports[i].Scope = portScopeLocalhost
+			ports[i].Scope = portScopePrivate
 		} else {
 			ports[i].Scope = portScopePublic
 		}

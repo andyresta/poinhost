@@ -1,116 +1,102 @@
 package docker
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
+// Scope hanya dua: public dan private. Nilai lama "intranet"/"localhost"
+// tetap diterima karena ada container yang terlanjur berlabel itu.
 func TestNormalizePortScope(t *testing.T) {
 	cases := map[string]string{
 		"":          portScopePublic,
 		"public":    portScopePublic,
-		"Public":    portScopePublic,
-		"intranet":  portScopeIntranet,
-		"localhost": portScopeLocalhost,
+		"PUBLIC":    portScopePublic,
+		"private":   portScopePrivate,
+		" Private ": portScopePrivate,
+		// Nilai lama: "localhost" artinya persis sama dengan private.
+		"localhost": portScopePrivate,
+		// "intranet" dulu hanya DIJANJIKAN terbatas (aturan ufw di rantai
+		// INPUT yang tidak pernah dilewati trafik Docker). Dipetakan ke
+		// private, jadi proteksinya justru NAIK dari yang dulu dijanjikan.
+		"intranet": portScopePrivate,
 	}
 	for in, want := range cases {
 		got, err := normalizePortScope(in)
 		if err != nil {
-			t.Fatalf("normalizePortScope(%q) unexpected error: %v", in, err)
+			t.Fatalf("normalizePortScope(%q) error: %v", in, err)
 		}
 		if got != want {
-			t.Fatalf("normalizePortScope(%q) = %q, want %q", in, got, want)
+			t.Fatalf("normalizePortScope(%q) = %q, mau %q", in, got, want)
 		}
 	}
-	if _, err := normalizePortScope("world"); err == nil {
-		t.Fatal("normalizePortScope(\"world\") expected error, got nil")
+
+	for _, bad := range []string{"lan", "semua", "0.0.0.0", "private; reboot"} {
+		if _, err := normalizePortScope(bad); err == nil {
+			t.Fatalf("scope %q seharusnya ditolak", bad)
+		}
 	}
 }
 
+// Inilah inti perbaikannya: private ditegakkan lewat ALAMAT BIND, bukan
+// aturan firewall. Bind ke 127.0.0.1 membuat Docker memasang DNAT hanya di
+// loopback, sehingga portnya tidak terjangkau dari luar apa pun kondisi
+// firewallnya — tidak ada lagi janji proteksi yang bergantung pada rantai
+// iptables yang ternyata tidak dilewati trafik Docker.
 func TestHostIPForScope(t *testing.T) {
-	if hostIPForScope(portScopeLocalhost) != "127.0.0.1" {
-		t.Fatal("localhost scope must bind 127.0.0.1")
+	if got := hostIPForScope(portScopePrivate); got != "127.0.0.1" {
+		t.Fatalf("private harus bind loopback, dapat %q", got)
 	}
-	if hostIPForScope(portScopePublic) != "" {
-		t.Fatal("public scope must not restrict bind (0.0.0.0)")
+	if got := hostIPForScope(portScopePublic); got != "" {
+		t.Fatalf("public harus bind semua interface (HostIP kosong), dapat %q", got)
 	}
-	if hostIPForScope(portScopeIntranet) != "" {
-		t.Fatal("intranet scope must bind 0.0.0.0 too — restriction is via firewall, not bind")
+	// Nilai lama yang belum dinormalkan tidak boleh diam-diam jadi public.
+	if got := hostIPForScope("intranet"); got != "" {
+		t.Fatalf("nilai mentah harus dinormalkan dulu lewat normalizePortScope, dapat %q", got)
 	}
 }
 
 func TestSyncPortScopeLabels(t *testing.T) {
+	// Label port yang sudah tidak dipakai lagi harus dibuang, bukan menumpuk.
+	labels := map[string]string{
+		"poinhost.portscope.9999.tcp": "public",
+		"com.docker.compose.service":  "app",
+	}
 	ports := []PortMapping{
-		{HostPort: 8080, Protocol: "tcp", Scope: portScopeIntranet},
-		{HostPort: 443, Protocol: "tcp", Scope: portScopePublic},
-		{HostPort: 22, Protocol: "tcp", Scope: portScopeLocalhost},
+		{HostPort: 8089, Protocol: "tcp", Scope: portScopePrivate},
+		{HostPort: 5000, Protocol: "", Scope: ""},
 	}
-	labels := syncPortScopeLabels(map[string]string{"unrelated": "keep-me"}, ports)
+	got := syncPortScopeLabels(labels, ports)
 
-	if labels["unrelated"] != "keep-me" {
-		t.Fatal("non-portscope labels must survive sync")
+	if _, ada := got["poinhost.portscope.9999.tcp"]; ada {
+		t.Fatal("label port lama harus dibuang")
 	}
-	if labels[portScopeLabelKey(8080, "tcp")] != portScopeIntranet {
-		t.Fatal("intranet scope must be persisted as a label")
+	if got["poinhost.portscope.8089.tcp"] != portScopePrivate {
+		t.Fatalf("scope private tidak tersimpan: %+v", got)
 	}
-	if labels[portScopeLabelKey(22, "tcp")] != portScopeLocalhost {
-		t.Fatal("localhost scope must be persisted as a label")
+	// Protokol kosong dianggap tcp, scope kosong dianggap public.
+	if got["poinhost.portscope.5000.tcp"] != portScopePublic {
+		t.Fatalf("default scope salah: %+v", got)
 	}
-	if _, ok := labels[portScopeLabelKey(443, "tcp")]; ok {
-		t.Fatal("public (default) scope should not be stored as a label")
-	}
-
-	// Recreate with the intranet port removed — stale label must be dropped,
-	// not linger and confuse a future inspect.
-	labels = syncPortScopeLabels(labels, []PortMapping{{HostPort: 443, Protocol: "tcp", Scope: portScopePublic}})
-	if _, ok := labels[portScopeLabelKey(8080, "tcp")]; ok {
-		t.Fatal("stale portscope label for a removed port must be dropped on resync")
-	}
-	if labels["unrelated"] != "keep-me" {
-		t.Fatal("non-portscope labels must still survive a resync")
+	// Label milik pihak lain tidak boleh ikut terhapus.
+	if got["com.docker.compose.service"] != "app" {
+		t.Fatal("label non-poinhost tidak boleh disentuh")
 	}
 }
 
-func TestPortScopeApplyScriptRemovesStaleRuleBeforeNarrowing(t *testing.T) {
-	// Switching a port from "public" (allow from anywhere) to "intranet"
-	// must remove the old broad allow rule FIRST — otherwise it stays in
-	// effect alongside the new narrow one and silently defeats it (ufw/
-	// firewalld OR all matching allow rules together).
-	script := portScopeApplyScript([]PortMapping{{HostPort: 8080, ContainerPort: 8080, Protocol: "tcp", Scope: portScopeIntranet}})
-
-	deleteIdx := strings.Index(script, "ufw delete allow to any port 8080 proto tcp")
-	addIdx := strings.Index(script, "ufw allow from 10.0.0.0/8 to any port 8080 proto tcp")
-	if deleteIdx < 0 || addIdx < 0 {
-		t.Fatalf("expected both a removal of the broad rule and an intranet allow rule, got:\n%s", script)
-	}
-	if deleteIdx > addIdx {
-		t.Fatal("stale broad-allow rule must be removed BEFORE the narrower intranet rule is added")
-	}
-}
-
-func TestPortScopeApplyScriptLocalhostAddsNoFirewallRule(t *testing.T) {
-	script := portScopeApplyScript([]PortMapping{{HostPort: 2222, ContainerPort: 22, Protocol: "tcp", Scope: portScopeLocalhost}})
-	if strings.Contains(script, "allow") && strings.Contains(script, "2222") {
-		// only the cleanup "delete" lines should mention this port, never a fresh "allow"
-		for _, line := range strings.Split(script, "\n") {
-			if strings.Contains(line, "2222") && strings.Contains(line, "allow") && !strings.Contains(line, "delete") {
-				t.Fatalf("localhost scope must not add a firewall allow rule, got line: %s", line)
-			}
+// Regresi: fitur ini TIDAK BOLEH lagi menulis aturan firewall. Aturan ufw
+// hidup di rantai INPUT, sedangkan trafik ke port container yang di-publish
+// lewat PREROUTING→FORWARD→DOCKER-USER dan tidak pernah menyentuh INPUT —
+// jadi aturan seperti itu tidak menegakkan apa pun, cuma memberi kesan
+// terlindungi.
+func TestScopeTidakMenulisAturanFirewall(t *testing.T) {
+	labels := syncPortScopeLabels(nil, []PortMapping{
+		{HostPort: 8089, Protocol: "tcp", Scope: portScopePrivate},
+	})
+	for k, v := range labels {
+		if k == "" || v == "" {
+			t.Fatalf("label tidak lengkap: %q=%q", k, v)
 		}
 	}
-}
-
-func TestPortScopeWarning(t *testing.T) {
-	ports := []PortMapping{{HostPort: 5432, Protocol: "tcp", Scope: portScopeIntranet}}
-
-	if w := portScopeWarning(ports, "ufw"); w != "" {
-		t.Fatalf("no warning expected when a firewall is active, got: %q", w)
-	}
-	if w := portScopeWarning(ports, "none"); w == "" || !strings.Contains(w, "5432/tcp") {
-		t.Fatalf("expected a warning naming the port when no firewall is detected, got: %q", w)
-	}
-	publicOnly := []PortMapping{{HostPort: 80, Protocol: "tcp", Scope: portScopePublic}}
-	if w := portScopeWarning(publicOnly, "none"); w != "" {
-		t.Fatalf("public scope needs no warning even without a firewall, got: %q", w)
+	// hostIPForScope adalah SATU-SATUNYA mekanisme penegakan sekarang.
+	if hostIPForScope(portScopePrivate) == "" {
+		t.Fatal("private wajib punya alamat bind, kalau tidak tidak ada yang menegakkannya")
 	}
 }

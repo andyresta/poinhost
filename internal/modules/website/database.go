@@ -492,7 +492,14 @@ func (s *Service) runPostgres(access *websiteAccess, db, sql string) (string, er
 	if db == "" {
 		db = "postgres"
 	}
-	cmd := "sudo -u postgres psql -v ON_ERROR_STOP=1 -d " + shellQuote(db) + " -At -c " + shellQuote(sql)
+	// -F TAB WAJIB ada. Dalam mode unaligned (-A), pemisah kolom bawaan psql
+	// adalah PIPA, bukan tab — sementara parser di modul ini memecah baris
+	// dengan tab (sama seperti keluaran `mysql --batch`). Tanpa flag ini,
+	// seluruh baris masuk sebagai kolom pertama, sehingga mis. nama role
+	// terbaca "mkelindo|OWNER" dan tidak cocok dengan user mana pun —
+	// gejalanya kolom relasi user↔database tampil kosong padahal datanya ada.
+	cmd := "sudo -u postgres psql -v ON_ERROR_STOP=1 -d " + shellQuote(db) +
+		" -At -F " + shellQuote("\t") + " -c " + shellQuote(sql)
 	res, err := s.run(access, cmd, 20*time.Second)
 	if err != nil {
 		return "", err
@@ -895,7 +902,7 @@ func sortPrivilegeKeys(set map[string]bool) []string {
 }
 
 // parseMySQLGrantee mem-parsing kolom GRANTEE information_schema (format
-// `'user'@'host'`, kutip tunggal di dalam string aslinya di-escape jadi `''`
+// `'user'@'host'`, kutip tunggal di dalam string aslinya di-escape jadi `”`
 // oleh MySQL sendiri) jadi (username, host) terpisah.
 func parseMySQLGrantee(grantee string) (username, host string, ok bool) {
 	m := mysqlGranteeRE.FindStringSubmatch(grantee)

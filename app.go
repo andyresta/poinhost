@@ -106,7 +106,7 @@ func NewApp() *App {
 	dockerSvc := docker.NewService(serversSvc, executor, mutex)
 	servicesSvc := services.NewService(serversSvc, executor, mutex)
 	firewallSvc := firewall.NewService(serversSvc, executor, mutex)
-	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault)
+	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault, firewallSvc)
 	backupSvc := backup.NewService(serversSvc, websiteSvc)
 
 	return &App{
@@ -1281,6 +1281,22 @@ func (a *App) StreamSystemJournal(req services.JournalRequest) (string, error) {
 	return streamID, nil
 }
 
+// --- Docker compose ---
+
+// GetComposeStatus membandingkan konfigurasi container yang BERJALAN dengan
+// docker-compose.yml yang ada sekarang. Perbandingannya memakai config-hash
+// milik compose sendiri, jadi ukurannya sama dengan yang dipakai compose saat
+// memutuskan sebuah service perlu dibuat ulang.
+func (a *App) GetComposeStatus(serverID, containerID string) (*docker.ComposeInfo, error) {
+	return a.dockerSvc.ComposeStatus(serverID, containerID)
+}
+
+// ApplyComposeConfig membuat ulang container dari compose file yang ada
+// sekarang, sehingga tidak ada setelan yang tertinggal.
+func (a *App) ApplyComposeConfig(serverID, containerID string) (*docker.ComposeInfo, error) {
+	return a.dockerSvc.ApplyCompose(serverID, containerID)
+}
+
 // --- Firewall ---
 
 // ListFirewallRules mengembalikan status firewall server beserta seluruh
@@ -1299,6 +1315,28 @@ func (a *App) AddFirewallRule(req firewall.RuleRequest) (*firewall.ListResponse,
 // DeleteFirewallRule menghapus satu aturan berdasarkan ID dari ListFirewallRules.
 func (a *App) DeleteFirewallRule(serverID, ruleID, zone string) (*firewall.ListResponse, error) {
 	return a.firewallSvc.DeleteRule(serverID, ruleID, zone)
+}
+
+// AllowDockerDatabaseAccess memasang aturan agar container Docker bisa
+// menghubungi MySQL/PostgreSQL di host. Jalan pintas untuk kasus yang tidak
+// terlihat jelas: port container yang di-publish tetap terbuka, tapi koneksi
+// container KE host kena kebijakan deny firewall.
+func (a *App) AllowDockerDatabaseAccess(serverID, zone string) (*firewall.ListResponse, error) {
+	return a.firewallSvc.AllowDockerToDatabase(serverID, zone)
+}
+
+// ReloadFirewall menerapkan ulang aturan firewall tanpa mematikannya.
+// Dipakai terutama sesudah Docker restart, yang menyisipkan ulang aturan
+// iptables-nya sendiri dan bisa mengubah urutan relatif terhadap firewall.
+func (a *App) ReloadFirewall(serverID string) (*firewall.ListResponse, error) {
+	return a.firewallSvc.Reload(serverID)
+}
+
+// DetectDockerSubnets membaca subnet bridge Docker yang benar-benar ada di
+// server — dipakai supaya aturan firewall disusun dari keadaan nyata, bukan
+// dari rentang yang diasumsikan.
+func (a *App) DetectDockerSubnets(serverID string) ([]firewall.DockerSubnet, error) {
+	return a.firewallSvc.DetectDockerSubnets(serverID)
 }
 
 // SetFirewallEnabled menyalakan/mematikan firewall. Saat menyalakan, port SSH

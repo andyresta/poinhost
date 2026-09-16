@@ -222,7 +222,10 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverId, domain]);
 
-  async function issueAndEnable() {
+  // enableAfter=false dipakai saat menerbitkan ULANG sertifikat yang sudah
+  // aktif (menambah subdomain baru): SSL-nya sudah menyala, jadi tidak perlu
+  // — dan tidak boleh — diaktifkan lagi.
+  async function issueAndEnable(enableAfter = true) {
     if (!email.trim()) {
       setError('Email wajib diisi untuk menerbitkan sertifikat SSL');
       return;
@@ -232,7 +235,7 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
     try {
       localStorage.setItem(SSL_EMAIL_KEY, email.trim());
       await IssueWebsiteSSL(new website.SSLIssueRequest({ serverId, domain, email: email.trim() }));
-      await EnableWebsiteSSL(serverId, domain);
+      if (enableAfter) await EnableWebsiteSSL(serverId, domain);
       await load();
       onChanged();
     } catch (e) {
@@ -320,7 +323,9 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
 
   if (!status) return <p className="workspace__placeholder">Memuat…</p>;
 
-  if (!status.isParent) {
+  // Subdomain TIDAK lagi diblokir di sini: sertifikat sekarang diterbitkan per
+  // domain, jadi tiap subdomain mengelola SSL-nya sendiri.
+  if (status.message) {
     return <p className="workspace__placeholder">{status.message}</p>;
   }
 
@@ -349,7 +354,41 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
           {status.sslEnabled ? 'SSL aktif' : status.certificate.exists ? 'Sertifikat siap, belum aktif' : 'SSL belum aktif'}
         </span>
       </p>
-      {status.sans && status.sans.length > 0 && <p className="chmod-path">Mencakup: {status.sans.join(', ')}</p>}
+      {/* Yang ditampilkan adalah isi sertifikat yang SEBENARNYA (dibaca dari
+          SAN-nya), bukan daftar subdomain yang terdaftar di aplikasi.
+          Sebelumnya keduanya tertukar, sehingga subdomain yang dibuat setelah
+          sertifikat terbit tampil "tercakup" padahal HTTPS-nya tidak pernah
+          bekerja. */}
+      {status.certificate?.domains && status.certificate.domains.length > 0 && (
+        <p className="chmod-path">Mencakup: {status.certificate.domains.join(', ')}</p>
+      )}
+      {/* Aksinya disediakan LANGSUNG di sini. Blok "Terbitkan" yang biasa cuma
+          muncul kalau sertifikat belum ada, jadi tanpa ini user diberi tahu
+          harus menerbitkan ulang tapi tidak punya tombol untuk melakukannya. */}
+      {status.missingSans && status.missingSans.length > 0 && (
+        <div className="fw-notice fw-notice--warn" style={{ display: 'block' }}>
+          <p style={{ margin: '0 0 6px' }}>
+            Belum tercakup: <strong>{status.missingSans.join(', ')}</strong>
+          </p>
+          <div className="files-panel__toolbar" style={{ marginBottom: 0 }}>
+            <input
+              type="email"
+              placeholder="email@contoh.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{ maxWidth: 220 }}
+            />
+            <button
+              className="btn btn--sm btn--primary"
+              disabled={busy}
+              title="Menerbitkan ulang sertifikat agar mencakup domain di atas. Tombol Perbarui tidak bisa menambah domain."
+              onClick={() => void issueAndEnable(false)}
+            >
+              {busy && <span className="spinner" />} Terbitkan ulang
+            </button>
+          </div>
+        </div>
+      )}
       {status.certificate.notAfter && <p className="chmod-path">Berlaku sampai: {status.certificate.notAfter}</p>}
 
       {status.certificate.exists && (

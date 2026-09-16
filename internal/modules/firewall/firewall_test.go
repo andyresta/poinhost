@@ -482,3 +482,159 @@ func TestZoneAndServiceValidation(t *testing.T) {
 		}
 	}
 }
+
+// --- Deteksi subnet Docker + jalan pintas "Izinkan Docker ke database" ---
+
+// Subnet DIDETEKSI, bukan diasumsikan. Contoh ini meniru server nyata: delapan
+// network, dua di antaranya tanpa IPAM (host/none), satu memakai rentang di
+// LUAR 172.16/12 — persis kasus yang membuat rentang hardcoded gagal diam-diam.
+const dockerNetSample = `DOCKERNET=bridge|172.17.0.0/16|172.17.0.1
+DOCKERNET=devpoin_default|172.22.0.0/16|172.22.0.1
+DOCKERNET=deploy_default|172.18.0.0/16|172.18.0.1
+DOCKERNET=proyek_lama|10.55.0.0/16|10.55.0.1
+DOCKERNET=ipv6net|fd00::/64|fd00::1
+DOCKERNET=bridge|172.17.0.0/16|172.17.0.1
+`
+
+func TestParseDockerSubnets(t *testing.T) {
+	got := parseDockerSubnets(dockerNetSample)
+	if len(got) != 4 {
+		t.Fatalf("harus 4 subnet IPv4 unik, dapat %d: %+v", len(got), got)
+	}
+	// Rentang di luar 172.16/12 WAJIB ikut terdeteksi — inilah alasan
+	// deteksi ini ada.
+	var adaNonDefault bool
+	for _, s := range got {
+		if s.Subnet == "10.55.0.0/16" {
+			adaNonDefault = true
+		}
+		if s.Subnet == "fd00::/64" {
+			t.Fatal("subnet IPv6 tidak boleh ikut: aturan yang dipasang berbentuk IPv4")
+		}
+	}
+	if !adaNonDefault {
+		t.Fatalf("subnet di luar rentang default Docker harus terdeteksi: %+v", got)
+	}
+	if got[0].Gateway != "172.17.0.1" {
+		t.Fatalf("gateway salah baca: %+v", got[0])
+	}
+}
+
+// Containment harus PENUH, bukan sekadar beririsan. Aturan sempit yang
+// dianggap mencakup subnet luas akan membuat UI melaporkan "aman" padahal
+// sebagian container tetap terblokir.
+func TestCidrCoversButuhCakupanPenuh(t *testing.T) {
+	if !cidrCovers("172.16.0.0/12", "172.22.0.0/16") {
+		t.Fatal("rentang luas harus mencakup subnet di dalamnya")
+	}
+	if !cidrCovers("172.17.0.0/16", "172.17.0.0/16") {
+		t.Fatal("subnet yang sama persis harus tercakup")
+	}
+	if cidrCovers("172.17.0.0/16", "172.16.0.0/12") {
+		t.Fatal("aturan sempit TIDAK boleh dianggap mencakup rentang yang lebih luas")
+	}
+	if cidrCovers("10.0.0.0/8", "172.17.0.0/16") {
+		t.Fatal("rentang yang tidak beririsan tidak boleh tercakup")
+	}
+	if cidrCovers("", "172.17.0.0/16") {
+		t.Fatal("aturan tanpa sumber (publik) bukan izin khusus Docker")
+	}
+}
+
+func TestMarkCoveragePerSubnet(t *testing.T) {
+	subnets := []DockerSubnet{
+		{Network: "bridge", Subnet: "172.17.0.0/16"},
+		{Network: "lama", Subnet: "10.55.0.0/16"},
+	}
+	// Hanya rentang Docker default yang diizinkan — subnet 10.55 tertinggal.
+	rules := []Rule{
+		{Port: "3306", Protocol: "tcp", Source: "172.16.0.0/12", Action: "allow"},
+		{Port: "5432", Protocol: "tcp", Source: "172.16.0.0/12", Action: "allow"},
+	}
+	if markCoverage(subnets, rules) {
+		t.Fatal("masih ada subnet yang belum tercakup, tidak boleh dilaporkan selesai")
+	}
+	if !subnets[0].Covered {
+		t.Fatal("subnet 172.17 seharusnya tercakup")
+	}
+	if subnets[1].Covered {
+		t.Fatal("subnet 10.55 TIDAK tercakup dan harus ditandai begitu")
+	}
+
+	// Lengkapi yang tertinggal.
+	rules = append(rules,
+		Rule{Port: "3306", Protocol: "tcp", Source: "10.55.0.0/16", Action: "allow"},
+		Rule{Port: "5432", Protocol: "tcp", Source: "10.55.0.0/16", Action: "allow"})
+	if !markCoverage(subnets, rules) {
+		t.Fatal("seluruh subnet sudah tercakup, seharusnya selesai")
+	}
+
+	// Satu port saja tidak cukup.
+	hanyaMySQL := []Rule{{Port: "3306", Protocol: "tcp", Source: "172.16.0.0/12", Action: "allow"}}
+	if markCoverage([]DockerSubnet{{Subnet: "172.17.0.0/16"}}, hanyaMySQL) {
+		t.Fatal("baru MySQL yang diizinkan, PostgreSQL belum")
+	}
+
+	// Tanpa Docker sama sekali bukan berarti "sudah terpasang".
+	if markCoverage(nil, rules) {
+		t.Fatal("tanpa network Docker tidak boleh dilaporkan sudah terpasang")
+	}
+}
+
+// Skrip hanya memasang aturan untuk yang BELUM tercakup, dan memakai marker
+// bersama dengan modul Database.
+func TestDockerDBScriptHanyaYangKurang(t *testing.T) {
+	ufw := ufwDockerDBScript([]string{"172.22.0.0/16|3306", "10.55.0.0/16|5432"})
+	for _, want := range []string{
+		"ufw allow from 172.22.0.0/16 to any port 3306 proto tcp comment 'poinhost-docker-access'",
+		"ufw allow from 10.55.0.0/16 to any port 5432 proto tcp comment 'poinhost-docker-access'",
+	} {
+		if !strings.Contains(ufw, want) {
+			t.Fatalf("skrip ufw kurang %q:\n%s", want, ufw)
+		}
+	}
+	if strings.Contains(ufw, "172.16.0.0/12") {
+		t.Fatalf("tidak boleh memasang rentang yang diasumsikan:\n%s", ufw)
+	}
+
+	fwd := firewalldDockerDBScript([]string{"172.22.0.0/16|3306"}, "internal")
+	if !strings.Contains(fwd, "--zone=internal") {
+		t.Fatalf("zone tidak diteruskan:\n%s", fwd)
+	}
+	if !strings.Contains(fwd, `source address="172.22.0.0/16"`) {
+		t.Fatalf("subnet hasil deteksi tidak dipakai:\n%s", fwd)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(fwd), "firewall-cmd --reload") {
+		t.Fatalf("firewalld wajib reload di akhir:\n%s", fwd)
+	}
+}
+
+// Status yang dibaca UI: subnet hasil deteksi dan cakupannya, dalam satu
+// round-trip yang sama dengan pembacaan aturan.
+func TestParseListMenyertakanSubnetDocker(t *testing.T) {
+	stdout := `DOCKERNET=bridge|172.17.0.0/16|172.17.0.1
+DOCKERNET=devpoin_default|172.22.0.0/16|172.22.0.1
+INSTALLED=ufw
+BACKEND=ufw
+DEFAULT=Default: deny (incoming), allow (outgoing), deny (routed)
+__RULES__
+[ 1] 22/tcp                     ALLOW IN    Anywhere
+[ 2] 3306/tcp                   ALLOW IN    172.16.0.0/12              # poinhost-docker-access
+[ 3] 5432/tcp                   ALLOW IN    172.16.0.0/12              # poinhost-docker-access
+`
+	out := parseList(stdout, 22)
+	if len(out.Status.DockerSubnets) != 2 {
+		t.Fatalf("subnet Docker harus ikut terbaca: %+v", out.Status.DockerSubnets)
+	}
+	if !out.Status.DockerDBAllowed {
+		t.Fatalf("kedua subnet tercakup 172.16/12, seharusnya selesai: %+v", out.Status)
+	}
+
+	// Subnet di luar rentang default membuat statusnya belum selesai.
+	stdout2 := strings.Replace(stdout, "DOCKERNET=devpoin_default|172.22.0.0/16|172.22.0.1",
+		"DOCKERNET=proyek_lama|10.55.0.0/16|10.55.0.1", 1)
+	out2 := parseList(stdout2, 22)
+	if out2.Status.DockerDBAllowed {
+		t.Fatal("subnet 10.55 belum diizinkan, tidak boleh dilaporkan selesai")
+	}
+}

@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import { InspectDockerContainer, RecreateDockerContainer } from '../../../wailsjs/go/main/App';
 import { docker } from '../../../wailsjs/go/models';
 import { useConfirm } from '../../components/ConfirmDialog';
+import { useT } from '../../i18n';
 
 // Docker tidak punya "edit container in place" — satu-satunya cara mengubah
 // env/port/volume/memory container yang sudah ada adalah stop -> rm ->
@@ -23,6 +24,7 @@ export function RecreateContainerModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const t = useT();
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -51,15 +53,10 @@ export function RecreateContainerModal({
 
   async function handleSave() {
     const ok = await confirm({
-      title: 'Terapkan konfigurasi baru',
-      message: (
-        <>
-          Terapkan konfigurasi baru ke <strong>{name}</strong>?
-        </>
-      ),
-      detail:
-        'Container akan di-stop, dihapus, lalu dibuat ulang dengan nama yang sama — data di volume tetap aman, tapi container berhenti sesaat.',
-      confirmLabel: 'Terapkan',
+      title: t('rc.title'),
+      message: t('rc.confirm', { name }),
+      detail: t('rc.detail'),
+      confirmLabel: t('rc.apply'),
     });
     if (!ok) return;
     setSaving(true);
@@ -75,9 +72,8 @@ export function RecreateContainerModal({
           memoryBytes: memoryMB > 0 ? memoryMB * 1024 * 1024 : 0,
         }),
       );
-      if (res.warning) {
-        alert(res.warning);
-      }
+      // Peringatan firewall sudah tidak ada lagi: scope ditegakkan lewat
+      // alamat bind, bukan aturan firewall yang bisa saja tidak berlaku.
       onDone();
     } catch (e) {
       setError(String(e));
@@ -86,15 +82,11 @@ export function RecreateContainerModal({
     }
   }
 
+  // Dua pilihan saja. "Private" ditegakkan lewat alamat bind (127.0.0.1),
+  // bukan aturan firewall — jadi berlaku apa pun kondisi firewall server.
   function scopeLabel(scope: string) {
-    switch (scope) {
-      case 'intranet':
-        return 'Intranet (LAN saja)';
-      case 'localhost':
-        return 'Localhost saja';
-      default:
-        return 'Publik (internet)';
-    }
+    if (scope === 'private') return t('rc.scopePrivate');
+    return t('rc.scopePublic');
   }
 
   return (
@@ -108,14 +100,14 @@ export function RecreateContainerModal({
         </div>
         <div className="modal-card__body modal-card__body--editor docker-recreate">
           {loading ? (
-            <p className="workspace__placeholder">Memuat konfigurasi…</p>
+            <p className="workspace__placeholder">{t('rc.loadingConfig')}</p>
           ) : (
             <>
               {error && <p className="overview__error">{error}</p>}
 
               <section>
                 <div className="docker-recreate__section-head">
-                  <h3>Environment</h3>
+                  <h3>{t('rc.environment')}</h3>
                   <button className="btn btn--sm" onClick={() => setEnv([...env, new docker.EnvVar({ key: '', value: '' })])}>
                     + Tambah
                   </button>
@@ -141,7 +133,7 @@ export function RecreateContainerModal({
 
               <section>
                 <div className="docker-recreate__section-head">
-                  <h3>Port</h3>
+                  <h3>{t('rc.ports')}</h3>
                   <button
                     className="btn btn--sm"
                     onClick={() => setPorts([...ports, new docker.PortMapping({ hostPort: 0, containerPort: 0, protocol: 'tcp', scope: 'public' })])}
@@ -153,7 +145,7 @@ export function RecreateContainerModal({
                   <div className="docker-recreate__row" key={i}>
                     <input
                       type="number"
-                      placeholder="host"
+                      placeholder={t('rc.phHost')}
                       value={p.hostPort || ''}
                       onChange={(ev) =>
                         setPorts(ports.map((x, j) => (j === i ? new docker.PortMapping({ ...x, hostPort: Number(ev.target.value) }) : x)))
@@ -162,7 +154,7 @@ export function RecreateContainerModal({
                     <span>:</span>
                     <input
                       type="number"
-                      placeholder="container"
+                      placeholder={t('rc.phContainer')}
                       value={p.containerPort || ''}
                       onChange={(ev) =>
                         setPorts(
@@ -178,13 +170,12 @@ export function RecreateContainerModal({
                       <option value="udp">udp</option>
                     </select>
                     <select
-                      title="Siapa yang boleh mengakses port ini dari luar server"
+                      title={t('rc.scopeHint')}
                       value={p.scope || 'public'}
                       onChange={(ev) => setPorts(ports.map((x, j) => (j === i ? new docker.PortMapping({ ...x, scope: ev.target.value }) : x)))}
                     >
                       <option value="public">{scopeLabel('public')}</option>
-                      <option value="intranet">{scopeLabel('intranet')}</option>
-                      <option value="localhost">{scopeLabel('localhost')}</option>
+                      <option value="private">{scopeLabel('private')}</option>
                     </select>
                     <button className="btn btn--sm btn--danger" onClick={() => setPorts(ports.filter((_, j) => j !== i))}>
                       <X size={14} />
@@ -201,7 +192,7 @@ export function RecreateContainerModal({
 
               <section>
                 <div className="docker-recreate__section-head">
-                  <h3>Volume</h3>
+                  <h3>{t('rc.volumes')}</h3>
                   <button
                     className="btn btn--sm"
                     onClick={() => setVolumes([...volumes, new docker.VolumeMount({ hostPath: '', containerPath: '', readOnly: false })])}
@@ -244,7 +235,7 @@ export function RecreateContainerModal({
               </section>
 
               <section>
-                <h3>Memory limit (MB, 0 = unlimited)</h3>
+                <h3>{t('rc.memoryLimit')}</h3>
                 <input
                   type="number"
                   min={0}
@@ -261,7 +252,7 @@ export function RecreateContainerModal({
             Batal
           </button>
           <button className="btn btn--primary" disabled={loading || saving} onClick={() => void handleSave()}>
-            {saving && <span className="spinner" />} {saving ? 'Menerapkan…' : 'Terapkan (recreate)'}
+            {saving && <span className="spinner" />} {saving ? t('rc.applying') : t('rc.applyRecreate')}
           </button>
         </div>
       </div>

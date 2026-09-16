@@ -9,6 +9,7 @@ import (
 
 	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
+	"github.com/andyresta/poinhost/internal/modules/firewall"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 )
 
@@ -41,6 +42,12 @@ type Service struct {
 	servers  *servers.Service
 	executor *sshpool.Executor
 	mutex    *sshpool.ServerMutexRegistry
+	// firewall dipakai untuk menjawab "apakah container Docker bisa
+	// menjangkau port database ini". SENGAJA memakai modul firewall, bukan
+	// pengecek sendiri: versi lama mencari KOMENTAR aturan dan karenanya
+	// tidak mengenali aturan sah yang ditulis lewat jalur lain — UI lalu
+	// melaporkan akses terblokir padahal kenyataannya jalan.
+	firewall *firewall.Service
 
 	// db menyimpan metadata LOKAL milik modul ini (metadata kredensial
 	// database yang sudah tersimpan di vault, tautan domain<->database) —
@@ -67,11 +74,12 @@ type Service struct {
 }
 
 // NewService membuat service modul website baru.
-func NewService(serversSvc *servers.Service, executor *sshpool.Executor, mutex *sshpool.ServerMutexRegistry, db *sql.DB, vault secrets.Vault) *Service {
+func NewService(serversSvc *servers.Service, executor *sshpool.Executor, mutex *sshpool.ServerMutexRegistry, db *sql.DB, vault secrets.Vault, firewallSvc *firewall.Service) *Service {
 	return &Service{
 		servers:     serversSvc,
 		executor:    executor,
 		mutex:       mutex,
+		firewall:    firewallSvc,
 		db:          db,
 		vault:       vault,
 		nginxCache:  make(map[string]nginxStatusCacheEntry),

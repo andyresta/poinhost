@@ -53,11 +53,31 @@ type DBDockerAccessStatus struct {
 	// yang perlu dibuka.
 	Enabled bool   `json:"enabled"`
 	Message string `json:"message,omitempty"`
+	// LocalOnlyUsers daftar user MySQL yang HANYA punya host 'localhost' /
+	// '127.0.0.1'. Ini celah yang paling sering menipu: bind-address sudah
+	// 0.0.0.0 dan firewall sudah terbuka, tapi MySQL tetap menolak koneksi
+	// dari container karena akunnya tidak punya host yang cocok. Gejalanya
+	// "Host 'x.x.x.x' is not allowed", bukan timeout — jadi mudah dikira
+	// masalah password.
+	//
+	// SENGAJA hanya dilaporkan, TIDAK diubah otomatis: menambah host '%' pada
+	// sebuah akun adalah keputusan keamanan milik user, bukan efek samping
+	// dari menekan tombol.
+	LocalOnlyUsers []string `json:"localOnlyUsers,omitempty"`
 }
 
 func (st *DBDockerAccessStatus) computeEnabled() {
 	firewallBlocks := st.FirewallDetected != "" && st.FirewallDetected != "none" && !st.FirewallRuleActive
 	st.Enabled = st.BindAllInterfaces && !firewallBlocks
+
+	// Jalur TCP yang terbuka belum berarti container BISA masuk: MySQL masih
+	// akan menolak akun yang hostnya cuma 'localhost'. Ini dilaporkan sebagai
+	// peringatan, bukan diam-diam menurunkan Enabled — jalur jaringannya
+	// memang sudah benar, yang kurang ada di sisi akun.
+	if st.Enabled && len(st.LocalOnlyUsers) > 0 {
+		st.Message = strings.TrimSpace(st.Message + " Jalur jaringan sudah terbuka, TAPI akun MySQL berikut hanya punya host localhost sehingga koneksi dari container tetap akan ditolak (\"Host ... is not allowed\"): " +
+			strings.Join(st.LocalOnlyUsers, ", ") + ". Tambahkan host '%' atau host jaringan Docker pada akun itu kalau memang dipakai dari container.")
+	}
 }
 
 func mysqlDockerConfPath(pm string) string {
@@ -83,26 +103,6 @@ elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null
   echo "FIREWALL=firewalld"
 else
   echo "FIREWALL=none"
-fi`
-}
-
-// firewallCheckScript mengecek apakah aturan poinhost untuk PORT INI
-// spesifik sudah terpasang — bukan cuma "ada marker poinhost di suatu
-// tempat" (kalau MySQL dan PostgreSQL sama-sama pernah diaktifkan, masing-
-// masing punya aturan sendiri di port berbeda; mengecek marker saja tanpa
-// port akan salah melaporkan "aktif" untuk engine yang aturannya belum
-// pernah dipasang, cuma karena punya engine LAIN sudah).
-func firewallCheckScript(port int) string {
-	p := strconv.Itoa(port)
-	return `if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "^Status: active"; then
-  echo "FIREWALL=ufw"
-  ufw status verbose 2>/dev/null | grep "` + p + `" | grep -q "` + dockerAccessMarker + `" && echo "FWRULE=1" || echo "FWRULE=0"
-elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -qi running; then
-  echo "FIREWALL=firewalld"
-  firewall-cmd --list-rich-rules 2>/dev/null | grep "port=\"` + p + `\"" | grep -q "` + dockerBridgeCIDR + `" && echo "FWRULE=1" || echo "FWRULE=0"
-else
-  echo "FIREWALL=none"
-  echo "FWRULE=0"
 fi`
 }
 
@@ -142,8 +142,18 @@ echo "POINHOST_DOCKER_ACCESS_DONE"
 	return `set -e
 sudo -u postgres psql -c "ALTER SYSTEM SET listen_addresses = '*';" >/dev/null
 HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" | tr -d '[:space:]')
+# Metode auth MENGIKUTI password_encryption server, bukan "md5" yang dipatok
+# mati. PostgreSQL 14+ menyimpan password sebagai scram-sha-256, dan baris
+# pg_hba bertuliskan md5 akan menolak login walau passwordnya benar —
+# kegagalan yang terbaca seperti "password salah" padahal konfigurasinya yang
+# keliru, jadi sangat memakan waktu untuk dilacak.
+AUTH=$(sudo -u postgres psql -tAc "SHOW password_encryption;" 2>/dev/null | tr -d '[:space:]')
+case "$AUTH" in
+  scram-sha-256|md5) ;;
+  *) AUTH=scram-sha-256 ;;
+esac
 if [ -n "$HBA" ] && ! grep -q "` + dockerAccessMarker + `" "$HBA" 2>/dev/null; then
-  printf '\n# ` + dockerAccessMarker + ` — izinkan koneksi dari container Docker di host yang sama\nhost    all             all             ` + dockerBridgeCIDR + `            md5\n' >> "$HBA"
+  printf '\n# ` + dockerAccessMarker + ` — izinkan koneksi dari container Docker di host yang sama\nhost    all             all             ` + dockerBridgeCIDR + `            %s\n' "$AUTH" >> "$HBA"
 fi
 systemctl restart postgresql 2>/dev/null || true
 ` + firewallEnsureScript(5432) + `
@@ -202,11 +212,12 @@ func dbDockerAccessStatusScript(engine string) string {
 		// sungguhan untuk tahu nilainya.
 		return `BIND=$(mysql -u root --batch --skip-column-names -e "SHOW VARIABLES LIKE 'bind_address';" 2>/dev/null | awk '{print $2}')
 echo "BIND=$BIND"
-` + firewallCheckScript(3306)
+mysql -u root --batch --skip-column-names -e "SELECT user FROM mysql.user GROUP BY user HAVING SUM(host NOT IN ('localhost','127.0.0.1','::1')) = 0;" 2>/dev/null | sed 's/^/LOCALUSER=/'
+`
 	}
 	return `LISTEN=$(sudo -u postgres psql -tAc "SHOW listen_addresses;" 2>/dev/null | tr -d '[:space:]')
 echo "BIND=$LISTEN"
-` + firewallCheckScript(5432)
+`
 }
 
 // GetDBDockerAccessStatus membaca status akses Docker->database saat ini —
@@ -237,8 +248,34 @@ func (s *Service) GetDBDockerAccessStatus(serverID, engine string) (*DBDockerAcc
 			st.FirewallDetected = strings.TrimPrefix(line, "FIREWALL=")
 		case strings.HasPrefix(line, "FWRULE="):
 			st.FirewallRuleActive = strings.TrimPrefix(line, "FWRULE=") == "1"
+		case strings.HasPrefix(line, "LOCALUSER="):
+			if u := strings.TrimSpace(strings.TrimPrefix(line, "LOCALUSER=")); u != "" {
+				st.LocalOnlyUsers = append(st.LocalOnlyUsers, u)
+			}
 		}
 	}
+	// Status firewall DITANYAKAN ke modul firewall, bukan ditebak dari
+	// komentar aturan. Versi lama mencari marker "poinhost-docker-access" di
+	// keluaran `ufw status`, sehingga aturan sah yang ditulis lewat jalur lain
+	// (panel Firewall, atau manual oleh user) tidak dikenali — panel ini lalu
+	// melaporkan "terblokir" padahal container benar-benar bisa connect.
+	// Sekarang yang dinilai adalah EFEKNYA: apakah seluruh subnet Docker yang
+	// terdeteksi tercakup aturan allow untuk port ini.
+	port := 3306
+	if engine != "mysql" {
+		port = 5432
+	}
+	if s.firewall != nil {
+		allowed, backend, ferr := s.firewall.PortAllowedFromDocker(serverID, port)
+		if ferr == nil {
+			st.FirewallDetected = backend
+			st.FirewallRuleActive = allowed
+		}
+		// Kalau pengecekan firewall gagal, status firewall dibiarkan kosong
+		// daripada diisi tebakan — computeEnabled memperlakukan "tidak ada
+		// firewall terdeteksi" sebagai tidak ada yang memblokir.
+	}
+
 	st.computeEnabled()
 	return st, nil
 }

@@ -121,8 +121,7 @@ func (s *Service) RecreateContainer(req RecreateContainerRequest) (*RecreateCont
 		"docker rm \"$CID\"\n" +
 		createCmd + "\n" +
 		"docker start \"$NAME\"\n" +
-		"echo \"__poinhost_RECREATE_OK__$(docker inspect --format '{{.Id}}' \"$NAME\" 2>/dev/null)\"\n" +
-		portScopeApplyScript(tpl.Ports)
+		"echo \"__poinhost_RECREATE_OK__$(docker inspect --format '{{.Id}}' \"$NAME\" 2>/dev/null)\"\n"
 
 	runRes, err := s.runDocker(access, script, 120*time.Second)
 	if err != nil {
@@ -166,12 +165,10 @@ func (s *Service) RecreateContainer(req RecreateContainerRequest) (*RecreateCont
 		info.Ports = strings.Join(parts, ", ")
 	}
 
-	firewallDetected := "none"
-	for _, line := range strings.Split(runRes.Stdout+"\n"+runRes.Stderr, "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "FIREWALL="); ok {
-			firewallDetected = v
-		}
-	}
-
-	return &RecreateContainerResponse{Container: info, Warning: portScopeWarning(tpl.Ports, firewallDetected)}, nil
+	// Tidak ada lagi peringatan soal firewall di sini: scope sekarang
+	// ditegakkan MURNI lewat alamat bind (127.0.0.1 untuk private), yang
+	// berlaku apa pun kondisi firewallnya. Tidak ada janji proteksi yang
+	// bergantung pada aturan firewall, jadi tidak ada yang perlu
+	// diperingatkan.
+	return &RecreateContainerResponse{Container: info}, nil
 }

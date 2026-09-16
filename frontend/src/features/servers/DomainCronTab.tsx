@@ -10,16 +10,19 @@ import {
 } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
 import { useConfirm } from '../../components/ConfirmDialog';
+import { useT } from '../../i18n';
 
-const PRESETS: { label: string; value: string }[] = [
-  { label: 'Tiap menit', value: '* * * * *' },
-  { label: 'Tiap 5 menit', value: '*/5 * * * *' },
-  { label: 'Tiap 15 menit', value: '*/15 * * * *' },
-  { label: 'Tiap 30 menit', value: '*/30 * * * *' },
-  { label: 'Tiap jam', value: '0 * * * *' },
-  { label: 'Harian 02:00', value: '0 2 * * *' },
-  { label: 'Mingguan (Senin 02:00)', value: '0 2 * * 1' },
-  { label: 'Bulanan (tgl 1, 02:00)', value: '0 2 1 * *' },
+const PRESETS: { labelKey: string; value: string }[] = [
+  // labelKey, bukan teks jadi — diterjemahkan saat render supaya ikut
+  // berubah ketika bahasa diganti tanpa reload.
+  { labelKey: 'cron.preset.everyMinute', value: '* * * * *' },
+  { labelKey: 'cron.preset.every5', value: '*/5 * * * *' },
+  { labelKey: 'cron.preset.every15', value: '*/15 * * * *' },
+  { labelKey: 'cron.preset.every30', value: '*/30 * * * *' },
+  { labelKey: 'cron.preset.hourly', value: '0 * * * *' },
+  { labelKey: 'cron.preset.daily', value: '0 2 * * *' },
+  { labelKey: 'cron.preset.weekly', value: '0 2 * * 1' },
+  { labelKey: 'cron.preset.monthly', value: '0 2 1 * *' },
 ];
 
 // Bentuk form lokal (plain object) — dipisah dari class website.CronJobRequest
@@ -59,6 +62,7 @@ function formFromJob(job: website.CronJobInfo): CronFormState {
 }
 
 function CronLogModal({ serverId, domain, jobId, onClose }: { serverId: string; domain: string; jobId: string; onClose: () => void }) {
+  const t = useT();
   const [content, setContent] = useState('');
   const [exists, setExists] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,14 +80,14 @@ function CronLogModal({ serverId, domain, jobId, onClose }: { serverId: string; 
     <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-card modal-card--editor">
         <div className="modal-card__header">
-          <h2>Log Job</h2>
+          <h2>{t('cron.jobLog')}</h2>
           <button className="modal-card__close" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
         <div className="modal-card__body modal-card__body--editor">
           {error && <p className="overview__error">{error}</p>}
-          {!exists && <p className="workspace__placeholder">Belum ada log — job ini belum pernah jalan.</p>}
+          {!exists && <p className="workspace__placeholder">{t('cron.noLog')}</p>}
           {exists && <pre className="docker-engine__log">{content}</pre>}
         </div>
         <div className="modal-card__footer">
@@ -97,6 +101,7 @@ function CronLogModal({ serverId, domain, jobId, onClose }: { serverId: string; 
 }
 
 export function DomainCronTab({ serverId, domain }: { serverId: string; domain: string }) {
+  const t = useT();
   const confirm = useConfirm();
   const [list, setList] = useState<website.CronListResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,13 +138,13 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
 
   async function handleDelete(job: website.CronJobInfo) {
     const ok = await confirm({
-      title: 'Hapus cron job',
+      title: t('cron.deleteTitle'),
       message: (
         <>
           Hapus job <strong>{job.description || job.actionSummary}</strong>?
         </>
       ),
-      confirmLabel: 'Hapus',
+      confirmLabel: t('common.delete'),
       danger: true,
     });
     if (!ok) return;
@@ -173,7 +178,7 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
     }
   }
 
-  if (!list) return <p className="workspace__placeholder">Memuat…</p>;
+  if (!list) return <p className="workspace__placeholder">{t('common.loading')}</p>;
 
   return (
     <div>
@@ -181,22 +186,22 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
 
       <div className="files-panel__toolbar">
         <button className="btn btn--sm" onClick={() => void load()}>
-          <RotateCw size={13} /> Refresh
+          <RotateCw size={13} /> {t('common.refresh')}
         </button>
         <button className="btn btn--sm btn--primary" onClick={() => setForm(emptyForm())}>
-          + Job Baru
+          + {t('cron.newJob')}
         </button>
         <span className="docker-panel__version">
-          {list.active} aktif · {list.inactive} nonaktif
+          {t('cron.summary', { active: String(list.active), inactive: String(list.inactive) })}
         </span>
       </div>
 
       <table className="files-panel__table">
         <thead>
           <tr>
-            <th>Jadwal</th>
-            <th>Aksi</th>
-            <th>Status</th>
+            <th>{t('cron.colSchedule')}</th>
+            <th>{t('cron.colAction')}</th>
+            <th>{t('cron.colStatus')}</th>
             <th className="files-panel__col-actions" />
           </tr>
         </thead>
@@ -209,20 +214,20 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
               </td>
               <td>
                 <span className={`docker-badge ${job.enabled ? 'docker-badge--running' : 'docker-badge--stopped'}`}>
-                  {job.enabled ? 'Aktif' : 'Nonaktif'}
+                  {job.enabled ? t('cron.active') : t('cron.inactive')}
                 </span>
               </td>
               <td className="files-panel__row-actions">
-                <button title="Log" onClick={() => setLogJobId(job.id)}>
+                <button title={t('cron.jobLog')} onClick={() => setLogJobId(job.id)}>
                   <FileText size={14} />
                 </button>
-                <button title="Edit" onClick={() => setForm(formFromJob(job))}>
+                <button title={t('cron.editJob')} onClick={() => setForm(formFromJob(job))}>
                   <Pencil size={14} />
                 </button>
-                <button title={job.enabled ? 'Nonaktifkan' : 'Aktifkan'} disabled={busy === job.id} onClick={() => void handleToggle(job)}>
+                <button title={job.enabled ? t('cron.disable') : t('cron.enable')} disabled={busy === job.id} onClick={() => void handleToggle(job)}>
                   {busy === job.id ? <span className="spinner" /> : job.enabled ? <Pause size={14} /> : <Play size={14} />}
                 </button>
-                <button title="Hapus" disabled={busy === job.id} onClick={() => void handleDelete(job)}>
+                <button title={t('common.delete')} disabled={busy === job.id} onClick={() => void handleDelete(job)}>
                   {busy === job.id ? <span className="spinner" /> : <Trash2 size={14} />}
                 </button>
               </td>
@@ -242,7 +247,7 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
         <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && setForm(null)}>
           <div className="modal-card">
             <div className="modal-card__header">
-              <h2>{form.id ? 'Edit Job' : 'Job Baru'}</h2>
+              <h2>{form.id ? t('cron.editJob') : t('cron.newJob')}</h2>
               <button className="modal-card__close" onClick={() => setForm(null)}>
                 <X size={18} />
               </button>
@@ -253,24 +258,24 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
                   className={`segmented__item${form.taskType === 'command' ? ' segmented__item--active' : ''}`}
                   onClick={() => setForm({ ...form, taskType: 'command' })}
                 >
-                  Perintah shell
+                  {t('cron.shellCommand')}
                 </button>
                 <button
                   className={`segmented__item${form.taskType === 'http' ? ' segmented__item--active' : ''}`}
                   onClick={() => setForm({ ...form, taskType: 'http' })}
                 >
-                  Panggilan HTTP
+                  {t('cron.httpCall')}
                 </button>
               </div>
 
               <label className="form-field">
-                <span>Deskripsi (opsional)</span>
+                <span>{t('cron.description')}</span>
                 <input value={form.description ?? ''} onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </label>
 
               {form.taskType === 'command' ? (
                 <label className="form-field">
-                  <span>Perintah (dijalankan dari document root domain)</span>
+                  <span>{t('cron.command')}</span>
                   <input
                     placeholder="php artisan schedule:run"
                     value={form.command ?? ''}
@@ -284,7 +289,7 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
                     <input placeholder="https://contoh.com/cron/tick" value={form.url ?? ''} onChange={(e) => setForm({ ...form, url: e.target.value })} />
                   </label>
                   <label className="form-field">
-                    <span>Method</span>
+                    <span>{t('cron.method')}</span>
                     <select value={form.method ?? 'GET'} onChange={(e) => setForm({ ...form, method: e.target.value })}>
                       <option value="GET">GET</option>
                       <option value="POST">POST</option>
@@ -294,30 +299,30 @@ export function DomainCronTab({ serverId, domain }: { serverId: string; domain: 
               )}
 
               <label className="form-field">
-                <span>Jadwal (5 field cron)</span>
+                <span>{t('cron.schedule')}</span>
                 <input value={form.schedule} onChange={(e) => setForm({ ...form, schedule: e.target.value })} />
               </label>
               <div className="files-panel__toolbar">
                 {PRESETS.map((p) => (
                   <button key={p.value} className="btn btn--sm" onClick={() => setForm({ ...form, schedule: p.value })}>
-                    {p.label}
+                    {t(p.labelKey as 'cron.preset.hourly')}
                   </button>
                 ))}
               </div>
 
               <label className="form-check">
                 <input type="checkbox" checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />
-                <span>Aktif</span>
+                <span>{t('cron.enabled')}</span>
               </label>
 
               {formError.current && <p className="overview__error">{formError.current}</p>}
             </div>
             <div className="modal-card__footer">
               <button className="btn btn--ghost" onClick={() => setForm(null)}>
-                Batal
+                {t('common.cancel')}
               </button>
               <button className="btn btn--primary" disabled={busy === '__form__'} onClick={() => void handleSubmit()}>
-                {busy === '__form__' && <span className="spinner" />} {busy === '__form__' ? 'Menyimpan…' : 'Simpan'}
+                {busy === '__form__' && <span className="spinner" />} {busy === '__form__' ? t('cron.saving') : t('common.save')}
               </button>
             </div>
           </div>
