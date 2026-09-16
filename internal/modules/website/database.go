@@ -496,7 +496,7 @@ func (s *Service) runPostgres(access *websiteAccess, db, sql string) (string, er
 	// adalah PIPA, bukan tab — sementara parser di modul ini memecah baris
 	// dengan tab (sama seperti keluaran `mysql --batch`). Tanpa flag ini,
 	// seluruh baris masuk sebagai kolom pertama, sehingga mis. nama role
-	// terbaca "mkelindo|OWNER" dan tidak cocok dengan user mana pun —
+	// terbaca "acmeapp|OWNER" dan tidak cocok dengan user mana pun —
 	// gejalanya kolom relasi user↔database tampil kosong padahal datanya ada.
 	cmd := "sudo -u postgres psql -v ON_ERROR_STOP=1 -d " + shellQuote(db) +
 		" -At -F " + shellQuote("\t") + " -c " + shellQuote(sql)

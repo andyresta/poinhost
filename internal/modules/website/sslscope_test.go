@@ -10,16 +10,16 @@ import (
 // sertifikat yang tidak pernah dipakai.
 func TestCertExistsScriptJatuhKeIndukUntukSetupLama(t *testing.T) {
 	// Subdomain: ada jalur cadangan ke lineage induk.
-	sub := certExistsScript("whmail.devpoin.com", "devpoin.com")
-	if !strings.Contains(sub, "/etc/letsencrypt/live/whmail.devpoin.com/fullchain.pem") {
+	sub := certExistsScript("mail.example.com", "example.com")
+	if !strings.Contains(sub, "/etc/letsencrypt/live/mail.example.com/fullchain.pem") {
 		t.Fatalf("lineage sendiri harus dicek lebih dulu:\n%s", sub)
 	}
-	if !strings.Contains(sub, "/etc/letsencrypt/live/devpoin.com/fullchain.pem") {
+	if !strings.Contains(sub, "/etc/letsencrypt/live/example.com/fullchain.pem") {
 		t.Fatalf("harus ada cadangan ke lineage induk:\n%s", sub)
 	}
 	// Cadangan hanya dipakai kalau SAN induk memang memuat subdomain ini —
 	// kalau tidak, subdomain yang TIDAK tercakup akan salah dilaporkan aman.
-	if !strings.Contains(sub, `grep -q "DNS:whmail.devpoin.com"`) {
+	if !strings.Contains(sub, `grep -q "DNS:mail.example.com"`) {
 		t.Fatalf("cadangan wajib memverifikasi SAN induk:\n%s", sub)
 	}
 	if !strings.Contains(sub, "CERT_SHARED=1") {
@@ -27,7 +27,7 @@ func TestCertExistsScriptJatuhKeIndukUntukSetupLama(t *testing.T) {
 	}
 
 	// Domain induk: tidak punya induk, jadi tidak ada cadangan sama sekali.
-	parent := certExistsScript("devpoin.com", "")
+	parent := certExistsScript("example.com", "")
 	if strings.Contains(parent, "CERT_SHARED=1") {
 		t.Fatalf("domain induk tidak boleh punya jalur cadangan:\n%s", parent)
 	}

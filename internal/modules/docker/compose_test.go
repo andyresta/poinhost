@@ -22,11 +22,11 @@ func TestParseComposeInfoTidakDikelolaCompose(t *testing.T) {
 func TestParseComposeInfoMendeteksiDrift(t *testing.T) {
 	stdout := `MANAGED=1
 PROJECT=deploy
-SERVICE=kelindo-mobs
-WORKDIR=/opt/kelindo-mobs/deploy
-FILES=/opt/kelindo-mobs/deploy/docker-compose.yml
-DRY=DRY-RUN MODE -  Container kelindo-mobs  Recreate
-DRY=DRY-RUN MODE -  Container kelindo-mobs  Recreated
+SERVICE=mobile-api
+WORKDIR=/opt/mobile-api/deploy
+FILES=/opt/mobile-api/deploy/docker-compose.yml
+DRY=DRY-RUN MODE -  Container mobile-api  Recreate
+DRY=DRY-RUN MODE -  Container mobile-api  Recreated
 `
 	info := parseComposeInfo(stdout)
 	if !info.Managed || !info.Drift {
@@ -38,7 +38,7 @@ DRY=DRY-RUN MODE -  Container kelindo-mobs  Recreated
 	if info.Unknown {
 		t.Fatal("putusan sudah jelas, tidak boleh dilaporkan tidak diketahui")
 	}
-	if info.Service != "kelindo-mobs" || info.WorkingDir != "/opt/kelindo-mobs/deploy" {
+	if info.Service != "mobile-api" || info.WorkingDir != "/opt/mobile-api/deploy" {
 		t.Fatalf("label compose salah baca: %+v", info)
 	}
 }
@@ -67,8 +67,8 @@ DRY=DRY-RUN MODE -  Container app  Running
 func TestComposeScriptAman(t *testing.T) {
 	// Skrip disusun di ApplyCompose; di sini diuji bentuknya lewat helper yang
 	// sama supaya perubahan tidak sengaja ketahuan.
-	script := "set -e\ncd " + shellQuote("/opt/kelindo-mobs/deploy") +
-		"\ndocker compose up -d --force-recreate --no-deps " + shellQuote("kelindo-mobs")
+	script := "set -e\ncd " + shellQuote("/opt/mobile-api/deploy") +
+		"\ndocker compose up -d --force-recreate --no-deps " + shellQuote("mobile-api")
 
 	if !contains(script, "--force-recreate") {
 		t.Fatal("tanpa --force-recreate, konfigurasi baru tidak akan diterapkan")

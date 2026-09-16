@@ -489,7 +489,7 @@ func TestZoneAndServiceValidation(t *testing.T) {
 // network, dua di antaranya tanpa IPAM (host/none), satu memakai rentang di
 // LUAR 172.16/12 — persis kasus yang membuat rentang hardcoded gagal diam-diam.
 const dockerNetSample = `DOCKERNET=bridge|172.17.0.0/16|172.17.0.1
-DOCKERNET=devpoin_default|172.22.0.0/16|172.22.0.1
+DOCKERNET=appstack_default|172.22.0.0/16|172.22.0.1
 DOCKERNET=deploy_default|172.18.0.0/16|172.18.0.1
 DOCKERNET=proyek_lama|10.55.0.0/16|10.55.0.1
 DOCKERNET=ipv6net|fd00::/64|fd00::1
@@ -613,7 +613,7 @@ func TestDockerDBScriptHanyaYangKurang(t *testing.T) {
 // round-trip yang sama dengan pembacaan aturan.
 func TestParseListMenyertakanSubnetDocker(t *testing.T) {
 	stdout := `DOCKERNET=bridge|172.17.0.0/16|172.17.0.1
-DOCKERNET=devpoin_default|172.22.0.0/16|172.22.0.1
+DOCKERNET=appstack_default|172.22.0.0/16|172.22.0.1
 INSTALLED=ufw
 BACKEND=ufw
 DEFAULT=Default: deny (incoming), allow (outgoing), deny (routed)
@@ -631,7 +631,7 @@ __RULES__
 	}
 
 	// Subnet di luar rentang default membuat statusnya belum selesai.
-	stdout2 := strings.Replace(stdout, "DOCKERNET=devpoin_default|172.22.0.0/16|172.22.0.1",
+	stdout2 := strings.Replace(stdout, "DOCKERNET=appstack_default|172.22.0.0/16|172.22.0.1",
 		"DOCKERNET=proyek_lama|10.55.0.0/16|10.55.0.1", 1)
 	out2 := parseList(stdout2, 22)
 	if out2.Status.DockerDBAllowed {

@@ -14,7 +14,7 @@ func TestComputeEnabledMemperingatkanAkunLocalhostSaja(t *testing.T) {
 		BindAllInterfaces:  true,
 		FirewallDetected:   "ufw",
 		FirewallRuleActive: true,
-		LocalOnlyUsers:     []string{"devpoin", "mkelindo"},
+		LocalOnlyUsers:     []string{"webuser", "acmeapp"},
 	}
 	st.computeEnabled()
 
@@ -22,7 +22,7 @@ func TestComputeEnabledMemperingatkanAkunLocalhostSaja(t *testing.T) {
 	if !st.Enabled {
 		t.Fatal("jalur jaringan sudah terbuka, Enabled seharusnya tetap true")
 	}
-	if !strings.Contains(st.Message, "devpoin") || !strings.Contains(st.Message, "mkelindo") {
+	if !strings.Contains(st.Message, "webuser") || !strings.Contains(st.Message, "acmeapp") {
 		t.Fatalf("akun yang bermasalah harus disebutkan: %q", st.Message)
 	}
 	if !strings.Contains(st.Message, "is not allowed") {
@@ -52,13 +52,13 @@ func TestComputeEnabledTidakMenumpukPesanSaatJaringanMasihTertutup(t *testing.T)
 		BindAllInterfaces:  false,
 		FirewallDetected:   "ufw",
 		FirewallRuleActive: false,
-		LocalOnlyUsers:     []string{"devpoin"},
+		LocalOnlyUsers:     []string{"webuser"},
 	}
 	st.computeEnabled()
 	if st.Enabled {
 		t.Fatal("bind-address belum 0.0.0.0, tidak boleh dianggap enabled")
 	}
-	if strings.Contains(st.Message, "devpoin") {
+	if strings.Contains(st.Message, "webuser") {
 		t.Fatalf("peringatan akun jangan muncul sebelum jaringannya terbuka: %q", st.Message)
 	}
 }

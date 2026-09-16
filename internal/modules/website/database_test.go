@@ -63,8 +63,8 @@ func TestMySQLGlobalGrantDetectionExcludesUsage(t *testing.T) {
 func TestParseMySQLGrantee(t *testing.T) {
 	cases := []struct{ in, user, host string }{
 		{"'alkana'@'localhost'", "alkana", "localhost"},
-		{"'appdevpoin'@'127.0.0.1'", "appdevpoin", "127.0.0.1"},
-		{"'devpoin'@'%'", "devpoin", "%"},
+		{"'appuser'@'127.0.0.1'", "appuser", "127.0.0.1"},
+		{"'webuser'@'%'", "webuser", "%"},
 	}
 	for _, c := range cases {
 		user, host, ok := parseMySQLGrantee(c.in)
