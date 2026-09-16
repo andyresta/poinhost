@@ -1,0 +1,2 @@
+# x|y|w|h|sampleX|sampleY|fontPx|bold|teks
+128|58|152|24|315|70|16|1|web-01

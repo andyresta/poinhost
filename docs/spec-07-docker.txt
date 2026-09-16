@@ -1,0 +1,19 @@
+# x|y|w|h|sampleX|sampleY|fontPx|bold|teks
+128|58|152|24|315|70|16|1|web-01
+# Kolom NAMA — celah kosong menuju kolom IMAGE ada di x=645, disampel
+# sejajar titik tengah baris supaya tidak kena garis pemisah.
+368|399|280|26|645|412|15|0|app-stack-licenseserver-1
+368|453|280|26|645|466|15|0|mobile-api
+368|507|280|26|645|520|15|0|portal-app
+368|561|280|26|645|574|15|0|web-apps
+368|615|280|26|645|628|15|0|mail-forwarder
+368|723|280|26|645|736|15|0|shopapp-webapp-v1.2
+368|777|280|26|645|790|15|0|shopapp_v2_core
+# Kolom IMAGE
+658|399|296|26|645|412|15|0|app-stack:latest
+658|453|296|26|645|466|15|0|deploy-mobile-api
+658|507|296|26|645|520|15|0|portal-app:latest
+658|561|296|26|645|574|15|0|deploy-web-apps
+658|615|296|26|645|628|15|0|mailer-forwarder
+658|723|296|26|645|736|15|0|shopapp_v2-shopapp-webap...
+658|777|296|26|645|790|15|0|shopapp-v2-core:latest

@@ -1,0 +1,4 @@
+# x|y|w|h|sampleX|sampleY|fontPx|bold|teks
+128|58|152|24|315|70|16|1|web-01
+# Nilai HOSTNAME di dalam kartu; sampel diambil dari area kosong kartu.
+376|320|160|34|560|365|17|1|web-01

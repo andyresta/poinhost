@@ -1,0 +1,4 @@
+# x|y|w|h|sampleX|sampleY|fontPx|bold|teks
+128|58|152|24|315|70|16|1|web-01
+# Judul domain; sampel dari latar halaman di kanan badge SSL.
+496|231|226|28|950|246|19|1|portal.example.com

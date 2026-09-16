@@ -1,0 +1,18 @@
+# x|y|w|h|sampleX|sampleY|fontPx|bold|teks
+# Titik sampel diambil SEJAJAR baris (bukan di antaranya): garis pemisah baris
+# warnanya lebih terang, dan menyampelnya membuat tambalan terlihat.
+128|58|152|24|315|70|16|1|web-01
+# Kolom USERNAME — celah kosong menuju kolom HOST ada di x=690
+368|492|300|26|690|505|15|0|acme
+368|546|300|26|690|559|15|0|blogsite
+368|600|300|26|690|613|15|0|shopapp
+368|654|300|26|690|667|15|0|crmtool
+368|708|300|26|690|721|15|0|wikidocs
+368|762|300|26|690|775|15|0|forumapp
+# Kolom DATABASE — celah kosong sebelum teksnya ada di x=1085
+1104|492|166|26|1085|505|15|0|acme
+1104|546|166|26|1085|559|15|0|blogsite
+1104|600|166|26|1085|613|15|0|shop_v1, shop_v2
+1104|654|166|26|1085|667|15|0|crmtool
+1104|708|166|26|1085|721|15|0|wikidocs
+1104|762|166|26|1085|775|15|0|forumapp

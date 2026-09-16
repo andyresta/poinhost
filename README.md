@@ -44,7 +44,7 @@ The server never trusts the app. The app holds no privileges the SSH user does n
 
 ## Screenshots
 
-> The screenshots below were taken against a live production server, so hostnames and container names are real.
+> The screenshots below were taken against a live production server. Hostnames, domains, database and container names have been replaced with placeholders.
 
 ### Overview — the server at a glance
 
