@@ -151,7 +151,13 @@ Inspect and control containers, stream logs and stats, open an exec shell, and e
 
 Nginx, PHP, MySQL/MariaDB, PostgreSQL, Docker and certbot are **not** prerequisites. poinhost detects what is present and can install what is missing, using the server's own package manager.
 
-## Build
+## Download
+
+Prebuilt desktop binaries for Windows, macOS and Linux are attached to each
+[release](https://github.com/andyresta/poinhost/releases). They are unsigned, so
+Windows SmartScreen and macOS Gatekeeper will warn on first run.
+
+## Build from source
 
 ```bash
 git clone https://github.com/andyresta/poinhost.git
@@ -161,6 +167,8 @@ wails build   # production binary
 ```
 
 Requires the [Wails v2 CLI](https://wails.io/docs/gettingstarted/installation).
+On Linux you also need `libgtk-3-dev` and `libwebkit2gtk-4.1-dev`, and the build
+needs `-tags webkit2_41`.
 
 ## How it works
 

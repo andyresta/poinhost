@@ -1,0 +1,115 @@
+name: Release
+
+# Membangun poinhost untuk Windows, macOS dan Linux lalu melampirkannya ke
+# GitHub Release. Dipicu oleh tag versi (mis. `git tag v0.1.0 && git push
+# --tags`), atau dijalankan manual dari tab Actions.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows (x64)
+            artifact: poinhost-windows-amd64.exe
+            built: build/bin/poinhost.exe
+          - os: macos-latest
+            name: macOS (Apple Silicon)
+            artifact: poinhost-macos-arm64.zip
+            built: build/bin/poinhost.app
+          - os: ubuntu-latest
+            name: Linux (x64)
+            artifact: poinhost-linux-amd64
+            built: build/bin/poinhost
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Wails di Linux butuh GTK dan WebKit. Runner ubuntu-latest memakai
+      # webkit2gtk-4.1, bukan 4.0 — build tanpa tag `webkit2_41` akan gagal
+      # mencari pkg-config webkit2gtk-4.0.
+      - name: Install Linux build dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
+
+      - name: Build
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            wails build -clean -tags webkit2_41
+          else
+            wails build -clean
+          fi
+
+      # .app adalah direktori, jadi harus di-zip dulu sebelum jadi artifact
+      # release yang bisa diunduh satu file.
+      - name: Package macOS app
+        if: matrix.os == 'macos-latest'
+        run: ditto -c -k --keepParent build/bin/poinhost.app "${{ matrix.artifact }}"
+
+      - name: Rename binary
+        if: matrix.os != 'macos-latest'
+        shell: bash
+        run: mv "${{ matrix.built }}" "${{ matrix.artifact }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          draft: true
+          generate_release_notes: true
+          body: |
+            Desktop builds of poinhost. Nothing is installed on your server —
+            the app connects over SSH only.
+
+            | Platform | Download |
+            |---|---|
+            | Windows x64 | `poinhost-windows-amd64.exe` |
+            | macOS (Apple Silicon) | `poinhost-macos-arm64.zip` |
+            | Linux x64 | `poinhost-linux-amd64` |
+
+            The builds are unsigned, so Windows SmartScreen and macOS Gatekeeper
+            will warn on first run.
+
+            On Linux, make it executable first: `chmod +x poinhost-linux-amd64`
