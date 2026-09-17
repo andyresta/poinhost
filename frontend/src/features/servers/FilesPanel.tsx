@@ -19,6 +19,7 @@ import { useConfirm } from '../../components/ConfirmDialog';
 import { useT } from '../../i18n';
 import { useTabsStore } from '../../store/tabs';
 import { PromptModal } from './PromptModal';
+import { FolderPickerModal } from './FolderPickerModal';
 import { CompressModal } from './CompressModal';
 import { ChmodModal } from './ChmodModal';
 import { EditFileModal } from './EditFileModal';
@@ -263,7 +264,7 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
               </button>
             )}
             <button className="btn btn--sm" onClick={() => setModal('copy')}>
-              Copy
+              {t('files.copy')}
             </button>
             <button className="btn btn--sm" onClick={() => setModal('compress')}>
               Kompres
@@ -289,6 +290,7 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
       {error && <p className="overview__error">{error}</p>}
 
       <div className="files-panel__table-wrap">
+        <div className="files-panel__table-scroll">
         <table className="files-panel__table">
           <thead>
             <tr>
@@ -345,6 +347,7 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
             )}
           </tbody>
         </table>
+        </div>
         {loading && <div className="files-panel__loading">{t('common.loading')}</div>}
       </div>
 
@@ -396,11 +399,12 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
       )}
 
       {modal === 'copy' && (
-        <PromptModal
-          title="Copy ke..."
-          label="Path tujuan"
-          initialValue={path}
-          confirmLabel="Copy"
+        <FolderPickerModal
+          serverId={serverId}
+          asUser={asUser}
+          initialPath={path}
+          title={t('picker.copyTitle')}
+          confirmLabel={t('files.copy')}
           onClose={() => setModal(null)}
           onConfirm={async (destPath) => {
             await CopyFiles(

@@ -444,6 +444,13 @@ export const en = {
   'migration.path.running': 'transferring',
   'migration.path.done': 'done',
   'migration.path.failed': 'failed',
+  'files.copy': 'Copy',
+  'picker.copyTitle': 'Copy to folder',
+  'picker.destination': 'Destination',
+  'picker.up': 'Up one level',
+  'picker.newFolder': 'New folder',
+  'picker.newFolderName': 'Folder name',
+  'picker.noSubfolder': 'No subfolder here',
 };
 
 export type MessageKey = keyof typeof en;
@@ -866,6 +873,13 @@ export const id: Partial<Record<MessageKey, string>> = {
   'migration.path.running': 'dipindahkan',
   'migration.path.done': 'selesai',
   'migration.path.failed': 'gagal',
+  'files.copy': 'Salin',
+  'picker.copyTitle': 'Salin ke folder',
+  'picker.destination': 'Tujuan',
+  'picker.up': 'Naik satu tingkat',
+  'picker.newFolder': 'Folder baru',
+  'picker.newFolderName': 'Nama folder',
+  'picker.noSubfolder': 'Tidak ada subfolder di sini',
 };
 
 export const messages: Record<'en' | 'id', Partial<Record<MessageKey, string>>> = { en, id };

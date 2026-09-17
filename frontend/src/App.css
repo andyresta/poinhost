@@ -1052,13 +1052,25 @@ button svg {
   opacity: 0.4;
   padding: 0 2px;
 }
+/* Pembungkus ini yang jadi acuan posisi overlay loading, dan SENGAJA bukan
+   elemen yang men-scroll. Sebelumnya keduanya digabung, dan itu membuat
+   overlay `inset: 0` hanya menutupi sebagian tabel: anak absolute di dalam
+   container yang men-scroll ditambatkan ke AWAL konten, bukan ke area yang
+   sedang terlihat, sehingga begitu daftarnya di-scroll, redupnya berhenti di
+   tengah jalan dan baris di bawahnya tampak normal.
+   Scroll dipindah ke .files-panel__table-scroll di dalamnya; overflow hidden
+   di sini supaya sudut membulatnya tetap memotong isi. */
 .files-panel__table-wrap {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
   position: relative;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+.files-panel__table-scroll {
+  height: 100%;
+  overflow-y: auto;
 }
 .files-panel__table {
   width: 100%;
@@ -1882,6 +1894,10 @@ button svg {
 .mig-browser__list {
   position: relative;
   height: 300px;
+  overflow: hidden;
+}
+.mig-browser__scroll {
+  height: 100%;
   overflow: auto;
 }
 .mig-browser__table {
@@ -1922,12 +1938,25 @@ button svg {
   color: var(--neutral);
 }
 .mig-browser__empty,
-.mig-browser__loading,
 .mig-browser__error {
   padding: 10px;
   font-size: 12px;
   color: var(--neutral);
   text-align: center;
+}
+/* Overlay, bukan baris di ujung daftar: kalau ikut mengalir di dalam area
+   yang di-scroll, penanda "memuat" berada di bawah isi dan tidak pernah
+   terlihat pada folder yang isinya banyak. */
+.mig-browser__loading,
+.picker__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--neutral);
+  background: var(--scrim);
 }
 .mig-browser__error {
   color: var(--danger);
@@ -2079,4 +2108,97 @@ button svg {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+}
+
+/* ------------------------------------------------------------------
+   Pemilih folder (tujuan Copy)
+   ------------------------------------------------------------------ */
+
+.picker__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.picker__crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--neutral);
+}
+.picker__crumb {
+  padding: 0 2px;
+  font-size: 11px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.picker__crumb-sep {
+  color: var(--neutral);
+}
+.picker__newfolder {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.picker__newfolder input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+/* Tinggi tetap dengan scroll sendiri supaya kolom tujuan dan tombol
+   konfirmasi tidak terdorong keluar modal oleh folder yang isinya banyak. */
+.picker__list {
+  position: relative;
+  height: 240px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.picker__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.picker__row:hover {
+  background: var(--surface-hover);
+}
+.picker__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker__scroll {
+  height: 100%;
+  overflow: auto;
+}
+.picker__empty,
+.picker__error {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--neutral);
+  text-align: center;
+}
+.picker__error {
+  color: var(--danger);
+  text-align: left;
 }

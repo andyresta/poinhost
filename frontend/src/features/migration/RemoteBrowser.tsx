@@ -128,6 +128,7 @@ export function RemoteBrowser({
       </div>
 
       <div className="mig-browser__list">
+        <div className="mig-browser__scroll">
         {!serverId && <div className="mig-browser__empty">{t('migration.pickServerFirst')}</div>}
         {serverId && error && <div className="mig-browser__error">{error}</div>}
         {serverId && !error && (
@@ -167,6 +168,7 @@ export function RemoteBrowser({
             </tbody>
           </table>
         )}
+        </div>
         {loading && <div className="mig-browser__loading">{t('common.loading')}</div>}
       </div>
     </div>
