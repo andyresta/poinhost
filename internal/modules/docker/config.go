@@ -10,6 +10,30 @@ import (
 
 var envKeyRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+// volumeNameRE adalah aturan penamaan volume Docker: diawali huruf atau
+// angka, selebihnya boleh huruf, angka, titik, garis bawah, atau strip.
+// Garis miring TIDAK termasuk — itulah yang membedakannya dari path.
+var volumeNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+// isVolumeSource memvalidasi sisi HOST sebuah bind volume.
+//
+// Docker menerima dua bentuk di posisi ini: path host absolut (bind mount)
+// dan nama named volume. Sebelumnya hanya bentuk pertama yang diterima,
+// sehingga container yang memakai named volume — bentuk yang justru
+// dianjurkan untuk data yang harus bertahan melewati daur hidup container —
+// tidak bisa dibuat ulang sama sekali, padahal konfigurasinya sah.
+//
+// Bentuk ketiga, path relatif seperti `./data`, sengaja TIDAK diterima:
+// artinya bergantung pada direktori kerja saat perintah dijalankan, dan
+// direktori kerja sesi SSH di sini bukan sesuatu yang user lihat atau
+// kendalikan, jadi hasilnya akan mengejutkan.
+func isVolumeSource(host string) bool {
+	if strings.HasPrefix(host, "/") {
+		return true
+	}
+	return volumeNameRE.MatchString(host)
+}
+
 // Batas memory Docker (hard min ~6MB); 0 = unlimited.
 const (
 	minMemoryBytes int64 = 6 * 1024 * 1024
@@ -39,8 +63,9 @@ type inspectRaw struct {
 			Name              string `json:"Name"`
 			MaximumRetryCount int    `json:"MaximumRetryCount"`
 		} `json:"RestartPolicy"`
-		NetworkMode string `json:"NetworkMode"`
-		Privileged  bool   `json:"Privileged"`
+		NetworkMode string   `json:"NetworkMode"`
+		Privileged  bool     `json:"Privileged"`
+		ExtraHosts  []string `json:"ExtraHosts"`
 	} `json:"HostConfig"`
 	State struct {
 		Status string `json:"Status"`
@@ -101,6 +126,11 @@ type createTemplate struct {
 	// NetworkAliases: alias DNS container di NetworkMode-nya (mis. docker-compose ngasih
 	// alias "db" ke service mysql) — diteruskan sebagai --network-alias saat create ulang.
 	NetworkAliases []string
+	// ExtraHosts entri --add-host (mis. "host.docker.internal:host-gateway").
+	// Di Linux nama itu TIDAK ada kecuali dipasang begini, jadi menjatuhkannya
+	// saat recreate membuat container yang tadinya jalan langsung kehilangan
+	// jalur ke host dan masuk restart loop.
+	ExtraHosts []string
 }
 
 // parseInspectJSON mem-parse output docker inspect (objek atau array 1 elemen).
@@ -257,6 +287,7 @@ func inspectToDetail(inv *inspectRaw) (*ContainerInspectResponse, *createTemplat
 		HasEntrypoint:  hasEP,
 		Cmd:            inv.Config.Cmd,
 		NetworkAliases: aliases,
+		ExtraHosts:     inv.HostConfig.ExtraHosts,
 	}
 
 	detail := &ContainerInspectResponse{
@@ -436,8 +467,8 @@ func validateRecreateOverrides(env []EnvVar, ports []PortMapping, volumes []Volu
 		if host == "" && cont == "" {
 			continue
 		}
-		if !strings.HasPrefix(host, "/") {
-			return fmt.Errorf("path host volume harus absolut")
+		if !isVolumeSource(host) {
+			return fmt.Errorf("sumber volume %q tidak valid: harus path absolut atau nama named volume", host)
 		}
 		if !strings.HasPrefix(cont, "/") {
 			return fmt.Errorf("path container volume harus absolut")
@@ -544,6 +575,19 @@ func buildCreateArgs(tpl *createTemplate) ([]string, error) {
 	restart := strings.TrimSpace(tpl.RestartPolicy)
 	if restart != "" && restart != "no" {
 		args = append(args, "--restart", restart)
+	}
+
+	// --add-host harus ikut ditulis ulang. `host.docker.internal` di Linux
+	// bukan nama yang ada dengan sendirinya: ia hanya berarti sesuatu kalau
+	// container dibuat dengan entri host-gateway ini. Menjatuhkannya saat
+	// recreate membuat container yang tadinya sehat kehilangan jalur ke
+	// host — dan gagalnya baru terlihat sebagai restart loop setelahnya.
+	for _, h := range tpl.ExtraHosts {
+		h = strings.TrimSpace(h)
+		if h == "" || !strings.Contains(h, ":") {
+			continue
+		}
+		args = append(args, "--add-host", h)
 	}
 
 	net := strings.TrimSpace(tpl.NetworkMode)
