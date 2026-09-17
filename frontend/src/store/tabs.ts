@@ -9,6 +9,7 @@ import {
   SaveServer,
   DeleteServer,
   OpenServerTab,
+  OpenMigrationTab,
   CloseServerTab,
   ListServerTabs,
   SetTabActiveModule,
@@ -37,6 +38,7 @@ interface TabsState {
   deleteServer: (id: string) => Promise<void>;
 
   openTab: (serverId: string, title: string) => Promise<void>;
+  openMigrationTab: (title: string) => Promise<void>;
   closeTab: (tabId: string) => Promise<void>;
   setActiveTab: (tabId: string) => void;
   setModule: (tabId: string, module: string) => Promise<void>;
@@ -107,6 +109,14 @@ export const useTabsStore = create<TabsState>((set, get) => ({
   // (misalnya satu tab Files, satu tab Terminal, ke server yang sama).
   openTab: async (serverId, title) => {
     const tab = await OpenServerTab(serverId, title);
+    set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }));
+  },
+
+  // Tab migrasi tidak menunjuk ke server manapun — server asal dan tujuan
+  // dipilih di dalam panelnya. Karena itu tab ini juga tidak ikut disimpan
+  // backend untuk dipulihkan saat aplikasi dibuka lagi.
+  openMigrationTab: async (title) => {
+    const tab = await OpenMigrationTab(title);
     set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }));
   },
 

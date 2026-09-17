@@ -1798,3 +1798,285 @@ button svg {
   gap: 4px;
   margin-top: 6px;
 }
+
+/* ------------------------------------------------------------------
+   Migrasi — panel transfer file antar server
+   ------------------------------------------------------------------ */
+
+/* Dua penjelajah berdampingan dengan panah di tengah: arah perpindahan
+   harus terbaca sekali lihat, bukan disimpulkan dari label. Di lebar
+   sempit keduanya menumpuk dan panahnya berputar jadi menunjuk ke bawah. */
+.mig-panel__sides {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+.mig-panel__side {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mig-panel__side-title {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--neutral);
+}
+.mig-panel__arrow {
+  display: flex;
+  align-items: center;
+  color: var(--neutral);
+}
+
+.mig-browser {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.mig-browser__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.mig-browser__server {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.mig-browser__crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--neutral);
+  border-bottom: 1px solid var(--border);
+}
+.mig-browser__crumb {
+  padding: 0 2px;
+  font-size: 11px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.mig-browser__crumb-sep {
+  color: var(--neutral);
+}
+/* Tinggi tetap dengan scroll sendiri: daftar folder panjang tidak boleh
+   mendorong tombol Pindahkan dan blok progress keluar dari layar. */
+.mig-browser__list {
+  position: relative;
+  height: 300px;
+  overflow: auto;
+}
+.mig-browser__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.mig-browser__table td {
+  padding: 4px 8px;
+  vertical-align: middle;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+.mig-browser__col-check {
+  width: 1%;
+}
+.mig-browser__name {
+  display: table-cell;
+  max-width: 0;
+  width: 100%;
+}
+.mig-browser__icon {
+  display: inline-flex;
+  margin-right: 6px;
+  vertical-align: -2px;
+  color: var(--neutral);
+}
+.mig-browser__ellipsis {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+.mig-browser__size {
+  width: 1%;
+  text-align: right;
+  color: var(--neutral);
+}
+.mig-browser__empty,
+.mig-browser__loading,
+.mig-browser__error {
+  padding: 10px;
+  font-size: 12px;
+  color: var(--neutral);
+  text-align: center;
+}
+.mig-browser__error {
+  color: var(--danger);
+  text-align: left;
+}
+
+.mig-panel__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.mig-panel__summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--neutral);
+}
+.mig-panel__options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.mig-panel__opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--neutral);
+}
+.mig-panel__opt--grow {
+  flex: 1 1 200px;
+}
+.mig-panel__opt input[type='text'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.mig-panel__error {
+  margin-top: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-md);
+}
+
+.mig-panel__progress {
+  margin-top: 12px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.mig-panel__progress-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--neutral);
+}
+.mig-panel__status {
+  font-weight: 600;
+  color: var(--text);
+}
+.mig-panel__status--done {
+  color: var(--success);
+}
+.mig-panel__status--failed {
+  color: var(--danger);
+}
+.mig-panel__meter {
+  height: 5px;
+  margin: 8px 0;
+  overflow: hidden;
+  background: var(--surface-hover);
+  border-radius: 999px;
+}
+.mig-panel__meter-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s linear;
+}
+.mig-panel__paths {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.mig-panel__paths td {
+  padding: 3px 0;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.mig-panel__path-name {
+  max-width: 0;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mig-panel__path-state {
+  padding-left: 10px;
+  color: var(--neutral);
+}
+.mig-panel__path-state--done {
+  color: var(--success);
+}
+.mig-panel__path-state--failed {
+  color: var(--danger);
+}
+.mig-panel__path-error {
+  padding-left: 10px;
+  color: var(--danger);
+}
+
+@media (max-width: 900px) {
+  .mig-panel__sides {
+    flex-direction: column;
+  }
+  .mig-panel__arrow {
+    justify-content: center;
+    transform: rotate(90deg);
+  }
+}
+
+/* Path tujuan bisa diketik langsung — folder baru belum bisa ditelusuri. */
+.mig-panel__destpath {
+  margin-top: 6px;
+  padding: 5px 8px;
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}

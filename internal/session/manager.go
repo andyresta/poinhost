@@ -50,6 +50,7 @@ func (m *Manager) LoadPersisted() ([]*Tab, error) {
 		if err := rows.Scan(&t.ID, &t.ServerID, &t.Title, &t.ActiveModule, &t.Position, &createdAt, &updatedAt); err != nil {
 			return nil, err
 		}
+		t.Kind = KindServer
 		t.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 		t.LastActiveAt, _ = time.Parse("2006-01-02 15:04:05", updatedAt)
 		m.tabs[t.ID] = &t
@@ -70,6 +71,7 @@ func (m *Manager) OpenTab(serverID, title string) (*Tab, error) {
 	now := time.Now()
 	t := &Tab{
 		ID:           uuid.NewString(),
+		Kind:         KindServer,
 		ServerID:     serverID,
 		Title:        title,
 		ActiveModule: "overview",
@@ -86,6 +88,34 @@ func (m *Manager) OpenTab(serverID, title string) (*Tab, error) {
 		return nil, fmt.Errorf("simpan tab: %w", err)
 	}
 
+	m.tabs[t.ID] = t
+	return t, nil
+}
+
+// OpenMigrationTab membuka tab migrasi. Tab ini TIDAK disimpan ke ui_tabs,
+// jadi tidak ikut dipulihkan saat aplikasi dibuka lagi — beda dari tab
+// server yang memang layak dipulihkan. Alasannya: isi berguna sebuah tab
+// migrasi adalah transfer yang sedang berjalan, dan transfer itu hidup di
+// koneksi SSH proses ini — begitu aplikasi ditutup, transfernya berhenti,
+// sehingga memulihkan tabnya hanya akan menampilkan formulir kosong yang
+// seolah-olah melanjutkan sesuatu.
+//
+// Konsekuensinya server_id di ui_tabs tetap NOT NULL seperti semula; tidak
+// ada baris tab migrasi yang perlu menyimpan server kosong di sana.
+func (m *Manager) OpenMigrationTab(title string) (*Tab, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	now := time.Now()
+	t := &Tab{
+		ID:           uuid.NewString(),
+		Kind:         KindMigration,
+		Title:        title,
+		ActiveModule: "migration-files",
+		Position:     len(m.tabs),
+		CreatedAt:    now,
+		LastActiveAt: now,
+	}
 	m.tabs[t.ID] = t
 	return t, nil
 }

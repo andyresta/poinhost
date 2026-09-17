@@ -8,6 +8,7 @@ import {services} from '../models';
 import {backup} from '../models';
 import {servers} from '../models';
 import {session} from '../models';
+import {filexfer} from '../models';
 
 export function AddFirewallRule(arg1:firewall.RuleRequest):Promise<firewall.ListResponse>;
 
@@ -179,6 +180,8 @@ export function MySQLExploreUpdateRow(arg1:website.MySQLRowMutateRequest):Promis
 
 export function OpenDockerExec(arg1:string,arg2:string,arg3:string):Promise<string>;
 
+export function OpenMigrationTab(arg1:string):Promise<session.Tab>;
+
 export function OpenServerTab(arg1:string,arg2:string):Promise<session.Tab>;
 
 export function OpenTerminal(arg1:string):Promise<string>;
@@ -288,3 +291,11 @@ export function UploadFilesToServer(arg1:string,arg2:string,arg3:string):Promise
 export function WriteFileContent(arg1:files.WriteFileRequest):Promise<void>;
 
 export function WriteTerminal(arg1:string,arg2:string):Promise<void>;
+
+export function XferCancel(arg1:string):Promise<filexfer.Progress>;
+
+export function XferListDirectory(arg1:string,arg2:string):Promise<filexfer.ListDirResponse>;
+
+export function XferStart(arg1:filexfer.StartRequest):Promise<filexfer.Progress>;
+
+export function XferStatus(arg1:string):Promise<filexfer.Progress>;

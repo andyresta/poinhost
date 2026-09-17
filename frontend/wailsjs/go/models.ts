@@ -755,6 +755,161 @@ export namespace files {
 
 }
 
+export namespace filexfer {
+	
+	export class DirEntry {
+	    name: string;
+	    path: string;
+	    isDir: boolean;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DirEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.path = source["path"];
+	        this.isDir = source["isDir"];
+	        this.size = source["size"];
+	    }
+	}
+	export class ListDirResponse {
+	    path: string;
+	    parent: string;
+	    entries: DirEntry[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ListDirResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.parent = source["parent"];
+	        this.entries = this.convertValues(source["entries"], DirEntry);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PathResult {
+	    path: string;
+	    status: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PathResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	    }
+	}
+	export class Progress {
+	    jobId: string;
+	    status: string;
+	    sourceServerId: string;
+	    destServerId: string;
+	    sourcePaths: string[];
+	    destPath: string;
+	    compress: boolean;
+	    totalBytes: number;
+	    doneBytes: number;
+	    percent: number;
+	    currentPaths: string[];
+	    paths: PathResult[];
+	    message: string;
+	    // Go type: time
+	    startedAt: any;
+	    // Go type: time
+	    finishedAt?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Progress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.jobId = source["jobId"];
+	        this.status = source["status"];
+	        this.sourceServerId = source["sourceServerId"];
+	        this.destServerId = source["destServerId"];
+	        this.sourcePaths = source["sourcePaths"];
+	        this.destPath = source["destPath"];
+	        this.compress = source["compress"];
+	        this.totalBytes = source["totalBytes"];
+	        this.doneBytes = source["doneBytes"];
+	        this.percent = source["percent"];
+	        this.currentPaths = source["currentPaths"];
+	        this.paths = this.convertValues(source["paths"], PathResult);
+	        this.message = source["message"];
+	        this.startedAt = this.convertValues(source["startedAt"], null);
+	        this.finishedAt = this.convertValues(source["finishedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class StartRequest {
+	    sourceServerId: string;
+	    sourcePaths: string[];
+	    destServerId: string;
+	    destPath: string;
+	    exclude: string[];
+	    compress: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StartRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceServerId = source["sourceServerId"];
+	        this.sourcePaths = source["sourcePaths"];
+	        this.destServerId = source["destServerId"];
+	        this.destPath = source["destPath"];
+	        this.exclude = source["exclude"];
+	        this.compress = source["compress"];
+	    }
+	}
+
+}
+
 export namespace firewall {
 	
 	export class DockerSubnet {
@@ -1238,6 +1393,7 @@ export namespace session {
 	
 	export class Tab {
 	    id: string;
+	    kind: string;
 	    serverId: string;
 	    title: string;
 	    activeModule: string;
@@ -1254,6 +1410,7 @@ export namespace session {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.kind = source["kind"];
 	        this.serverId = source["serverId"];
 	        this.title = source["title"];
 	        this.activeModule = source["activeModule"];

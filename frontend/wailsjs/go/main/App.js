@@ -342,6 +342,10 @@ export function OpenDockerExec(arg1, arg2, arg3) {
   return window['go']['main']['App']['OpenDockerExec'](arg1, arg2, arg3);
 }
 
+export function OpenMigrationTab(arg1) {
+  return window['go']['main']['App']['OpenMigrationTab'](arg1);
+}
+
 export function OpenServerTab(arg1, arg2) {
   return window['go']['main']['App']['OpenServerTab'](arg1, arg2);
 }
@@ -560,4 +564,20 @@ export function WriteFileContent(arg1) {
 
 export function WriteTerminal(arg1, arg2) {
   return window['go']['main']['App']['WriteTerminal'](arg1, arg2);
+}
+
+export function XferCancel(arg1) {
+  return window['go']['main']['App']['XferCancel'](arg1);
+}
+
+export function XferListDirectory(arg1, arg2) {
+  return window['go']['main']['App']['XferListDirectory'](arg1, arg2);
+}
+
+export function XferStart(arg1) {
+  return window['go']['main']['App']['XferStart'](arg1);
+}
+
+export function XferStatus(arg1) {
+  return window['go']['main']['App']['XferStatus'](arg1);
 }

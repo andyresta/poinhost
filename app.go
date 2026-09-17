@@ -16,6 +16,7 @@ import (
 	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/andyresta/poinhost/internal/modules/docker"
+	"github.com/andyresta/poinhost/internal/modules/filexfer"
 	"github.com/andyresta/poinhost/internal/modules/files"
 	"github.com/andyresta/poinhost/internal/modules/firewall"
 	"github.com/andyresta/poinhost/internal/modules/servers"
@@ -45,6 +46,7 @@ type App struct {
 	terminals   *session.TerminalRegistry
 	terminalSvc *terminal.Service
 	filesSvc    *files.Service
+	filexferSvc *filexfer.Service
 	dockerSvc   *docker.Service
 	servicesSvc *services.Service
 	firewallSvc *firewall.Service
@@ -102,6 +104,7 @@ func NewApp() *App {
 
 	sftpClient := sshpool.NewSFTPClient(pool)
 	filesSvc := files.NewService(sftpClient, executor, serversSvc)
+	filexferSvc := filexfer.NewService(serversSvc, pool, sftpClient)
 
 	dockerSvc := docker.NewService(serversSvc, executor, mutex)
 	servicesSvc := services.NewService(serversSvc, executor, mutex)
@@ -119,6 +122,7 @@ func NewApp() *App {
 		terminals:   terminals,
 		terminalSvc: terminalSvc,
 		filesSvc:    filesSvc,
+		filexferSvc: filexferSvc,
 		dockerSvc:   dockerSvc,
 		servicesSvc: servicesSvc,
 		firewallSvc: firewallSvc,
@@ -189,6 +193,13 @@ func (a *App) startup(ctx context.Context) {
 			runtime.EventsEmit(ctx, "terminal:exit:"+sessionID, reason)
 		},
 	)
+
+	// Progress transfer file dikirim per job ("xfer:progress:<jobId>"),
+	// bukan satu event global, supaya panel migrasi yang sedang menonton
+	// satu job tidak perlu menyaring event milik job lain.
+	a.filexferSvc.SetEmitter(func(p filexfer.Progress) {
+		runtime.EventsEmit(ctx, "xfer:progress:"+p.JobID, p)
+	})
 }
 
 // shutdown dipanggil Wails saat aplikasi ditutup — hentikan collector dulu
@@ -292,8 +303,19 @@ func (a *App) CloseServerTab(tabID string) error {
 	if err := a.sessionMgr.CloseTab(tabID); err != nil {
 		return err
 	}
-	a.collector.Unsubscribe(tab.ServerID)
+	// Tab migrasi tidak menunjuk server manapun, jadi tidak ada langganan
+	// status collector yang perlu diturunkan prioritasnya.
+	if tab.ServerID != "" {
+		a.collector.Unsubscribe(tab.ServerID)
+	}
 	return nil
+}
+
+// OpenMigrationTab membuka tab migrasi baru. Berbeda dari tab server, tab
+// ini tidak terikat ke satu server — server asal dan tujuan dipilih di
+// dalam panelnya.
+func (a *App) OpenMigrationTab(title string) (*session.Tab, error) {
+	return a.sessionMgr.OpenMigrationTab(title)
 }
 
 // ListServerTabs mengembalikan semua tab yang sedang terbuka, terurut.
@@ -1344,4 +1366,32 @@ func (a *App) DetectDockerSubnets(serverID string) ([]firewall.DockerSubnet, err
 // tidak terkunci dari servernya sendiri.
 func (a *App) SetFirewallEnabled(serverID string, enabled bool) (*firewall.ListResponse, error) {
 	return a.firewallSvc.SetEnabled(serverID, enabled)
+}
+
+// ---------------------------------------------------------------------
+// Bindings: Migrasi — transfer file antar server (lihat internal/modules/filexfer)
+// ---------------------------------------------------------------------
+
+// XferListDirectory menampilkan isi folder di server, dipakai browser
+// sumber & tujuan di panel migrasi.
+func (a *App) XferListDirectory(serverID, dir string) (*filexfer.ListDirResponse, error) {
+	return a.filexferSvc.ListDirectory(a.ctx, serverID, dir)
+}
+
+// XferStart memulai transfer file antar server. Hasilnya hanya progress
+// AWAL — kemajuan selanjutnya mengalir lewat event "xfer:progress:<jobId>"
+// sampai statusnya terminal.
+func (a *App) XferStart(req filexfer.StartRequest) (*filexfer.Progress, error) {
+	return a.filexferSvc.Start(req)
+}
+
+// XferStatus menarik progress terakhir satu transfer — dipakai saat panel
+// dibuka kembali, supaya tidak perlu menunggu event berikutnya.
+func (a *App) XferStatus(jobID string) (*filexfer.Progress, error) {
+	return a.filexferSvc.Status(jobID)
+}
+
+// XferCancel membatalkan transfer yang sedang berjalan.
+func (a *App) XferCancel(jobID string) (*filexfer.Progress, error) {
+	return a.filexferSvc.Cancel(jobID)
 }

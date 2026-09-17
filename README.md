@@ -119,6 +119,12 @@ Inspect and control containers, stream logs and stats, open an exec shell, and e
 - Recreate a container from its compose file, so no setting is left behind
 - Config drift detection using compose's own verdict
 
+**Migration**
+- Move files and folders between two servers in one step
+- The archive streams straight from the source server into the destination server — it is never written to your computer, so a 50 GB move costs the same memory as a 50 MB one
+- Multi-select across different folders, exclude patterns, optional compression in transit
+- Live progress with per-item status, and cancel at any point
+
 **Firewall**
 - ufw and firewalld are editable; raw nftables is reported but not modified
 - Docker bridge subnets are detected, not assumed
@@ -202,7 +208,7 @@ Credentials are stored locally in an encrypted vault; only the server list and i
 
 poinhost is under active development and is used against real production servers. Interfaces may still change between versions.
 
-Not yet implemented: Docker images, volumes and compose sub-tabs; system users and SSH key management; server-level cron; scheduled backups of website and database data; monitoring history and alerts.
+Not yet implemented: database and Docker migration (file migration works today); Docker images, volumes and compose sub-tabs; system users and SSH key management; server-level cron; scheduled backups of website and database data; monitoring history and alerts.
 
 ## Licence
 

@@ -8,7 +8,7 @@ import { StatusDot } from './StatusDot';
 import { ThemeToggle } from './ThemeToggle';
 import { LangToggle } from './LangToggle';
 import { useT } from '../../i18n';
-import { ArrowLeftRight, Pencil, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Archive, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { servers } from '../../../wailsjs/go/models';
 
 // Panel kiri: kartu server (bukan daftar teks polos seperti homepoin) +
@@ -16,7 +16,7 @@ import type { servers } from '../../../wailsjs/go/models';
 // & hapus baru muncul saat kartu di-hover supaya daftar tetap ringkas saat
 // mengelola banyak server sekaligus.
 export function ServersPage() {
-  const { servers: list, tabs, statuses, loadServers, openTab, setActiveTab, deleteServer } =
+  const { servers: list, tabs, statuses, loadServers, openTab, openMigrationTab, setActiveTab, deleteServer } =
     useTabsStore();
   const t = useT();
   const collapsed = useSidebarStore((s) => s.collapsed);
@@ -25,6 +25,7 @@ export function ServersPage() {
   );
   const [confirmDelete, setConfirmDelete] = useState<servers.Server | null>(null);
   const [showBackup, setShowBackup] = useState(false);
+  const migrationTabTitle = t('migration.title');
 
   // Popover kartu server saat panel diciutkan: dirender lewat portal ke
   // <body> (posisi `fixed`, dihitung dari getBoundingClientRect ikon) —
@@ -57,6 +58,17 @@ export function ServersPage() {
     const rect = target.getBoundingClientRect();
     setHoverPos({ top: rect.top, left: rect.right + 8 });
     setHoverId(serverId);
+  }
+
+  // Satu tab migrasi sudah cukup: semua pemilihan server ada di dalam
+  // panelnya, jadi tab kedua hanya akan menduplikasi formulir yang sama.
+  function openOrFocusMigration() {
+    const existing = tabs.find((t) => t.kind === 'migration');
+    if (existing) {
+      setActiveTab(existing.id);
+      return;
+    }
+    void openMigrationTab(migrationTabTitle);
   }
 
   function openOrFocus(server: servers.Server) {
@@ -124,6 +136,14 @@ export function ServersPage() {
       <div className="servers-page__header">
         <div className="servers-page__header-left">{!collapsed && <h1>PoinHost</h1>}</div>
         <div className="servers-page__header-toggles">
+          <button
+            className="btn btn--sm"
+            title={t('sidebar.backupTitle')}
+            aria-label={t('sidebar.backup')}
+            onClick={() => setShowBackup(true)}
+          >
+            <Archive size={14} />
+          </button>
           <LangToggle />
           <ThemeToggle />
         </div>
@@ -137,8 +157,8 @@ export function ServersPage() {
         <button className="btn btn--primary btn--sm" title={t('sidebar.addServer')} onClick={() => setModal({ mode: 'create' })}>
           <Plus size={13} /> {!collapsed && t('common.add')}
         </button>
-        <button className="btn btn--sm" title={t('sidebar.backupTitle')} onClick={() => setShowBackup(true)}>
-          <ArrowLeftRight size={13} /> {!collapsed && t('sidebar.backup')}
+        <button className="btn btn--sm" title={t('sidebar.migrationTitle')} onClick={openOrFocusMigration}>
+          <ArrowLeftRight size={13} /> {!collapsed && t('sidebar.migration')}
         </button>
       </div>
 

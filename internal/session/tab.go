@@ -16,9 +16,21 @@ package session
 
 import "time"
 
-// Tab merepresentasikan satu tab yang terbuka di UI, menunjuk ke satu server.
+// Jenis tab. Tab "server" menunjuk ke satu server dan isinya modul-modul
+// pengelolaan server; tab "migration" tidak menunjuk ke server manapun —
+// server asal dan tujuannya dipilih di dalam panelnya sendiri.
+const (
+	KindServer    = "server"
+	KindMigration = "migration"
+)
+
+// Tab merepresentasikan satu tab yang terbuka di UI.
 type Tab struct {
-	ID           string    `json:"id"`
+	ID string `json:"id"`
+	// Kind membedakan tab server dari tab migrasi. Kosong dianggap
+	// "server" demi tab lama yang tersimpan sebelum kolom ini ada.
+	Kind string `json:"kind"`
+	// ServerID kosong untuk tab migrasi.
 	ServerID     string    `json:"serverId"`
 	Title        string    `json:"title"`
 	ActiveModule string    `json:"activeModule"`

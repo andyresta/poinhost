@@ -1,5 +1,6 @@
 import { useTabsStore } from '../../store/tabs';
 import { ServerWorkspace } from '../servers/ServerWorkspace';
+import { MigrationWorkspace } from '../migration/MigrationWorkspace';
 
 // Semua tab yang terbuka tetap MOUNTED di DOM sekaligus — yang berubah
 // cuma `hidden` (lewat CSS, bukan unmount/remount React). Ini yang membuat
@@ -23,7 +24,11 @@ export function TabContent() {
     <div className="tab-content">
       {tabs.map((tab) => (
         <div key={tab.id} hidden={tab.id !== activeTabId} className="tab-content__panel">
-          <ServerWorkspace tab={tab} />
+          {tab.kind === 'migration' ? (
+            <MigrationWorkspace tab={tab} />
+          ) : (
+            <ServerWorkspace tab={tab} />
+          )}
         </div>
       ))}
     </div>
