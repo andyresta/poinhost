@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/andyresta/poinhost/internal/core/sshpool"
+	"golang.org/x/net/publicsuffix"
 )
 
 // sanTarget satu pasangan FQDN+webroot yang perlu divalidasi certbot lewat
@@ -13,6 +14,29 @@ import (
 type sanTarget struct {
 	FQDN string
 	Root string
+	// Optional menandai SAN pelengkap (sejauh ini hanya `www.`) yang boleh
+	// dibuang kalau DNS-nya belum ada. certbot menggagalkan SELURUH
+	// permintaan kalau satu SAN saja tidak tervalidasi, jadi SAN yang tidak
+	// diminta user secara eksplisit tidak boleh ikut menjatuhkan sertifikat
+	// untuk domain yang sebenarnya dia minta.
+	Optional bool
+}
+
+// isRegistrableApex melaporkan apakah domain ini adalah nama terdaftar
+// paling atas (eTLD+1) — `storepoin.com` ya, `api.storepoin.com` tidak.
+//
+// Dipakai untuk memutuskan apakah `www.` masuk akal ditambahkan. Menghitung
+// jumlah titik tidak cukup: `example.co.uk` punya tiga label tapi tetap apex,
+// sedangkan `api.example.com` juga tiga label tapi bukan. Public suffix list
+// yang membedakan keduanya.
+func isRegistrableApex(domain string) bool {
+	etld1, err := publicsuffix.EffectiveTLDPlusOne(strings.TrimSuffix(domain, "."))
+	if err != nil {
+		// Nama yang tidak dikenal daftar suffix (mis. host internal tanpa
+		// TLD publik): jangan mengarang www untuknya.
+		return false
+	}
+	return etld1 == domain
 }
 
 // sanTargets mengumpulkan seluruh anggota "keluarga" SAN satu domain parent:
@@ -38,7 +62,9 @@ type sanTarget struct {
 //
 // `www` TETAP digabung dengan induknya karena keduanya satu situs yang sama —
 // satu vhost melayani keduanya lewat server_name, jadi memisahkannya justru
-// akan menghasilkan sertifikat yang tidak pernah dipakai.
+// akan menghasilkan sertifikat yang tidak pernah dipakai. Tapi hanya untuk
+// nama terdaftar paling atas, dan hanya kalau DNS-nya memang ada; lihat
+// isRegistrableApex dan dropUnresolvedOptional.
 func (s *Service) sanTargets(serverID, domain string) ([]sanTarget, error) {
 	domains, err := s.listDomains(serverID)
 	if err != nil {
@@ -51,10 +77,19 @@ func (s *Service) sanTargets(serverID, domain string) ([]sanTarget, error) {
 		if d.IsSubdomain {
 			return []sanTarget{{FQDN: d.Domain, Root: d.Root}}, nil
 		}
-		return []sanTarget{
-			{FQDN: domain, Root: d.Root},
-			{FQDN: "www." + domain, Root: d.Root},
-		}, nil
+		targets := []sanTarget{{FQDN: domain, Root: d.Root}}
+		// `www.` hanya masuk akal untuk nama terdaftar paling atas.
+		// Sebelumnya ia ditambahkan ke apa pun yang tidak tercatat sebagai
+		// subdomain DI POINHOST — sehingga domain seperti api.example.com,
+		// yang ditambahkan sebagai domain tersendiri karena induknya memang
+		// tidak dikelola di server ini, ikut diminta sebagai
+		// www.api.example.com. Nama itu hampir tidak pernah ada DNS-nya, dan
+		// karena satu SAN gagal menjatuhkan seluruh permintaan, sertifikat
+		// untuk domain yang benar-benar diminta pun tidak pernah terbit.
+		if isRegistrableApex(domain) {
+			targets = append(targets, sanTarget{FQDN: "www." + domain, Root: d.Root, Optional: true})
+		}
+		return targets, nil
 	}
 	return nil, errFmt("domain %s tidak ditemukan", domain)
 }
@@ -280,6 +315,15 @@ func (s *Service) SSLStatus(serverID, domain string) (*SSLStatus, error) {
 		}
 		for _, t := range sans {
 			st.SANs = append(st.SANs, t.FQDN)
+			// SAN pelengkap TIDAK dihitung sebagai kekurangan. `www` yang
+			// memang tidak punya DNS sengaja dibuang saat penerbitan, jadi
+			// menghitungnya "belum tercakup" akan membuat status selamanya
+			// tampak kurang — dan karena SSLRenew menolak jalan selama masih
+			// ada SAN yang kurang, perpanjangan domain itu ikut terkunci
+			// permanen oleh nama yang tidak pernah diminta siapa pun.
+			if t.Optional {
+				continue
+			}
 			if st.Certificate.Exists && !have[strings.ToLower(t.FQDN)] {
 				st.MissingSANs = append(st.MissingSANs, t.FQDN)
 			}
@@ -338,6 +382,11 @@ func (s *Service) SSLIssue(req SSLIssueRequest) (*SSLStatus, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// SAN pelengkap yang DNS-nya belum ada dibuang sebelum certbot jalan.
+	// Domain apex pun belum tentu punya record `www`, dan satu SAN yang
+	// gagal divalidasi menggagalkan permintaan untuk semua yang lain.
+	targets = s.dropUnresolvedOptional(access, targets)
 
 	s.mutex.Lock(req.ServerID)
 	defer s.mutex.Unlock(req.ServerID)
@@ -569,4 +618,59 @@ func certbotProblem(raw string) string {
 		}
 	}
 	return strings.Join(picked, " · ")
+}
+
+// resolvableScript menyusun skrip yang mencetak RESOLVED=<nama> untuk setiap
+// nama yang benar-benar punya record DNS. `getent ahosts` dipakai (bukan dig
+// atau host) karena ia bagian dari libc dan selalu ada, sementara utilitas
+// DNS sering tidak terpasang di image server yang minimal.
+func resolvableScript(names []string) string {
+	var sb strings.Builder
+	for _, n := range names {
+		sb.WriteString("if getent ahosts " + shellQuote(n) + " >/dev/null 2>&1; then echo RESOLVED=" + shellQuote(n) + "; fi\n")
+	}
+	// `true` di akhir supaya skrip tetap keluar dengan status 0 walau tidak
+	// ada satu pun nama yang cocok — tidak ada yang resolve adalah jawaban
+	// yang sah di sini, bukan kegagalan perintah.
+	sb.WriteString("true\n")
+	return sb.String()
+}
+
+// dropUnresolvedOptional membuang SAN pelengkap yang belum punya DNS.
+//
+// Kalau pengecekannya sendiri gagal (perintah error, server tidak menjawab),
+// daftar dikembalikan apa adanya: menebak-nebak lalu diam-diam menghapus SAN
+// yang sebenarnya valid lebih buruk daripada membiarkan certbot yang
+// memutuskan dan melaporkan alasannya.
+func (s *Service) dropUnresolvedOptional(access *websiteAccess, targets []sanTarget) []sanTarget {
+	var names []string
+	for _, t := range targets {
+		if t.Optional {
+			names = append(names, t.FQDN)
+		}
+	}
+	if len(names) == 0 {
+		return targets
+	}
+
+	res, err := s.run(access, resolvableScript(names), 30*time.Second)
+	if err != nil || res == nil {
+		return targets
+	}
+
+	resolved := make(map[string]bool, len(names))
+	for _, line := range strings.Split(res.Stdout, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "RESOLVED="); ok {
+			resolved[v] = true
+		}
+	}
+
+	kept := make([]sanTarget, 0, len(targets))
+	for _, t := range targets {
+		if t.Optional && !resolved[t.FQDN] {
+			continue
+		}
+		kept = append(kept, t)
+	}
+	return kept
 }
