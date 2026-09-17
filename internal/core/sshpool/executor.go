@@ -89,7 +89,11 @@ func (e *Executor) exec(ctx context.Context, serverID string, slot SlotType, tim
 		}
 		lastErr = execErr
 		if destructive || ClassifyError(execErr) == ErrPermanent {
-			return nil, execErr
+			// Hasil ikut dikembalikan bersama error: stdout perintah yang
+			// gagal sering memuat satu-satunya keterangan yang bisa
+			// ditindaklanjuti user, dan membuangnya di sini membuat lapisan
+			// di atas tidak punya apa-apa selain kalimat umum.
+			return result, execErr
 		}
 	}
 
@@ -335,16 +339,41 @@ func (e *Executor) execOnce(ctx context.Context, conn *ssh.Client, timeout time.
 		if err != nil {
 			if exitErr, ok := err.(*ssh.ExitError); ok {
 				result.ExitCode = exitErr.ExitStatus()
-				msg := strings.TrimSpace(result.Stderr)
-				if msg == "" {
-					msg = strings.TrimSpace(result.Stdout)
-				}
-				return result, fmt.Errorf("perintah gagal (exit %d): %s", result.ExitCode, msg)
+				return result, fmt.Errorf("perintah gagal (exit %d): %s", result.ExitCode, FailureDetail(result))
 			}
 			return nil, err
 		}
 		result.ExitCode = 0
 		return result, nil
+	}
+}
+
+// FailureDetail menyusun keterangan kegagalan satu perintah dari stderr DAN
+// stdout sekaligus.
+//
+// Sebelumnya stdout hanya dibaca kalau stderr kebetulan kosong, dan itu
+// membuang bagian yang justru berguna: certbot, misalnya, menulis alasan
+// sebenarnya ("Domain: … Type: unauthorized Detail: …") ke stdout dan hanya
+// menyisakan kalimat umum ("Some challenges have failed") di stderr —
+// sehingga yang sampai ke layar user persis bagian yang tidak menjelaskan
+// apa pun.
+func FailureDetail(res *ExecResult) string {
+	if res == nil {
+		return "tidak ada keluaran"
+	}
+	out := strings.TrimSpace(res.Stdout)
+	errOut := strings.TrimSpace(res.Stderr)
+	switch {
+	case out == "" && errOut == "":
+		return "tidak ada keluaran"
+	case out == "":
+		return errOut
+	case errOut == "":
+		return out
+	case strings.Contains(out, errOut):
+		return out
+	default:
+		return errOut + "\n" + out
 	}
 }
 

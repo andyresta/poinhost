@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"strings"
 	"time"
+
+	"github.com/andyresta/poinhost/internal/core/sshpool"
 )
 
 // sanTarget satu pasangan FQDN+webroot yang perlu divalidasi certbot lewat
@@ -373,12 +375,20 @@ func (s *Service) SSLIssue(req SSLIssueRequest) (*SSLStatus, error) {
 
 	res, err := s.run(access, script, 180*time.Second)
 	if err != nil {
+		// certbot mengubur alasan sebenarnya di tengah keluarannya. Kalau
+		// blok laporannya ketemu, itu saja yang ditampilkan — user butuh
+		// tahu domain mana yang gagal dan kenapa, bukan lokasi debug log.
+		if res != nil {
+			if detail := certbotProblem(res.Stdout + "\n" + res.Stderr); detail != "" {
+				return nil, mapWebsiteError(errFmt("penerbitan sertifikat gagal — %s", detail))
+			}
+		}
 		return nil, err
 	}
 	if res.ExitCode != 0 {
-		msg := strings.TrimSpace(res.Stderr)
-		if msg == "" {
-			msg = strings.TrimSpace(res.Stdout)
+		msg := strings.TrimSpace(sshpool.FailureDetail(res))
+		if detail := certbotProblem(msg); detail != "" {
+			msg = detail
 		}
 		if msg == "" {
 			msg = "gagal menerbitkan sertifikat SSL"
@@ -534,4 +544,29 @@ echo ">> Certbot terpasang."
 	default:
 		return "", false
 	}
+}
+
+// certbotProblem menarik blok laporan kegagalan certbot dari keluaran
+// mentahnya.
+//
+// Saat validasi gagal, certbot mencetak alasan sebenarnya sebagai beberapa
+// baris berlabel "Domain:", "Type:" dan "Detail:" — sisanya (lokasi debug
+// log, ajakan bertanya di forum, saran menjalankan ulang dengan -v) tidak
+// membantu user memperbaiki apa pun, tapi justru bagian itulah yang selama
+// ini muncul di panel karena ia yang ditulis ke stderr.
+//
+// Mengembalikan string kosong kalau blok itu tidak ada, supaya pemanggil
+// bisa jatuh ke keluaran apa adanya daripada menampilkan pesan kosong.
+func certbotProblem(raw string) string {
+	var picked []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Domain:"),
+			strings.HasPrefix(line, "Type:"),
+			strings.HasPrefix(line, "Detail:"):
+			picked = append(picked, line)
+		}
+	}
+	return strings.Join(picked, " · ")
 }
