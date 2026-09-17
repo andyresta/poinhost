@@ -136,6 +136,7 @@ export namespace docker {
 	    networkMode?: string;
 	    cmd?: string[];
 	    workingDir?: string;
+	    extraHosts: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new ContainerInspectResponse(source);
@@ -155,6 +156,7 @@ export namespace docker {
 	        this.networkMode = source["networkMode"];
 	        this.cmd = source["cmd"];
 	        this.workingDir = source["workingDir"];
+	        this.extraHosts = source["extraHosts"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -364,6 +366,7 @@ export namespace docker {
 	    ports: PortMapping[];
 	    volumes: VolumeMount[];
 	    memoryBytes: number;
+	    extraHosts: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new RecreateContainerRequest(source);
@@ -377,6 +380,7 @@ export namespace docker {
 	        this.ports = this.convertValues(source["ports"], PortMapping);
 	        this.volumes = this.convertValues(source["volumes"], VolumeMount);
 	        this.memoryBytes = source["memoryBytes"];
+	        this.extraHosts = source["extraHosts"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

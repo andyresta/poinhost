@@ -303,6 +303,7 @@ func inspectToDetail(inv *inspectRaw) (*ContainerInspectResponse, *createTemplat
 		NetworkMode:   netMode,
 		Cmd:           inv.Config.Cmd,
 		WorkingDir:    tpl.WorkingDir,
+		ExtraHosts:    tpl.ExtraHosts,
 	}
 	return detail, tpl, nil
 }
@@ -427,7 +428,7 @@ func splitBind(raw string) (host, cont string, ro bool) {
 }
 
 // validateRecreateOverrides memvalidasi payload UI recreate.
-func validateRecreateOverrides(env []EnvVar, ports []PortMapping, volumes []VolumeMount, mem int64) error {
+func validateRecreateOverrides(env []EnvVar, ports []PortMapping, volumes []VolumeMount, mem int64, extraHosts []string) error {
 	for _, e := range env {
 		k := strings.TrimSpace(e.Key)
 		if k == "" {
@@ -486,6 +487,9 @@ func validateRecreateOverrides(env []EnvVar, ports []PortMapping, volumes []Volu
 	if mem > maxMemoryBytes {
 		return fmt.Errorf("memory limit terlalu besar")
 	}
+	if _, err := normalizeExtraHosts(extraHosts); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -530,12 +534,16 @@ func normalizeOverrides(env []EnvVar, ports []PortMapping, volumes []VolumeMount
 }
 
 // applyOverrides ke template create dari payload UI.
-func applyOverrides(tpl *createTemplate, env []EnvVar, ports []PortMapping, volumes []VolumeMount, mem int64) {
+func applyOverrides(tpl *createTemplate, env []EnvVar, ports []PortMapping, volumes []VolumeMount, mem int64, extraHosts []string) {
 	e, p, v := normalizeOverrides(env, ports, volumes)
 	tpl.Env = e
 	tpl.Ports = p
 	tpl.Volumes = v
 	tpl.MemoryBytes = mem
+	// Error di sini sudah ditolak validateRecreateOverrides sebelum sampai
+	// ke titik ini, jadi hasilnya dipakai apa adanya.
+	hosts, _ := normalizeExtraHosts(extraHosts)
+	tpl.ExtraHosts = hosts
 	// Docker sendiri tidak bisa membedakan "public" vs "intranet" dari
 	// bind-address (keduanya 0.0.0.0) — simpan pilihan scope di label
 	// supaya kebuka lagi RecreateContainerModal nanti menampilkan pilihan
@@ -672,4 +680,47 @@ func quoteCreateCommand(args []string) string {
 		parts = append(parts, shellQuote(a))
 	}
 	return strings.Join(parts, " ")
+}
+
+// extraHostNameRE membatasi sisi KIRI entri --add-host ke bentuk hostname
+// yang wajar. Tanpa batas ini, string apa pun bisa menyelinap ke argumen
+// docker dan gagalnya baru terlihat sebagai error create yang tidak jelas.
+var extraHostNameRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$`)
+
+// normalizeExtraHosts membersihkan dan memvalidasi daftar entri --add-host.
+//
+// Bentuknya "nama:target", dengan target berupa alamat IP atau kata kunci
+// `host-gateway` (yang diterjemahkan Docker menjadi alamat host). Entri
+// kosong dibuang diam-diam supaya baris kosong di form tidak jadi error,
+// tapi entri yang terisi separuh dilaporkan — itu hampir selalu salah ketik,
+// dan membuangnya tanpa bilang akan terasa seperti setelan yang "tidak mau
+// tersimpan".
+func normalizeExtraHosts(entries []string) ([]string, error) {
+	out := make([]string, 0, len(entries))
+	seen := make(map[string]bool, len(entries))
+	for _, raw := range entries {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		name, target, ok := strings.Cut(raw, ":")
+		name = strings.TrimSpace(name)
+		target = strings.TrimSpace(target)
+		if !ok || name == "" || target == "" {
+			return nil, fmt.Errorf("entri host tambahan %q tidak valid: gunakan bentuk nama:target", raw)
+		}
+		if !extraHostNameRE.MatchString(name) {
+			return nil, fmt.Errorf("nama host %q tidak valid", name)
+		}
+		if strings.ContainsAny(target, " \t") {
+			return nil, fmt.Errorf("target host %q tidak valid", target)
+		}
+		entry := name + ":" + target
+		if seen[entry] {
+			continue
+		}
+		seen[entry] = true
+		out = append(out, entry)
+	}
+	return out, nil
 }

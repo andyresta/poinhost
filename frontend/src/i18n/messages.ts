@@ -451,6 +451,9 @@ export const en = {
   'picker.newFolder': 'New folder',
   'picker.newFolderName': 'Folder name',
   'picker.noSubfolder': 'No subfolder here',
+  'rc.extraHosts': 'Extra hosts',
+  'rc.extraHostsHint': 'Names resolved inside the container, as name:target. host.docker.internal:host-gateway points at the server itself.',
+  'rc.volumeSource': '/host/path or volume name',
 };
 
 export type MessageKey = keyof typeof en;
@@ -880,6 +883,9 @@ export const id: Partial<Record<MessageKey, string>> = {
   'picker.newFolder': 'Folder baru',
   'picker.newFolderName': 'Nama folder',
   'picker.noSubfolder': 'Tidak ada subfolder di sini',
+  'rc.extraHosts': 'Host tambahan',
+  'rc.extraHostsHint': 'Nama yang bisa di-resolve dari dalam container, bentuknya nama:target. host.docker.internal:host-gateway menunjuk ke server itu sendiri.',
+  'rc.volumeSource': '/path/host atau nama volume',
 };
 
 export const messages: Record<'en' | 'id', Partial<Record<MessageKey, string>>> = { en, id };

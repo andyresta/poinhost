@@ -64,7 +64,7 @@ func (s *Service) RecreateContainer(req RecreateContainerRequest) (*RecreateCont
 	if serverID == "" {
 		return nil, fmt.Errorf("id server wajib diisi")
 	}
-	if err := validateRecreateOverrides(req.Env, req.Ports, req.Volumes, req.MemoryBytes); err != nil {
+	if err := validateRecreateOverrides(req.Env, req.Ports, req.Volumes, req.MemoryBytes, req.ExtraHosts); err != nil {
 		return nil, err
 	}
 
@@ -102,7 +102,7 @@ func (s *Service) RecreateContainer(req RecreateContainerRequest) (*RecreateCont
 	}
 
 	// 2) Override UI
-	applyOverrides(tpl, req.Env, req.Ports, req.Volumes, req.MemoryBytes)
+	applyOverrides(tpl, req.Env, req.Ports, req.Volumes, req.MemoryBytes, req.ExtraHosts)
 
 	// 3) Build create
 	createArgs, err := buildCreateArgs(tpl)

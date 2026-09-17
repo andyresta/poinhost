@@ -78,3 +78,36 @@ func TestInspectToDetail_ReadsExtraHostsFromInspect(t *testing.T) {
 		t.Fatalf("ExtraHosts = %v, mau [host.docker.internal:host-gateway]", tpl.ExtraHosts)
 	}
 }
+
+func TestNormalizeExtraHosts(t *testing.T) {
+	got, err := normalizeExtraHosts([]string{
+		"  host.docker.internal:host-gateway  ",
+		"",
+		"db.internal:10.0.0.5",
+		// Duplikat dibuang: dua entri identik hanya membuat perintah create
+		// lebih panjang tanpa mengubah apa pun.
+		"db.internal:10.0.0.5",
+	})
+	if err != nil {
+		t.Fatalf("normalizeExtraHosts: %v", err)
+	}
+	want := []string{"host.docker.internal:host-gateway", "db.internal:10.0.0.5"}
+	if len(got) != len(want) {
+		t.Fatalf("hasil = %v, mau %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("hasil = %v, mau %v", got, want)
+		}
+	}
+}
+
+// Entri terisi separuh dilaporkan, bukan dibuang diam-diam — kalau dibuang,
+// salah ketik akan terasa seperti setelan yang "tidak mau tersimpan".
+func TestNormalizeExtraHosts_RejectsHalfFilledEntry(t *testing.T) {
+	for _, bad := range []string{"tanpapemisah", "host.docker.internal:", ":10.0.0.5", "-awal:1.2.3.4", "ada spasi:1.2.3.4"} {
+		if _, err := normalizeExtraHosts([]string{bad}); err == nil {
+			t.Errorf("%q seharusnya ditolak", bad)
+		}
+	}
+}

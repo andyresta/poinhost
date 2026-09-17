@@ -45,7 +45,7 @@ func TestValidateRecreateOverrides_AcceptsNamedVolume(t *testing.T) {
 	err := validateRecreateOverrides(
 		nil, nil,
 		[]VolumeMount{{HostPath: "devpoin-app_data", ContainerPath: "/var/lib/app"}},
-		0,
+		0, nil,
 	)
 	if err != nil {
 		t.Fatalf("named volume seharusnya diterima, dapat error: %v", err)
@@ -57,7 +57,7 @@ func TestValidateRecreateOverrides_RejectsRelativeContainerPath(t *testing.T) {
 	err := validateRecreateOverrides(
 		nil, nil,
 		[]VolumeMount{{HostPath: "/srv/data", ContainerPath: "data"}},
-		0,
+		0, nil,
 	)
 	if err == nil {
 		t.Fatal("path container relatif seharusnya ditolak")

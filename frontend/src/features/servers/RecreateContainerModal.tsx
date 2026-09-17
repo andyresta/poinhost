@@ -33,6 +33,7 @@ export function RecreateContainerModal({
   const [ports, setPorts] = useState<docker.PortMapping[]>([]);
   const [volumes, setVolumes] = useState<docker.VolumeMount[]>([]);
   const [memoryMB, setMemoryMB] = useState(0);
+  const [extraHosts, setExtraHosts] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +43,7 @@ export function RecreateContainerModal({
         setEnv(detail.env);
         setPorts(detail.ports);
         setVolumes(detail.volumes);
+        setExtraHosts(detail.extraHosts ?? []);
         setMemoryMB(detail.memoryBytes > 0 ? Math.round(detail.memoryBytes / (1024 * 1024)) : 0);
       })
       .catch((e) => !cancelled && setError(String(e)))
@@ -70,6 +72,7 @@ export function RecreateContainerModal({
           ports,
           volumes,
           memoryBytes: memoryMB > 0 ? memoryMB * 1024 * 1024 : 0,
+          extraHosts,
         }),
       );
       // Peringatan firewall sudah tidak ada lagi: scope ditegakkan lewat
@@ -203,7 +206,7 @@ export function RecreateContainerModal({
                 {volumes.map((v, i) => (
                   <div className="docker-recreate__row" key={i}>
                     <input
-                      placeholder="/host/path"
+                      placeholder={t('rc.volumeSource')}
                       value={v.hostPath}
                       onChange={(ev) =>
                         setVolumes(volumes.map((x, j) => (j === i ? new docker.VolumeMount({ ...x, hostPath: ev.target.value }) : x)))
@@ -228,6 +231,37 @@ export function RecreateContainerModal({
                       ro
                     </label>
                     <button className="btn btn--sm btn--danger" onClick={() => setVolumes(volumes.filter((_, j) => j !== i))}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </section>
+
+              {/* Host tambahan (--add-host). Ada di sini karena tanpa editor
+                  ini, container yang kehilangan entri seperti
+                  host.docker.internal:host-gateway hanya bisa diperbaiki
+                  lewat shell atau file compose — padahal panel inilah yang
+                  membuatnya hilang. */}
+              <section>
+                <div className="docker-recreate__section-head">
+                  <h3>{t('rc.extraHosts')}</h3>
+                  <button className="btn btn--sm" onClick={() => setExtraHosts([...extraHosts, ''])}>
+                    + Tambah
+                  </button>
+                </div>
+                <p className="docker-recreate__hint">{t('rc.extraHostsHint')}</p>
+                {extraHosts.map((h, i) => (
+                  <div className="docker-recreate__row" key={i}>
+                    <input
+                      placeholder="host.docker.internal:host-gateway"
+                      value={h}
+                      spellCheck={false}
+                      onChange={(ev) => setExtraHosts(extraHosts.map((x, j) => (j === i ? ev.target.value : x)))}
+                    />
+                    <button
+                      className="btn btn--sm btn--danger"
+                      onClick={() => setExtraHosts(extraHosts.filter((_, j) => j !== i))}
+                    >
                       <X size={14} />
                     </button>
                   </div>

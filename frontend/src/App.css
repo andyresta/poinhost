@@ -2202,3 +2202,10 @@ button svg {
   color: var(--danger);
   text-align: left;
 }
+
+/* Keterangan singkat di bawah judul seksi modal recreate. */
+.docker-recreate__hint {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--neutral);
+}

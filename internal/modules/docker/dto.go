@@ -106,6 +106,11 @@ type ContainerInspectResponse struct {
 	NetworkMode   string        `json:"networkMode,omitempty"`
 	Cmd           []string      `json:"cmd,omitempty"`
 	WorkingDir    string        `json:"workingDir,omitempty"`
+	// ExtraHosts entri --add-host ("nama:target"). Ditampilkan dan bisa
+	// disunting supaya entri seperti host.docker.internal:host-gateway bisa
+	// dipasang kembali dari panel — tanpa ini, container yang kehilangan
+	// entrinya hanya bisa diperbaiki lewat shell atau file compose.
+	ExtraHosts []string `json:"extraHosts"`
 }
 
 // RecreateContainerRequest apply konfigurasi baru lewat recreate container.
@@ -116,6 +121,7 @@ type RecreateContainerRequest struct {
 	Ports       []PortMapping `json:"ports"`
 	Volumes     []VolumeMount `json:"volumes"`
 	MemoryBytes int64         `json:"memoryBytes"` // 0 = unlimited
+	ExtraHosts  []string      `json:"extraHosts"`
 }
 
 // RecreateContainerResponse hasil recreate (info container baru).
