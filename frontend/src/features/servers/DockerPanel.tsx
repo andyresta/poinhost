@@ -234,6 +234,7 @@ ${t('docker.composeDetail', { file: info.configFiles || info.workingDir })}`,
               {error && <p className="overview__error">{error}</p>}
 
               <div className="files-panel__table-wrap">
+                <div className="files-panel__table-scroll">
                 <table className="files-panel__table">
                   <thead>
                     <tr>
@@ -314,6 +315,7 @@ ${t('docker.composeDetail', { file: info.configFiles || info.workingDir })}`,
                     )}
                   </tbody>
                 </table>
+                </div>
                 {loading && <div className="files-panel__loading">{t('common.loading')}</div>}
               </div>
             </>

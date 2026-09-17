@@ -183,6 +183,7 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
           )}
 
           <div className="files-panel__table-wrap">
+            <div className="files-panel__table-scroll">
             <table className="files-panel__table">
               <thead>
                 <tr>
@@ -257,6 +258,7 @@ export function WebsitePanel({ serverId }: { serverId: string }) {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}

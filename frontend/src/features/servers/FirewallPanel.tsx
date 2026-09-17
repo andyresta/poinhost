@@ -317,6 +317,7 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
       {error && <p className="overview__error">{error}</p>}
 
       <div className="files-panel__table-wrap">
+        <div className="files-panel__table-scroll">
         <table className="files-panel__table">
           <thead>
             <tr>
@@ -381,6 +382,7 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {showAdd && <FirewallRuleModal onConfirm={handleAdd} onClose={() => setShowAdd(false)} />}

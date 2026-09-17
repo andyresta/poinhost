@@ -122,6 +122,7 @@ export function NetworksPanel({ serverId }: { serverId: string }) {
       )}
 
       <div className="files-panel__table-wrap">
+        <div className="files-panel__table-scroll">
         <table className="files-panel__table">
           <thead>
             <tr>
@@ -157,6 +158,7 @@ export function NetworksPanel({ serverId }: { serverId: string }) {
             )}
           </tbody>
         </table>
+        </div>
         {loading && <div className="files-panel__loading">{t('common.loading')}</div>}
       </div>
     </div>
