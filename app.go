@@ -16,8 +16,9 @@ import (
 	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/andyresta/poinhost/internal/modules/docker"
-	"github.com/andyresta/poinhost/internal/modules/filexfer"
+	"github.com/andyresta/poinhost/internal/modules/dockerxfer"
 	"github.com/andyresta/poinhost/internal/modules/files"
+	"github.com/andyresta/poinhost/internal/modules/filexfer"
 	"github.com/andyresta/poinhost/internal/modules/firewall"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 	"github.com/andyresta/poinhost/internal/modules/services"
@@ -40,18 +41,19 @@ type App struct {
 	db   *sql.DB
 	pool *sshpool.Pool
 
-	serversSvc  *servers.Service
-	collector   *servers.Collector
-	sessionMgr  *session.Manager
-	terminals   *session.TerminalRegistry
-	terminalSvc *terminal.Service
-	filesSvc    *files.Service
-	filexferSvc *filexfer.Service
-	dockerSvc   *docker.Service
-	servicesSvc *services.Service
-	firewallSvc *firewall.Service
-	websiteSvc  *website.Service
-	backupSvc   *backup.Service
+	serversSvc    *servers.Service
+	collector     *servers.Collector
+	sessionMgr    *session.Manager
+	terminals     *session.TerminalRegistry
+	terminalSvc   *terminal.Service
+	filesSvc      *files.Service
+	filexferSvc   *filexfer.Service
+	dockerSvc     *docker.Service
+	dockerxferSvc *dockerxfer.Service
+	servicesSvc   *services.Service
+	firewallSvc   *firewall.Service
+	websiteSvc    *website.Service
+	backupSvc     *backup.Service
 
 	// streamMu/streams melacak stream Docker yang sedang berjalan (logs,
 	// stats, instalasi engine) supaya frontend bisa membatalkannya secara
@@ -107,28 +109,30 @@ func NewApp() *App {
 	filexferSvc := filexfer.NewService(serversSvc, pool, sftpClient)
 
 	dockerSvc := docker.NewService(serversSvc, executor, mutex)
+	dockerxferSvc := dockerxfer.NewService(serversSvc, dockerSvc, pool)
 	servicesSvc := services.NewService(serversSvc, executor, mutex)
 	firewallSvc := firewall.NewService(serversSvc, executor, mutex)
 	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault, firewallSvc)
 	backupSvc := backup.NewService(serversSvc, websiteSvc)
 
 	return &App{
-		cfg:         cfg,
-		db:          db,
-		pool:        pool,
-		serversSvc:  serversSvc,
-		collector:   collector,
-		sessionMgr:  sessionMgr,
-		terminals:   terminals,
-		terminalSvc: terminalSvc,
-		filesSvc:    filesSvc,
-		filexferSvc: filexferSvc,
-		dockerSvc:   dockerSvc,
-		servicesSvc: servicesSvc,
-		firewallSvc: firewallSvc,
-		websiteSvc:  websiteSvc,
-		backupSvc:   backupSvc,
-		streams:     make(map[string]context.CancelFunc),
+		cfg:           cfg,
+		db:            db,
+		pool:          pool,
+		serversSvc:    serversSvc,
+		collector:     collector,
+		sessionMgr:    sessionMgr,
+		terminals:     terminals,
+		terminalSvc:   terminalSvc,
+		filesSvc:      filesSvc,
+		filexferSvc:   filexferSvc,
+		dockerSvc:     dockerSvc,
+		dockerxferSvc: dockerxferSvc,
+		servicesSvc:   servicesSvc,
+		firewallSvc:   firewallSvc,
+		websiteSvc:    websiteSvc,
+		backupSvc:     backupSvc,
+		streams:       make(map[string]context.CancelFunc),
 	}
 }
 
@@ -199,6 +203,12 @@ func (a *App) startup(ctx context.Context) {
 	// satu job tidak perlu menyaring event milik job lain.
 	a.filexferSvc.SetEmitter(func(p filexfer.Progress) {
 		runtime.EventsEmit(ctx, "xfer:progress:"+p.JobID, p)
+	})
+
+	// Sama seperti filexfer: progress migrasi Docker dikirim per job
+	// ("dockerxfer:progress:<jobId>"), bukan event global.
+	a.dockerxferSvc.SetEmitter(func(p dockerxfer.Progress) {
+		runtime.EventsEmit(ctx, "dockerxfer:progress:"+p.JobID, p)
 	})
 }
 
@@ -1394,4 +1404,28 @@ func (a *App) XferStatus(jobID string) (*filexfer.Progress, error) {
 // XferCancel membatalkan transfer yang sedang berjalan.
 func (a *App) XferCancel(jobID string) (*filexfer.Progress, error) {
 	return a.filexferSvc.Cancel(jobID)
+}
+
+// ---------------------------------------------------------------------
+// Bindings: Migrasi — migrasi container Docker antar server
+// (lihat internal/modules/dockerxfer; daftar container sumber memakai
+// ListDockerContainers yang sudah ada, tidak perlu binding baru untuk itu).
+// ---------------------------------------------------------------------
+
+// DockerXferStart memulai migrasi satu container Docker ke server lain.
+// Hasilnya hanya progress AWAL — kemajuan selanjutnya mengalir lewat event
+// "dockerxfer:progress:<jobId>" sampai statusnya terminal.
+func (a *App) DockerXferStart(req dockerxfer.StartRequest) (*dockerxfer.Progress, error) {
+	return a.dockerxferSvc.Start(req)
+}
+
+// DockerXferStatus menarik progress terakhir satu migrasi — dipakai saat
+// panel dibuka kembali.
+func (a *App) DockerXferStatus(jobID string) (*dockerxfer.Progress, error) {
+	return a.dockerxferSvc.Status(jobID)
+}
+
+// DockerXferCancel membatalkan migrasi yang sedang berjalan.
+func (a *App) DockerXferCancel(jobID string) (*dockerxfer.Progress, error) {
+	return a.dockerxferSvc.Cancel(jobID)
 }

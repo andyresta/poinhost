@@ -9,6 +9,7 @@ import {backup} from '../models';
 import {servers} from '../models';
 import {session} from '../models';
 import {filexfer} from '../models';
+import {dockerxfer} from '../models';
 
 export function AddFirewallRule(arg1:firewall.RuleRequest):Promise<firewall.ListResponse>;
 
@@ -75,6 +76,12 @@ export function DisableWebsiteSSL(arg1:string,arg2:string):Promise<website.SSLSt
 export function DockerContainerLogs(arg1:docker.LogsRequest):Promise<docker.LogsResponse>;
 
 export function DockerContainerStats(arg1:string,arg2:string):Promise<docker.StatsResponse>;
+
+export function DockerXferCancel(arg1:string):Promise<dockerxfer.Progress>;
+
+export function DockerXferStart(arg1:dockerxfer.StartRequest):Promise<dockerxfer.Progress>;
+
+export function DockerXferStatus(arg1:string):Promise<dockerxfer.Progress>;
 
 export function DownloadFileFromServer(arg1:string,arg2:string,arg3:string):Promise<void>;
 

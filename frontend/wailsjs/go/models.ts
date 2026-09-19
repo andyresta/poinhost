@@ -914,6 +914,113 @@ export namespace filexfer {
 
 }
 
+export namespace dockerxfer {
+	
+	export class ItemResult {
+	    label: string;
+	    status: string;
+	    error?: string;
+	    warning?: string;
+	    verify?: string;
+	    verifyDetail?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ItemResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.warning = source["warning"];
+	        this.verify = source["verify"];
+	        this.verifyDetail = source["verifyDetail"];
+	    }
+	}
+	export class Progress {
+	    jobId: string;
+	    status: string;
+	    sourceServerId: string;
+	    destServerId: string;
+	    containerId: string;
+	    containerName: string;
+	    compress: boolean;
+	    totalBytes: number;
+	    doneBytes: number;
+	    percent: number;
+	    currentItems: string[];
+	    items: ItemResult[];
+	    containerRunning?: boolean;
+	    message: string;
+	    // Go type: time
+	    startedAt: any;
+	    // Go type: time
+	    finishedAt?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Progress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.jobId = source["jobId"];
+	        this.status = source["status"];
+	        this.sourceServerId = source["sourceServerId"];
+	        this.destServerId = source["destServerId"];
+	        this.containerId = source["containerId"];
+	        this.containerName = source["containerName"];
+	        this.compress = source["compress"];
+	        this.totalBytes = source["totalBytes"];
+	        this.doneBytes = source["doneBytes"];
+	        this.percent = source["percent"];
+	        this.currentItems = source["currentItems"];
+	        this.items = this.convertValues(source["items"], ItemResult);
+	        this.containerRunning = source["containerRunning"];
+	        this.message = source["message"];
+	        this.startedAt = this.convertValues(source["startedAt"], null);
+	        this.finishedAt = this.convertValues(source["finishedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class StartRequest {
+	    sourceServerId: string;
+	    containerId: string;
+	    destServerId: string;
+	    compress: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StartRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceServerId = source["sourceServerId"];
+	        this.containerId = source["containerId"];
+	        this.destServerId = source["destServerId"];
+	        this.compress = source["compress"];
+	    }
+	}
+
+}
+
 export namespace firewall {
 	
 	export class DockerSubnet {

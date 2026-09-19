@@ -57,7 +57,6 @@ type inspectRaw struct {
 	HostConfig struct {
 		PortBindings  map[string][]inspectPortBinding `json:"PortBindings"`
 		Binds         []string                        `json:"Binds"`
-		Mounts        []inspectMount                  `json:"Mounts"`
 		Memory        int64                           `json:"Memory"`
 		RestartPolicy struct {
 			Name              string `json:"Name"`
@@ -95,14 +94,6 @@ type inspectTopMount struct {
 type inspectPortBinding struct {
 	HostIP   string `json:"HostIp"`
 	HostPort string `json:"HostPort"`
-}
-
-// inspectMount mount dari HostConfig.Mounts (bila ada).
-type inspectMount struct {
-	Type     string `json:"Type"`
-	Source   string `json:"Source"`
-	Target   string `json:"Target"`
-	ReadOnly bool   `json:"ReadOnly"`
 }
 
 // createTemplate field internal untuk membangun docker create (dari inspect + override UI).
@@ -230,7 +221,7 @@ func inspectToDetail(inv *inspectRaw) (*ContainerInspectResponse, *createTemplat
 
 	env := parseEnvList(inv.Config.Env)
 	ports := parsePortBindings(inv.HostConfig.PortBindings)
-	volumes := parseVolumes(inv.HostConfig.Binds, inv.HostConfig.Mounts)
+	volumes := parseVolumes(inv.HostConfig.Binds, inv.Mounts)
 	ep, hasEP := parseEntrypoint(inv.Config.Entrypoint)
 
 	labels := inv.Config.Labels
@@ -367,8 +358,22 @@ func parsePortBindings(pb map[string][]inspectPortBinding) []PortMapping {
 	return out
 }
 
-// parseVolumes menggabungkan Binds dan Mounts type bind.
-func parseVolumes(binds []string, mounts []inspectMount) []VolumeMount {
+// parseVolumes menggabungkan Binds (format lawas) dan Mounts top-level
+// (bind + named volume).
+//
+// Named volume SEBELUMNYA difilter habis di sini ("if !EqualFold(Type,
+// bind) { continue }"), padahal itu justru cara yang dianjurkan Docker untuk
+// data yang harus bertahan melewati daur hidup container — akibatnya
+// ContainerInspectResponse.Volumes diam-diam kosong untuk container yang
+// memakainya, dan recreate/migrasi jadi tidak pernah tahu data itu ada.
+//
+// Untuk mount bertipe "volume", sisi host memakai NAMA volume (m.Name),
+// bukan m.Source — m.Source menunjuk direktori overlay internal Docker di
+// host (mis. /var/lib/docker/volumes/xxx/_data), detail implementasi yang
+// tidak portable antar server dan tidak sah sebagai argumen "docker create
+// -v". Nama volume itulah yang sudah diterima sisi create (lihat
+// isVolumeSource) sebagai bentuk host yang sah selain path absolut.
+func parseVolumes(binds []string, mounts []inspectTopMount) []VolumeMount {
 	seen := map[string]bool{}
 	out := make([]VolumeMount, 0)
 
@@ -391,12 +396,25 @@ func parseVolumes(binds []string, mounts []inspectMount) []VolumeMount {
 		add(host, cont, ro)
 	}
 	for _, m := range mounts {
-		if !strings.EqualFold(m.Type, "bind") {
-			continue
+		switch strings.ToLower(strings.TrimSpace(m.Type)) {
+		case "bind":
+			add(m.Source, m.Destination, !m.RW)
+		case "volume":
+			add(m.Name, m.Destination, !m.RW)
 		}
-		add(m.Source, m.Target, m.ReadOnly)
 	}
 	return out
+}
+
+// IsNamedVolume membedakan sisi host VolumeMount: named volume (nama Docker
+// volume) vs bind mount (path host absolut). Dipakai modul lain (mis. mesin
+// migrasi Docker) yang perlu menangani keduanya secara berbeda — bind mount
+// bisa di-tar langsung dari path host, named volume harus dibaca lewat
+// container bantu karena lokasi filesystem-nya adalah detail internal
+// Docker yang tidak boleh diasumsikan.
+func IsNamedVolume(hostSide string) bool {
+	hostSide = strings.TrimSpace(hostSide)
+	return hostSide != "" && !strings.HasPrefix(hostSide, "/") && volumeNameRE.MatchString(hostSide)
 }
 
 // splitBind memecah string docker bind "host:container[:ro|rw]".

@@ -1947,8 +1947,11 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
   di §6).
 - **Jobs & event bus untuk operasi jangka panjang** (mis. instalasi paket,
   migrasi file/DB/Docker) — polanya sudah ada (`runtime.EventsEmit`/
-  `EventsOn`, dipakai server status di §8 dan terminal di §9), tinggal
-  modul migrasi/instalasinya sendiri yang belum di-porting.
+  `EventsOn`, dipakai server status di §8 dan terminal di §9). ~~migrasi
+  file/Docker belum di-porting~~ — **SUDAH SELESAI**: migrasi file antar
+  server (`internal/modules/filexfer`) dan migrasi container Docker antar
+  server (`internal/modules/dockerxfer`) sudah ada, lihat §21. Migrasi
+  database (tab "Migrasi Database") masih placeholder.
 - **activitylog** (audit trail tiap operasi).
 - **`access`/sudo untuk MODUL LAIN** — elevasi ke user/root lewat sudo
   sekarang ada di tiga modul: `files` (§10, `asUser` penuh — List/Mkdir/
@@ -2005,3 +2008,97 @@ Setelah mengubah signature method di `App` (app.go), regenerate binding TS:
 ```bash
 wails generate module
 ```
+
+## 21. Migrasi: file antar server + container Docker antar server
+
+Tab "Migrasi" (`MigrationWorkspace.tsx`) punya tiga sub-modul:
+`migration-files` (selesai), `migration-docker` (selesai, dibahas di sini),
+`migration-database` (masih placeholder). Keduanya yang selesai memakai
+mekanisme dasar yang sama — **tar disalurkan lewat `io.Pipe` di memori
+proses ini, dua sesi SSH dedicated (bukan slot shared), tidak pernah
+menyentuh disk komputer yang menjalankan poinhost** — tapi dianalisis dan
+dibangun terpisah karena unitnya beda: file adalah kumpulan path bebas,
+Docker adalah satu container utuh dengan konfigurasi yang harus dibaca dan
+dibuat ulang, bukan sekadar disalin.
+
+### Migrasi file (`internal/modules/filexfer`) — fondasi yang dipakai bersama
+
+`dto.go`/`job.go`/`engine.go`/`service.go`/`paths.go`. Pola intinya, yang
+juga jadi pola untuk migrasi Docker di bawah:
+
+- **Satu job aktif per waktu** (`Service.activeJob`): sengaja, bukan
+  keterbatasan yang tidak disadari — ini aplikasi desktop satu operator, dua
+  transfer besar bersamaan cuma berebut bandwidth yang sama sambil membuat
+  "apa yang sedang terjadi" ambigu di UI.
+- **Progress lewat satu callback emitter** (`Service.emit`, disambungkan
+  `app.go` ke `runtime.EventsEmit(ctx, "xfer:progress:"+jobId, ...)`) —
+  BUKAN fan-out ala WebSocket seperti homepoin, karena di aplikasi desktop
+  cuma ada satu frontend yang mendengarkan, jadi fan-out tidak perlu.
+- **Koneksi SSH dedicated** (`sshpool.Pool.OpenDedicated`/`CloseDedicated`),
+  bukan slot shared: transfer bisa berjam-jam, memakai slot shared akan
+  membuat panel lain ke server yang sama ikut tersendat.
+- **`countingReader`**: progress dihitung dari byte yang BENAR-BENAR lewat
+  pipe ke tujuan, bukan tebakan di sisi sumber.
+- Sesi tujuan (`tar x`) selalu di-`Start()` SEBELUM sesi sumber (`tar c`) —
+  urutan ini mencegah deadlock (tar sumber memblokir di write kalau belum
+  ada yang membaca).
+
+### Migrasi Docker (`internal/modules/dockerxfer` + `internal/modules/docker/migration.go`)
+
+Diminta eksplisit: tiru mekanisme homepoin, tapi analisis dulu apa yang
+kurang di sana, lalu terapkan versi yang lebih baik di poinhost — bukan
+port apa adanya. Audit homepoin (`internal/modules/migration/dockerxfer`,
+`dockerjob`, `service_docker.go` + `internal/modules/servers/docker/
+service_migration.go`) menemukan mekanisme dasarnya solid (pola yang sama
+dengan §di atas: dual SSH session + `io.Pipe`, tanpa staging ke disk) tapi
+dengan gap nyata, yang masing-masing punya perbaikan eksplisit di poinhost:
+
+| Gap di homepoin | Perbaikan di poinhost |
+|---|---|
+| Opsi `migrateVolumes`/`stopSource`/`startAfterCreate` di request **diabaikan total** oleh backend (hardcoded `true` semua) — UI menjanjikan kontrol yang tidak pernah benar-benar ada (juga dicatat sebagai gap diketahui di MEMORY.md homepoin sendiri). | **Tidak ada toggle sama sekali** untuk hal-hal itu — bukan toggle baru yang juga berisiko jadi dead option, tapi keputusan desain tetap yang didokumentasikan: source SELALU dihentikan dulu (konsistensi data) dan SENGAJA tidak dinyalakan lagi otomatis (dua salinan container aktif menulis ke "sumber kebenaran" yang beda akan diam-diam bercabang datanya) — lihat `service.go` `run()`. Semua opsi yang memang ditampilkan ke user (server tujuan, kompresi) benar-benar dipakai. |
+| Volume/bind data SELALU ditransfer tanpa kompresi (`tar cf -`), TAPI image SELALU di-gzip (`docker save \| gzip`) — tidak konsisten dalam file yang sama, tanpa opsi menyamakannya. | Satu flag `Compress` dipakai KONSISTEN untuk mount ATAUPUN image (`runOneMount`/`runImage` di `engine.go`) — nyala berarti nyala di semuanya, mati berarti mati di semuanya. |
+| Named volume difilter habis dari `ContainerInspectResponse.Volumes` di parser inspect poinhost sendiri (bug yang ditemukan saat riset ini, `!EqualFold(Type,"bind") { continue }`) — kalau tidak diperbaiki dulu, migrasi Docker apa pun di poinhost akan diam-diam menjatuhkan data di named volume, pola penyimpanan paling umum untuk data yang harus bertahan. | Diperbaiki DULU sebagai prasyarat (`docker/config.go` `parseVolumes`, lihat §11 dan `volumes_test.go`) sebelum menulis satu baris pun modul migrasi — `ContainerInspectResponse.Volumes` dan editor Recreate satu-server ikut mendapat manfaatnya juga, bukan cuma jalur migrasi. |
+| Hanya network UTAMA (`NetworkMode`) yang dibawa ke container hasil migrasi — container yang tersambung ke >1 custom network kehilangan semua yang lain TANPA peringatan. | `MigrationBlueprint.ExtraNetworks` (`docker/migration.go` `attachedNetworks`) menangkap SEMUA network yang diikuti container, bukan cuma yang utama; `CreateFromBlueprint` menyambungkan tiap network tambahan lewat `docker network connect --alias` setelah `docker create`, karena `docker create` sendiri cuma bisa menyambung satu network. |
+| Destination-only preflight: Docker engine SUMBER tidak pernah dicek — kalau mati, transfer baru gagal di detik pertama dengan pesan yang tidak jelas asalnya. | `Service.preflight` (`dockerxfer/service.go`) mengecek `DetectEngineStatus` di KEDUA sisi sebelum satu byte pun dipindah, plus cek nama container di tujuan (gagal cepat dengan pesan jelas, bukan gagal di tengah `docker create`). |
+| `EnsureNamedVolume`/mkdir bind tujuan bersifat idempotent lalu data DIGABUNG/DITIMPA ke isi yang sudah ada TANPA pemeriksaan atau pemberitahuan apa pun — re-run migrasi atau dua sumber berbeda memakai nama volume yang sama bisa diam-diam mencampur data lama+baru. | `mountHasExistingData` (`engine.go`) mengecek isi tujuan SEBELUM transfer per mount; kalau tidak kosong, item itu dapat `Warning` yang tampil di UI ("Tujuan sudah berisi data — akan digabung, bukan ditimpa bersih") — perilaku merge-nya SAMA (tidak ada mode "wipe tujuan dulu" di versi ini), tapi sekarang TERLIHAT sebelum terjadi, bukan diam-diam. |
+| **Tidak ada verifikasi pasca-migrasi sama sekali** — "sukses" murni berarti perintah SSH tidak keluar exit code error; tidak ada pengecekan container beneran menyala atau datanya utuh. | Verifikasi RINGAN (keputusan yang dikunci eksplisit bareng user, bukan checksum penuh yang mahal untuk volume besar): `ContainerIsRunning` di tujuan (`docker/migration.go`) + jumlah file & ukuran total per mount dibandingkan sumber vs tujuan (`verify.go` `verifyMount`) — cukup menangkap kasus nyata seperti "tar terputus di tengah" atau "sebagian file tidak ke-tar karena permission", ditampilkan per item (match/mismatch/tidak-diverifikasi) di `Progress.Items[].Verify`. |
+| **Nol test otomatis** untuk seluruh jalur migrasi Docker (`dockerxfer/`, `dockerjob/`, `service_migration.go` di homepoin semuanya tanpa test). | `docker/migration_test.go` (konversi blueprint↔template, tangkap network tambahan) + `docker/volumes_test.go` (parsing named volume) + `dockerxfer/dockerxfer_test.go` (label item, parsing statistik verifikasi, urutan item) — mengikuti kebiasaan proyek ini menulis test untuk setiap fitur backend baru. |
+
+**Sengaja DIPERTAHANKAN sama seperti homepoin** (bukan kelalaian — batas
+cakupan yang dikunci eksplisit bareng user sebelum implementasi):
+copy-only, tidak ada opsi "pindahkan lalu hapus sumber"; satu container per
+job (tidak ada migrasi stack/compose sekaligus); writable layer container,
+CPU/ulimit/device/cap-add/health-check/logging-driver TIDAK ikut
+dimigrasikan; network custom dibuat ulang dengan driver/subnet default
+Docker, bukan menyalin subnet/IPAM/IP statis sumber persis; tidak ada
+resume/retry-partial kalau transfer terputus di tengah (retry mengulang
+dari awal). Semua ini secara eksplisit diungkap ke user lewat kotak info di
+`DockerMigrationPanel.tsx` (`migration.docker.notice`) sebelum migrasi
+dimulai — bukan sesuatu yang baru ketahuan sesudahnya.
+
+**Alur satu job** (`dockerxfer.Service.run`): inspect (`docker.Service.
+InspectMigrationBlueprint`, satu-satunya titik yang boleh menyentuh
+`createTemplate`/`inspectToDetail` internal paket `docker` — lihat
+`docker/migration.go`) → preflight → stop container sumber → scan ukuran
+tiap mount → salin tiap mount (bind: tar langsung atas path host, sama
+seperti filexfer; named volume: tar lewat container bantu `alpine`
+me-mount volume itu ke `/dxfer_from`/`/dxfer_to`, karena lokasi filesystem
+sebenarnya sebuah named volume di host adalah detail internal Docker yang
+tidak boleh diasumsikan — lihat `docker.IsNamedVolume`) → salin image
+(`docker pull` langsung kalau image punya `RepoDigests`/ditarik dari
+registry, fallback `docker save|gzip` → `gunzip|docker load` lewat pipe
+yang sama; dilewati total kalau image sudah ada di tujuan) →
+`CreateFromBlueprint` (create + connect network tambahan + start) →
+verifikasi ringan. Item mount dan item image digabung dalam SATU daftar
+progress (`Job.items`), bukan dua progress bar terpisah "Stage 1/Stage 2"
+seperti homepoin — pola yang sama dengan daftar path di filexfer, byte
+mount dan byte image digabung jadi satu persentase tapi status per-item
+tetap terlihat baris demi baris.
+
+Binding Wails: `DockerXferStart`/`DockerXferStatus`/`DockerXferCancel`
+(`app.go`), event `dockerxfer:progress:<jobId>` — daftar container sumber
+memakai `ListDockerContainers` yang sudah ada (§11), tidak ada binding
+baru untuk itu. Frontend: `ContainerPicker.tsx` (padanan `RemoteBrowser`
+tapi memilih satu container, bukan menjelajah folder) + `DockerMigration
+Panel.tsx`, mengikuti kelas CSS `.mig-panel*`/`.mig-browser*` yang sama
+dipakai `FileTransferPanel`.

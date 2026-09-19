@@ -2097,6 +2097,64 @@ button svg {
   }
 }
 
+/* Kotak info di atas panel migrasi Docker: mengungkap cakupan (apa yang
+   TIDAK ikut dimigrasikan, kenapa container asal tidak dinyalakan lagi
+   otomatis) di depan, bukan sesuatu yang baru ketahuan user sesudahnya. */
+.mig-panel__notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--neutral);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.mig-panel__notice svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.mig-browser__row--selected {
+  background: var(--surface-hover);
+}
+.mig-browser__table tbody tr {
+  cursor: pointer;
+}
+
+.mig-panel__destserver {
+  height: auto;
+}
+
+.mig-panel__item-kind {
+  display: inline-block;
+  min-width: 78px;
+  margin-right: 6px;
+  font-size: 11px;
+  color: var(--neutral);
+}
+
+.mig-panel__path-verify {
+  padding-left: 10px;
+  white-space: nowrap;
+  color: var(--neutral);
+}
+
+.mig-panel__container-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mig-panel__container-status--ok {
+  color: var(--success);
+}
+.mig-panel__container-status--bad {
+  color: var(--danger);
+}
+
 /* Path tujuan bisa diketik langsung — folder baru belum bisa ditelusuri. */
 .mig-panel__destpath {
   margin-top: 6px;

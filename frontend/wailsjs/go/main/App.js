@@ -134,6 +134,18 @@ export function DockerContainerStats(arg1, arg2) {
   return window['go']['main']['App']['DockerContainerStats'](arg1, arg2);
 }
 
+export function DockerXferCancel(arg1) {
+  return window['go']['main']['App']['DockerXferCancel'](arg1);
+}
+
+export function DockerXferStart(arg1) {
+  return window['go']['main']['App']['DockerXferStart'](arg1);
+}
+
+export function DockerXferStatus(arg1) {
+  return window['go']['main']['App']['DockerXferStatus'](arg1);
+}
+
 export function DownloadFileFromServer(arg1, arg2, arg3) {
   return window['go']['main']['App']['DownloadFileFromServer'](arg1, arg2, arg3);
 }
