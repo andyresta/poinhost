@@ -5,6 +5,7 @@ import { useWorkspaceNavStore } from '../../store/workspaceNav';
 import { useT } from '../../i18n';
 import { FileTransferPanel } from './FileTransferPanel';
 import { DockerMigrationPanel } from './DockerMigrationPanel';
+import { DBMigrationPanel } from './DBMigrationPanel';
 import type { session } from '../../../wailsjs/go/models';
 
 // Menu di dalam tab migrasi. Bentuknya sengaja sama persis dengan nav modul
@@ -73,8 +74,10 @@ export function MigrationWorkspace({ tab }: { tab: session.Tab }) {
           </div>
         )}
 
-        {tab.activeModule === 'migration-database' && (
-          <p className="workspace__placeholder">{t('migration.soon')}</p>
+        {visited.has('migration-database') && (
+          <div className="workspace__module" hidden={tab.activeModule !== 'migration-database'}>
+            <DBMigrationPanel />
+          </div>
         )}
       </div>
     </div>

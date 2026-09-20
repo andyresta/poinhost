@@ -2155,6 +2155,30 @@ button svg {
   color: var(--danger);
 }
 
+.mig-db-picker__engine {
+  flex: 0 0 auto;
+  max-width: 120px;
+}
+.mig-db-picker__tablesbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.mig-db-picker__tablepanel {
+  padding: 6px 10px 10px 30px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.mig-db-picker__tablelist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 6px;
+  max-height: 140px;
+  overflow: auto;
+}
+
 /* Path tujuan bisa diketik langsung — folder baru belum bisa ditelusuri. */
 .mig-panel__destpath {
   margin-top: 6px;

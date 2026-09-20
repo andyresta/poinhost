@@ -10,6 +10,7 @@ import {servers} from '../models';
 import {session} from '../models';
 import {filexfer} from '../models';
 import {dockerxfer} from '../models';
+import {dbxfer} from '../models';
 
 export function AddFirewallRule(arg1:firewall.RuleRequest):Promise<firewall.ListResponse>;
 
@@ -44,6 +45,14 @@ export function CreateWebsiteDatabaseUser(arg1:website.DBCreateUserRequest):Prom
 export function CreateWebsiteSFTPAccount(arg1:website.SFTPCreateAccountRequest):Promise<void>;
 
 export function CreateWebsiteSubdomain(arg1:website.CreateSubdomainRequest):Promise<website.DomainInfo>;
+
+export function DbXferCancel(arg1:string):Promise<dbxfer.Progress>;
+
+export function DbXferListTables(arg1:string,arg2:string,arg3:string):Promise<dbxfer.TableListResponse>;
+
+export function DbXferStart(arg1:dbxfer.StartRequest):Promise<dbxfer.Progress>;
+
+export function DbXferStatus(arg1:string):Promise<dbxfer.Progress>;
 
 export function DeleteFiles(arg1:files.DeleteRequest):Promise<void>;
 

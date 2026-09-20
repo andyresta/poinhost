@@ -1948,10 +1948,11 @@ contoh) supaya bisa direview dulu sebelum porting besar-besaran. Belum ada:
 - **Jobs & event bus untuk operasi jangka panjang** (mis. instalasi paket,
   migrasi file/DB/Docker) — polanya sudah ada (`runtime.EventsEmit`/
   `EventsOn`, dipakai server status di §8 dan terminal di §9). ~~migrasi
-  file/Docker belum di-porting~~ — **SUDAH SELESAI**: migrasi file antar
-  server (`internal/modules/filexfer`) dan migrasi container Docker antar
-  server (`internal/modules/dockerxfer`) sudah ada, lihat §21. Migrasi
-  database (tab "Migrasi Database") masih placeholder.
+  file/DB/Docker belum di-porting~~ — **SUDAH SELESAI**: migrasi file
+  antar server (`internal/modules/filexfer`), migrasi container Docker
+  antar server (`internal/modules/dockerxfer`, §21), dan migrasi database
+  MySQL/PostgreSQL antar server (`internal/modules/dbxfer`, §22) semuanya
+  sudah ada — ketiga sub-menu tab "Migrasi" kini terisi penuh.
 - **activitylog** (audit trail tiap operasi).
 - **`access`/sudo untuk MODUL LAIN** — elevasi ke user/root lewat sudo
   sekarang ada di tiga modul: `files` (§10, `asUser` penuh — List/Mkdir/
@@ -2102,3 +2103,76 @@ baru untuk itu. Frontend: `ContainerPicker.tsx` (padanan `RemoteBrowser`
 tapi memilih satu container, bukan menjelajah folder) + `DockerMigration
 Panel.tsx`, mengikuti kelas CSS `.mig-panel*`/`.mig-browser*` yang sama
 dipakai `FileTransferPanel`.
+
+## 22. Migrasi Database (`internal/modules/dbxfer`) — MySQL & PostgreSQL antar server
+
+Diminta eksplisit dengan pola yang sama seperti §21: tiru mekanisme
+migrasi database homepoin (`internal/modules/dbxfer` di sana — dump/
+restore lewat pipe, BUKAN download ke lokal dulu), tapi analisis dulu apa
+yang kurang, lalu terapkan versi yang lebih baik di poinhost.
+
+### Analisis homepoin: solid di mekanisme intinya, dengan gap konkret
+
+Audit homepoin (`internal/modules/dbxfer/engine.go`, `engine_pg.go`,
+`service.go`, `job.go`, plus modul lama `mysqlxfer` yang TERPISAH dan
+tidak disentuh) menemukan mekanisme dasarnya sudah baik — live pipe dua
+sesi SSH lewat `transfer.SidePool`, `bash -lc 'set -o pipefail; ...'`
+supaya `mysqldump | gzip` yang gagal di tengah tidak lolos sebagai sukses,
+guard "stream kosong" (byte counter nol = gagal), deteksi dukungan
+`--set-gtid-purged` sebelum dipakai (MariaDB lama tidak kenal flag ini),
+dan worker pool (bukan sekadar loop) untuk migrasi banyak database
+sekaligus dalam satu job. Semua ini dipertahankan di poinhost. Gap
+konkret yang ditemukan, dan perbaikannya:
+
+| Gap di homepoin | Perbaikan di poinhost |
+|---|---|
+| Dump/restore berjalan sebagai USER APLIKASI tertentu — perlu resolve kredensial per username+host, menulis file `.cnf`/`.pgpass` SEMENTARA di kedua server (cleanup best-effort, bisa gagal diam-diam kalau sesi mati di tengah), dan men-strip `DEFINER=user@host` dari hasil dump karena restore sebagai user biasa butuh privilege SUPER/SET_USER_ID untuk rutin/trigger/event bawaan root. | Modul Database poinhost yang sudah ada (§website `database.go`) SELALU jalan sebagai root — MySQL lewat unix socket, PostgreSQL lewat `sudo -u postgres` — TANPA password apa pun (lihat catatan `runMySQL`). Dump/restore migrasi mengikuti akses yang SAMA (`website.Service.WrapCommand`, `internal/modules/website/migration.go`): tidak ada kredensial yang ditulis ke server mana pun, dan **DEFINER stripping jadi tidak perlu sama sekali** — root/postgres sudah punya privilege yang dibutuhkan definer manapun. |
+| PostgreSQL dump TIDAK memakai `--clean --if-exists` (MySQL punya `--add-drop-table`, jadi restore ulang aman menimpa tabel bernama sama) — restore ulang ke database tujuan yang sudah pernah diisi GAGAL TOTAL di objek pertama yang bentrok ("relation already exists"), karena `ON_ERROR_STOP=1` menghentikan seluruh restore di kegagalan pertama. Asimetri ini tampak tidak disengaja, tidak ada komentar/test yang mengakuinya. | `buildDumpCmd` PostgreSQL (`dbxfer/engine.go`) menambahkan `--clean --if-exists`, menyamakan perilakunya dengan MySQL: menimpa tabel bernama sama, tidak menyentuh tabel lain di tujuan. |
+| Tidak ada preflight status engine di KEDUA sisi — database mati di sumber baru ketahuan saat dump sungguhan gagal di tengah jalan, dengan pesan yang tidak langsung jelas asalnya. | `Service.preflight` (`dbxfer/service.go`) mengecek `website.Service.DBStatus` di sumber DAN tujuan sebelum satu byte pun dipindah — pola yang sama dipakai migrasi Docker (§21). |
+| Kolisi database tujuan tidak pernah diperiksa/diberitahu — restore langsung menimpa tabel bernama sama tanpa peringatan apa pun ke user. | `DBDatabaseExists` (`website/migration.go`) dicek sebelum restore; kalau tujuan sudah ada, item itu dapat `Warning` yang tampil di UI ("Database tujuan sudah ada — tabel bernama sama akan ditimpa") — perilaku overwrite-nya SAMA, tapi sekarang terlihat sebelum terjadi. |
+| Verifikasi cuma menaksir dari katalog SISI TUJUAN saja (`information_schema.tables`/`pg_class.reltuples` — taksiran yang bisa selisih 40-50% untuk InnoDB), TIDAK PERNAH membandingkan ke sumber — jadi "verifikasi" di homepoin sebenarnya cuma "database tujuan tidak kosong", bukan "data yang sampai memang cocok". Database yang isinya cuma VIEW pula salah ditandai "0 tabel = gagal" (filter `BASE TABLE` doang), dan tabel di schema PostgreSQL custom (bukan `public`) tidak pernah terhitung sama sekali walau tetap ikut ter-dump/ter-restore. | `verifyDatabase`/`compareRowCounts` (`dbxfer/verify.go`) menghitung `SELECT COUNT(*)` NYATA (bukan taksiran) per tabel di KEDUA sisi lalu membandingkannya — keputusan yang dikunci eksplisit bareng user, sadar konsekuensinya (scan penuh tiap tabel, lebih lambat untuk tabel sangat besar, tapi hasilnya benar-benar bisa dipercaya). `DBTableNames` (`website/migration.go`) menghitung SEMUA jenis relasi (termasuk VIEW) dan SEMUA schema non-sistem PostgreSQL, bukan cuma `public`. |
+| Tidak ada status "partial success" — job dengan sebagian database gagal tetap dilaporkan `status: done` di level atas; konsumen yang hanya membaca field status (bukan meng-iterasi `items[]`) salah mengira migrasi sukses total. | `StatusPartial` eksplisit (`dbxfer/dto.go`) — `done==0` → gagal, `failed==0` → selesai, selain itu → sebagian selesai. Ketiganya dibedakan, bukan digabung jadi "done". |
+| Zero test untuk mekanisme intinya (`runOneItem`/`runOnePGItem`, guard stream kosong, `verifyItem`, helper quoting shell/SQL) — yang dites cuma "apakah command builder menghasilkan substring yang benar", bukan perilaku sungguhan. | `dbxfer/engine_test.go` (pipefail, gtid-purged opsional, quoting shell aman, `--clean --if-exists` PostgreSQL) + `dbxfer/dbxfer_test.go` (`compareRowCounts` match/mismatch/banyak-mismatch, status partial, urutan item) + `website/migration_test.go` — mengikuti kebiasaan proyek ini menulis test untuk setiap fitur backend baru. |
+
+**Sengaja DIPERTAHANKAN sama seperti homepoin** (bukan kelalaian — batas
+cakupan yang jelas): tidak ada migrasi lintas engine (MySQL ↔ PostgreSQL —
+butuh penerjemah skema, di luar cakupan); dump/restore selalu mencakup
+skema+data+rutin/trigger/event sekaligus, tidak ada mode schema-only/
+data-only; tidak ada resume untuk job yang gagal/dibatalkan (retry
+mengulang dari awal — untuk MySQL ini aman berkat `--add-drop-table`,
+untuk PostgreSQL sekarang JUGA aman berkat `--clean --if-exists` yang
+baru ditambahkan); satu job aktif per waktu KHUSUS untuk dbxfer sendiri
+(tidak dibagi dengan filexfer/dockerxfer — migrasi database dan migrasi
+Docker boleh berjalan bersamaan, keduanya independen, sama seperti empat
+guard independen yang ditemukan di homepoin sendiri antara fitur-fitur
+migrasinya). Semua ini diungkap ke user lewat kotak info di
+`DBMigrationPanel.tsx` (`migration.db.notice`) sebelum migrasi dimulai.
+
+**Beda dari migrasi Docker (§21) yang sengaja satu container per job**:
+migrasi database MENDUKUNG banyak database sekaligus dalam satu job,
+jalan paralel lewat worker pool (`workers = 2`, `dbxfer/service.go`) —
+keputusan yang dikunci ulang secara sadar bareng user, bukan sekadar
+meniru homepoin, karena migrasi beberapa database aplikasi dalam satu
+kali jalan adalah kasus nyata yang berguna. Tiap database juga bisa
+memilih SUBSET tabel saja (bukan wajib seluruh database) lewat
+`DatabasePicker.tsx` — expand per baris database menampilkan checklist
+tabelnya (dimuat lewat `DbXferListTables`, lazy saat baris itu dibuka).
+
+**Alur satu job** (`dbxfer.Service.run`): preflight (engine aktif di
+kedua sisi) → per database: selesaikan "semua tabel" jadi daftar nyata
+(`DBTableNames`) + taksir ukuran untuk progress bar (`DBEstimateSize` —
+taksiran katalog, HANYA untuk mengisi persentase, bukan untuk verifikasi)
++ peringatan kolisi tujuan → worker pool: pastikan database tujuan ada
+(`DBCreateDatabase`, sudah dipakai fitur provisioning database biasa) →
+dump/restore lewat pipe (`runOneItem`) → guard stream kosong → tahap
+verifikasi terpisah (`StatusVerifying`) membandingkan COUNT(*) nyata
+sumber vs tujuan per tabel.
+
+Binding Wails: `DbXferStart`/`DbXferStatus`/`DbXferCancel`/
+`DbXferListTables` (`app.go`), event `dbxfer:progress:<jobId>` — daftar
+database sumber memakai `ListWebsiteDatabases` yang sudah ada (§14),
+tidak ada binding baru untuk itu. Frontend: `DatabasePicker.tsx` (server +
+engine + checklist database multi-select + expand tabel per baris) +
+`DBMigrationPanel.tsx`, kelas CSS `.mig-panel*`/`.mig-browser*` yang sama
+dipakai kedua fitur migrasi lainnya, plus beberapa kelas `.mig-db-picker__*`
+kecil untuk expand tabel.

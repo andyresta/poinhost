@@ -70,6 +70,22 @@ export function CreateWebsiteSubdomain(arg1) {
   return window['go']['main']['App']['CreateWebsiteSubdomain'](arg1);
 }
 
+export function DbXferCancel(arg1) {
+  return window['go']['main']['App']['DbXferCancel'](arg1);
+}
+
+export function DbXferListTables(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DbXferListTables'](arg1, arg2, arg3);
+}
+
+export function DbXferStart(arg1) {
+  return window['go']['main']['App']['DbXferStart'](arg1);
+}
+
+export function DbXferStatus(arg1) {
+  return window['go']['main']['App']['DbXferStatus'](arg1);
+}
+
 export function DeleteFiles(arg1) {
   return window['go']['main']['App']['DeleteFiles'](arg1);
 }

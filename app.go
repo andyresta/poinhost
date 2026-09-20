@@ -15,6 +15,7 @@ import (
 	"github.com/andyresta/poinhost/internal/core/database"
 	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
+	"github.com/andyresta/poinhost/internal/modules/dbxfer"
 	"github.com/andyresta/poinhost/internal/modules/docker"
 	"github.com/andyresta/poinhost/internal/modules/dockerxfer"
 	"github.com/andyresta/poinhost/internal/modules/files"
@@ -50,6 +51,7 @@ type App struct {
 	filexferSvc   *filexfer.Service
 	dockerSvc     *docker.Service
 	dockerxferSvc *dockerxfer.Service
+	dbxferSvc     *dbxfer.Service
 	servicesSvc   *services.Service
 	firewallSvc   *firewall.Service
 	websiteSvc    *website.Service
@@ -113,6 +115,7 @@ func NewApp() *App {
 	servicesSvc := services.NewService(serversSvc, executor, mutex)
 	firewallSvc := firewall.NewService(serversSvc, executor, mutex)
 	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault, firewallSvc)
+	dbxferSvc := dbxfer.NewService(serversSvc, websiteSvc, pool)
 	backupSvc := backup.NewService(serversSvc, websiteSvc)
 
 	return &App{
@@ -128,6 +131,7 @@ func NewApp() *App {
 		filexferSvc:   filexferSvc,
 		dockerSvc:     dockerSvc,
 		dockerxferSvc: dockerxferSvc,
+		dbxferSvc:     dbxferSvc,
 		servicesSvc:   servicesSvc,
 		firewallSvc:   firewallSvc,
 		websiteSvc:    websiteSvc,
@@ -209,6 +213,12 @@ func (a *App) startup(ctx context.Context) {
 	// ("dockerxfer:progress:<jobId>"), bukan event global.
 	a.dockerxferSvc.SetEmitter(func(p dockerxfer.Progress) {
 		runtime.EventsEmit(ctx, "dockerxfer:progress:"+p.JobID, p)
+	})
+
+	// Sama seperti filexfer/dockerxfer: progress migrasi database dikirim
+	// per job ("dbxfer:progress:<jobId>").
+	a.dbxferSvc.SetEmitter(func(p dbxfer.Progress) {
+		runtime.EventsEmit(ctx, "dbxfer:progress:"+p.JobID, p)
 	})
 }
 
@@ -1428,4 +1438,34 @@ func (a *App) DockerXferStatus(jobID string) (*dockerxfer.Progress, error) {
 // DockerXferCancel membatalkan migrasi yang sedang berjalan.
 func (a *App) DockerXferCancel(jobID string) (*dockerxfer.Progress, error) {
 	return a.dockerxferSvc.Cancel(jobID)
+}
+
+// ---------------------------------------------------------------------
+// Bindings: Migrasi — migrasi database (MySQL/PostgreSQL) antar server
+// (lihat internal/modules/dbxfer; daftar database sumber memakai
+// ListWebsiteDatabases yang sudah ada, tidak perlu binding baru untuk itu).
+// ---------------------------------------------------------------------
+
+// DbXferListTables mengembalikan semua tabel satu database — dipakai
+// picker frontend untuk memilih subset tabel, bukan seluruh database.
+func (a *App) DbXferListTables(serverID, engine, database string) (*dbxfer.TableListResponse, error) {
+	return a.dbxferSvc.ListTables(serverID, engine, database)
+}
+
+// DbXferStart memulai migrasi satu atau lebih database ke server lain.
+// Hasilnya hanya progress AWAL — kemajuan selanjutnya mengalir lewat event
+// "dbxfer:progress:<jobId>" sampai statusnya terminal.
+func (a *App) DbXferStart(req dbxfer.StartRequest) (*dbxfer.Progress, error) {
+	return a.dbxferSvc.Start(req)
+}
+
+// DbXferStatus menarik progress terakhir satu migrasi — dipakai saat panel
+// dibuka kembali.
+func (a *App) DbXferStatus(jobID string) (*dbxfer.Progress, error) {
+	return a.dbxferSvc.Status(jobID)
+}
+
+// DbXferCancel membatalkan migrasi yang sedang berjalan.
+func (a *App) DbXferCancel(jobID string) (*dbxfer.Progress, error) {
+	return a.dbxferSvc.Cancel(jobID)
 }
