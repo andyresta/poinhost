@@ -61,6 +61,56 @@ func (s *Service) UnlinkDomainDatabase(serverID, domain, engine, dbName string) 
 	return nil
 }
 
+// SetDatabaseDomains menyamakan SEMUA domain yang menautkan satu database
+// dengan `domains` yang diberikan — replace PENUH (hapus dulu semua tautan
+// lama untuk database ini, lalu tulis ulang yang baru), bukan toggle satu
+// domain per panggilan seperti Link/UnlinkDomainDatabase. Dipakai dialog
+// "Kelola domain" yang mendukung multi-select, supaya satu database bisa
+// ditautkan ke BEBERAPA domain/subdomain sekaligus (mis. domain utama dan
+// alias-nya) dalam satu kali simpan, bukan satu per satu.
+func (s *Service) SetDatabaseDomains(serverID, engine, dbName string, domains []string) error {
+	engine, err := normalizeDBEngine(engine)
+	if err != nil {
+		return err
+	}
+	dbName, err = normalizeDBName(dbName)
+	if err != nil {
+		return err
+	}
+
+	clean := make([]string, 0, len(domains))
+	seen := make(map[string]bool, len(domains))
+	for _, d := range domains {
+		d = strings.TrimSpace(d)
+		if d == "" || seen[d] {
+			continue
+		}
+		seen[d] = true
+		clean = append(clean, d)
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return errFmt("mulai transaksi tautan domain-database: %v", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		DELETE FROM website_domain_databases WHERE server_id = ? AND engine = ? AND db_name = ?
+	`, serverID, engine, dbName); err != nil {
+		return errFmt("hapus tautan lama: %v", err)
+	}
+	for _, d := range clean {
+		if _, err := tx.Exec(`
+			INSERT INTO website_domain_databases (id, server_id, domain, engine, db_name)
+			VALUES (?, ?, ?, ?, ?)
+		`, uuid.NewString(), serverID, d, engine, dbName); err != nil {
+			return errFmt("simpan tautan domain %q: %v", d, err)
+		}
+	}
+	return tx.Commit()
+}
+
 // ListAllDomainDatabases mengembalikan SEMUA tautan domain<->database di
 // SEMUA server (dipakai backup.Service untuk export — lihat
 // internal/core/backup).

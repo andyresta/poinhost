@@ -258,6 +258,8 @@ export function SetFirewallEnabled(arg1:string,arg2:boolean):Promise<firewall.Li
 
 export function SetTabActiveModule(arg1:string,arg2:string):Promise<void>;
 
+export function SetWebsiteDatabaseDomains(arg1:string,arg2:string,arg3:string,arg4:Array<string>):Promise<void>;
+
 export function SetWebsiteDatabaseGrants(arg1:website.DBGrantsRequest):Promise<void>;
 
 export function SetWebsiteEnabled(arg1:website.SetEnabledRequest):Promise<void>;
