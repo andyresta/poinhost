@@ -85,6 +85,40 @@ func (s *Service) ListAllDomainDatabases() ([]DomainDatabaseLink, error) {
 	return out, rows.Err()
 }
 
+// ListServerDatabaseDomains adalah arah KEBALIKAN dari ListDomainDatabases:
+// bukan "database mana yang dipakai satu domain", tapi "domain mana yang
+// memakai tiap database" di satu server+engine — dipakai panel Database
+// TOP-LEVEL (tanpa domain tertentu) supaya kolom "Domain" di daftar
+// database bisa terisi juga di luar konteks tab per-domain Website, bukan
+// cuma satu baris ringkasan yang hanya muncul kalau panel dibuka dari
+// dalam satu domain (lihat DatabaseManagerPanel.tsx).
+func (s *Service) ListServerDatabaseDomains(serverID, engine string) ([]DomainDatabaseLink, error) {
+	engine, err := normalizeDBEngine(engine)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(`
+		SELECT domain, db_name FROM website_domain_databases
+		WHERE server_id = ? AND engine = ? ORDER BY db_name ASC, domain ASC
+	`, serverID, engine)
+	if err != nil {
+		return nil, errFmt("baca tautan domain-database: %v", err)
+	}
+	defer rows.Close()
+
+	out := make([]DomainDatabaseLink, 0)
+	for rows.Next() {
+		var l DomainDatabaseLink
+		if err := rows.Scan(&l.Domain, &l.Database); err != nil {
+			return nil, err
+		}
+		l.ServerID = serverID
+		l.Engine = engine
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
 // ListDomainDatabases daftar database yang ditautkan ke satu domain.
 func (s *Service) ListDomainDatabases(serverID, domain string) ([]DomainDatabaseLink, error) {
 	rows, err := s.db.Query(`

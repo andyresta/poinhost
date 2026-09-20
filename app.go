@@ -1208,6 +1208,14 @@ func (a *App) ListWebsiteDomainDatabases(serverID, domain string) ([]website.Dom
 	return a.websiteSvc.ListDomainDatabases(serverID, domain)
 }
 
+// ListWebsiteServerDatabaseDomains adalah arah kebalikan: domain mana yang
+// memakai tiap database di satu server+engine — dipakai kolom "Domain" di
+// panel Database (baik dibuka dari tab per-domain maupun modul top-level
+// per server), bukan cuma satu baris ringkasan seperti sebelumnya.
+func (a *App) ListWebsiteServerDatabaseDomains(serverID, engine string) ([]website.DomainDatabaseLink, error) {
+	return a.websiteSvc.ListServerDatabaseDomains(serverID, engine)
+}
+
 // --- Backup: export/import data via satu arsip terenkripsi passphrase ---
 //
 // Mekanisme pindah data antar perangkat TANPA akun/server/layanan pihak

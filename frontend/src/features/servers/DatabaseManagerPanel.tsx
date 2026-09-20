@@ -22,7 +22,7 @@ import {
   ListWebsiteDBCredentials,
   SaveWebsiteDBCredential,
   ForgetWebsiteDBCredential,
-  ListWebsiteDomainDatabases,
+  ListWebsiteServerDatabaseDomains,
   LinkWebsiteDomainDatabase,
   UnlinkWebsiteDomainDatabase,
   GetWebsiteDBDockerAccessStatus,
@@ -91,6 +91,12 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
 
   const [credentials, setCredentials] = useState<website.DBCredentialInfo[]>([]);
   const [linkedDbs, setLinkedDbs] = useState<string[]>([]);
+  // dbDomains: SEMUA domain yang memakai tiap database di server+engine ini
+  // (bukan cuma domain yang sedang dibuka, kalau panel ini dibuka dari tab
+  // per-domain) — dipakai kolom "Domain" di daftar database, supaya
+  // terlihat juga saat panel dibuka dari modul Database top-level per
+  // server yang tidak terikat satu domain.
+  const [dbDomains, setDbDomains] = useState<Record<string, string[]>>({});
   // linkingUser menunjuk SATU (username, host) spesifik — user MySQL yang
   // terdaftar di beberapa host digabung jadi satu baris di tabel (lihat
   // DBUserInfo.hosts), tapi kredensial/koneksi Explore tetap terikat host
@@ -167,10 +173,21 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
       const creds = await ListWebsiteDBCredentials(serverId);
       if (loadIdRef.current !== myLoadId) return;
       setCredentials(creds);
+
+      // Kolom "Domain" terisi TERLEPAS dari apakah panel ini dibuka dari
+      // tab per-domain atau modul top-level per server — dulu domain yang
+      // memakai satu database hanya terlihat kalau kebetulan membuka panel
+      // dari domain itu sendiri, sekarang selalu terlihat.
+      const allLinks = await ListWebsiteServerDatabaseDomains(serverId, engine);
+      if (loadIdRef.current !== myLoadId) return;
+      const domainMap: Record<string, string[]> = {};
+      for (const l of allLinks) {
+        (domainMap[l.database] ??= []).push(l.domain);
+      }
+      setDbDomains(domainMap);
+
       if (domain) {
-        const links = await ListWebsiteDomainDatabases(serverId, domain);
-        if (loadIdRef.current !== myLoadId) return;
-        setLinkedDbs(links.filter((l) => l.engine === engine).map((l) => l.database));
+        setLinkedDbs(allLinks.filter((l) => l.domain === domain).map((l) => l.database));
       } else {
         setLinkedDbs([]);
       }
@@ -922,6 +939,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                   <thead>
                     <tr>
                       <th>{t('common.name')}</th>
+                      <th>{t('db.colDomain')}</th>
                       <th>{t('db.colUsersWithAccess')}</th>
                       <th></th>
                     </tr>
@@ -929,9 +947,23 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                   <tbody>
                     {databases.map((d) => {
                       const dbUsers = usersForDatabase(d.name);
+                      const linkedDomains = dbDomains[d.name] ?? [];
                       return (
                         <tr key={d.name}>
                           <td>{d.name}</td>
+                          <td>
+                            {linkedDomains.length === 0 ? (
+                              <span style={{ opacity: 0.5 }}>—</span>
+                            ) : (
+                              <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4 }}>
+                                {linkedDomains.map((dom) => (
+                                  <span key={dom} className="tag-chip tag-chip--readonly">
+                                    {dom}
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </td>
                           <td>
                             {dbUsers.length === 0 ? (
                               <span style={{ opacity: 0.5 }}>—</span>
@@ -999,7 +1031,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                     })}
                     {databases.length === 0 && (
                       <tr>
-                        <td colSpan={3} className="files-panel__empty">
+                        <td colSpan={4} className="files-panel__empty">
                           {t('db.noDatabases')}
                         </td>
                       </tr>

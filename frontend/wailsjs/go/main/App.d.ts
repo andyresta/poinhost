@@ -174,6 +174,8 @@ export function ListWebsiteDatabases(arg1:string,arg2:string):Promise<Array<webs
 
 export function ListWebsiteDomainDatabases(arg1:string,arg2:string):Promise<Array<website.DomainDatabaseLink>>;
 
+export function ListWebsiteServerDatabaseDomains(arg1:string,arg2:string):Promise<Array<website.DomainDatabaseLink>>;
+
 export function ListWebsiteSFTPAccounts(arg1:string,arg2:string):Promise<website.SFTPListResponse>;
 
 export function ListWebsites(arg1:string):Promise<website.ListResponse>;

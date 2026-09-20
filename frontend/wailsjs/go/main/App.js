@@ -326,6 +326,10 @@ export function ListWebsiteDomainDatabases(arg1, arg2) {
   return window['go']['main']['App']['ListWebsiteDomainDatabases'](arg1, arg2);
 }
 
+export function ListWebsiteServerDatabaseDomains(arg1, arg2) {
+  return window['go']['main']['App']['ListWebsiteServerDatabaseDomains'](arg1, arg2);
+}
+
 export function ListWebsiteSFTPAccounts(arg1, arg2) {
   return window['go']['main']['App']['ListWebsiteSFTPAccounts'](arg1, arg2);
 }
