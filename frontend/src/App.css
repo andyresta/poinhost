@@ -1445,6 +1445,49 @@ button svg {
   padding: 5px 7px;
   font-size: 12px;
 }
+.db-combobox {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.db-combobox__input {
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 5px;
+  padding: 5px 7px;
+  font-size: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.db-combobox__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 180px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  z-index: 60;
+}
+.db-combobox__option {
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+.db-combobox__option:hover {
+  background: var(--surface-hover);
+}
+.db-combobox__empty {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--text-muted, var(--text));
+  opacity: 0.6;
+}
 .docker-recreate__ro {
   display: flex;
   align-items: center;

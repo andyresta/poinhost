@@ -42,6 +42,90 @@ interface StreamLineEvent {
   message?: string;
 }
 
+// DomainCombobox: dropdown domain yang bisa DICARI, bukan <select> polos —
+// server dengan puluhan domain/subdomain (kasus nyata yang dilaporkan)
+// membuat <select> biasa susah dipakai, harus scroll manual satu-satu tanpa
+// bisa mengetik. onSelect HANYA dipanggil saat user benar-benar mengklik
+// satu opsi (bukan tiap ketikan) — supaya "Tautkan" tidak pernah aktif untuk
+// teks bebas yang belum tentu domain yang sah.
+function DomainCombobox({
+  domains,
+  onSelect,
+  placeholder,
+}: {
+  domains: string[];
+  onSelect: (domain: string) => void;
+  placeholder: string;
+}) {
+  const t = useT();
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, []);
+
+  const matches = query.trim()
+    ? domains.filter((d) => d.toLowerCase().includes(query.trim().toLowerCase()))
+    : domains;
+
+  function pick(d: string) {
+    onSelect(d);
+    setQuery(d);
+    setOpen(false);
+  }
+
+  return (
+    <div ref={boxRef} className="db-combobox">
+      <input
+        type="text"
+        className="db-combobox__input"
+        value={query}
+        placeholder={placeholder}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onSelect('');
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && matches.length === 1) {
+            e.preventDefault();
+            pick(matches[0]);
+          } else if (e.key === 'Escape') {
+            setOpen(false);
+          }
+        }}
+      />
+      {open && (
+        <div className="db-combobox__list">
+          {matches.length === 0 ? (
+            <div className="db-combobox__empty">{t('db.noDomainMatch')}</div>
+          ) : (
+            matches.map((d) => (
+              <div
+                key={d}
+                className="db-combobox__option"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pick(d);
+                }}
+              >
+                {d}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Utilitas provisioning MySQL/PostgreSQL ringan (database/user/grants) +
 // Explore (koneksi driver asli, browse tabel/baris/query — lihat
 // MySQLExplorerModal/PGExplorerModal), password disimpan LOKAL di vault
@@ -1223,16 +1307,12 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                 </p>
               ) : (
                 <div className="docker-recreate__row">
-                  <select value={domainLinkChoice} onChange={(e) => setDomainLinkChoice(e.target.value)}>
-                    <option value="">{t('db.pickDomain')}</option>
-                    {allDomains
-                      .filter((dom) => !(dbDomains[domainLinkTarget] ?? []).includes(dom))
-                      .map((dom) => (
-                        <option key={dom} value={dom}>
-                          {dom}
-                        </option>
-                      ))}
-                  </select>
+                  <DomainCombobox
+                    key={domainLinkTarget}
+                    domains={allDomains.filter((dom) => !(dbDomains[domainLinkTarget] ?? []).includes(dom))}
+                    onSelect={setDomainLinkChoice}
+                    placeholder={t('db.pickDomain')}
+                  />
                   <button className="btn btn--sm btn--primary" disabled={busy || !domainLinkChoice} onClick={() => void handleLinkDomain()}>
                     {busy && <span className="spinner" />} {t('db.linkToDomain')}
                   </button>
