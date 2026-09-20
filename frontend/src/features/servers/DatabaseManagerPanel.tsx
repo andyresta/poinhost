@@ -23,7 +23,8 @@ import {
   SaveWebsiteDBCredential,
   ForgetWebsiteDBCredential,
   ListWebsiteServerDatabaseDomains,
-  SetWebsiteDatabaseDomains,
+  LinkWebsiteDomainDatabase,
+  UnlinkWebsiteDomainDatabase,
   ListWebsites,
   GetWebsiteDBDockerAccessStatus,
   EnsureWebsiteDBDockerAccess,
@@ -97,25 +98,20 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
   // server yang tidak terikat satu domain.
   const [dbDomains, setDbDomains] = useState<Record<string, string[]>>({});
   // allDomains: semua domain/subdomain YANG ADA di server ini (parent
-  // maupun subdomain, satu daftar rata) — sumber pilihan untuk dialog
-  // "Kelola domain" dan form buat database, TIDAK bergantung engine
-  // (domain website tidak terikat MySQL/PostgreSQL).
+  // maupun subdomain, satu daftar rata) — sumber pilihan dropdown modal
+  // "Link to domain", TIDAK bergantung engine (domain website tidak
+  // terikat MySQL/PostgreSQL).
   const [allDomains, setAllDomains] = useState<string[]>([]);
-  // domainManageTarget: database yang sedang dibuka dialog "Kelola
-  // domain"-nya (multi-select, bukan toggle satu domain per klik seperti
-  // sebelumnya) — null berarti dialog tertutup.
-  const [domainManageTarget, setDomainManageTarget] = useState<string | null>(null);
-  const [domainManageSelected, setDomainManageSelected] = useState<Set<string>>(new Set());
+  // domainLinkTarget: database yang sedang dibuka modal "Link to
+  // domain"-nya — null berarti modal tertutup. domainLinkChoice: domain
+  // yang sedang dipilih di dropdown modal itu.
+  const [domainLinkTarget, setDomainLinkTarget] = useState<string | null>(null);
+  const [domainLinkChoice, setDomainLinkChoice] = useState('');
   // showAllDatabases: kalau panel ini dibuka dari tab per-domain (domain
   // terisi), daftar SECARA DEFAULT hanya menampilkan database yang sudah
   // tertaut ke domain itu — toggle ini membuka daftar lengkap server saat
   // user perlu menautkan database LAIN yang sudah ada ke domain ini.
   const [showAllDatabases, setShowAllDatabases] = useState(false);
-  // newDbDomains: domain yang dipilih saat MEMBUAT database baru, supaya
-  // tautannya langsung terbentuk tanpa langkah tambahan sesudahnya.
-  // Pra-dicentang ke domain yang sedang dibuka (kalau ada) — membuat
-  // database dari dalam tab satu domain wajar diasumsikan untuk domain itu.
-  const [newDbDomains, setNewDbDomains] = useState<Set<string>>(new Set(domain ? [domain] : []));
   // linkingUser menunjuk SATU (username, host) spesifik — user MySQL yang
   // terdaftar di beberapa host digabung jadi satu baris di tabel (lihat
   // DBUserInfo.hosts), tapi kredensial/koneksi Explore tetap terikat host
@@ -259,8 +255,8 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
     setAssignUsername('');
     setLinkingUser(null);
     setLinkPassword('');
-    setDomainManageTarget(null);
-    setNewDbDomains(new Set(domain ? [domain] : []));
+    setDomainLinkTarget(null);
+    setDomainLinkChoice('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine]);
 
@@ -309,21 +305,21 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
     }
   }
 
-  // Membuka dialog "Kelola domain" — multi-select, pra-dicentang ke domain
-  // yang SUDAH tertaut ke database ini (dari dbDomains, sudah mencakup
-  // SEMUA domain, tidak cuma domain yang sedang dibuka).
-  function openDomainManage(dbName: string) {
-    setDomainManageTarget(dbName);
-    setDomainManageSelected(new Set(dbDomains[dbName] ?? []));
+  // Membuka modal "Link to domain" — dropdown-nya cuma menawarkan domain
+  // yang BELUM tertaut ke database ini (dari dbDomains, sudah mencakup
+  // SEMUA domain, tidak cuma domain yang sedang dibuka kalau ada).
+  function openDomainLink(dbName: string) {
+    setDomainLinkTarget(dbName);
+    setDomainLinkChoice('');
   }
 
-  async function handleSaveDomainManage() {
-    if (!domainManageTarget) return;
+  async function handleLinkDomain() {
+    if (!domainLinkTarget || !domainLinkChoice) return;
     setBusy(true);
     setError(null);
     try {
-      await SetWebsiteDatabaseDomains(serverId, engine, domainManageTarget, Array.from(domainManageSelected));
-      setDomainManageTarget(null);
+      await LinkWebsiteDomainDatabase(serverId, domainLinkChoice, engine, domainLinkTarget);
+      setDomainLinkChoice('');
       await load();
     } catch (e) {
       setError(String(e));
@@ -332,13 +328,17 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
     }
   }
 
-  function toggleDomainManageSelection(dom: string) {
-    setDomainManageSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(dom)) next.delete(dom);
-      else next.add(dom);
-      return next;
-    });
+  async function handleUnlinkDomain(dbName: string, dom: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await UnlinkWebsiteDomainDatabase(serverId, dom, engine, dbName);
+      await load();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleStart() {
@@ -405,21 +405,16 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
     setBusy(true);
     setError(null);
     try {
-      const createdName = newDbName.trim();
       await CreateWebsiteDatabase(
         new website.DBCreateDatabaseRequest({
           serverId,
           engine,
-          name: createdName,
+          name: newDbName.trim(),
           owner: newDbOwner || undefined,
         }),
       );
-      if (newDbDomains.size > 0) {
-        await SetWebsiteDatabaseDomains(serverId, engine, createdName, Array.from(newDbDomains));
-      }
       setNewDbName('');
       setNewDbOwner('');
-      setNewDbDomains(new Set(domain ? [domain] : []));
       await load();
     } catch (e) {
       setError(String(e));
@@ -985,30 +980,6 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                   {busy && <span className="spinner" />} {t('db.create')}
                 </button>
               </div>
-              {allDomains.length > 0 && (
-                <div className="chip-row" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', margin: '0 0 8px' }}>
-                  <span className="chmod-path" style={{ margin: 0 }}>
-                    {t('db.linkOnCreate')}
-                  </span>
-                  {allDomains.map((dom) => (
-                    <label key={dom} className="form-check" style={{ marginTop: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={newDbDomains.has(dom)}
-                        onChange={() =>
-                          setNewDbDomains((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(dom)) next.delete(dom);
-                            else next.add(dom);
-                            return next;
-                          })
-                        }
-                      />
-                      <span>{dom}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
               {domain && (
                 <label className="form-check" style={{ marginBottom: 8 }}>
                   <input type="checkbox" checked={showAllDatabases} onChange={(e) => setShowAllDatabases(e.target.checked)} />
@@ -1040,6 +1011,13 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                                 {linkedDomains.map((dom) => (
                                   <span key={dom} className="tag-chip tag-chip--readonly">
                                     {dom}
+                                    <button
+                                      title={t('db.unlinkDomain')}
+                                      disabled={busy}
+                                      onClick={() => void handleUnlinkDomain(d.name, dom)}
+                                    >
+                                      <X size={11} />
+                                    </button>
                                   </span>
                                 ))}
                               </span>
@@ -1085,10 +1063,10 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                                     disabled={busy}
                                     onClick={() => {
                                       close();
-                                      openDomainManage(d.name);
+                                      openDomainLink(d.name);
                                     }}
                                   >
-                                    <Link2 size={13} /> {t('db.manageDomains')}
+                                    <Link2 size={13} /> {t('db.linkToDomain')}
                                   </button>
                                   <div className="action-menu__sep" />
                                   <button
@@ -1213,42 +1191,57 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
         </div>
       )}
 
-      {domainManageTarget && (
-        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && setDomainManageTarget(null)}>
+      {domainLinkTarget && (
+        <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && setDomainLinkTarget(null)}>
           <div className="modal-card modal-card--small">
             <div className="modal-card__header">
-              <h2>{t('db.manageDomainsTitle', { db: domainManageTarget })}</h2>
-              <button className="modal-card__close" onClick={() => setDomainManageTarget(null)}>
+              <h2>{t('db.linkToDomainTitle', { db: domainLinkTarget })}</h2>
+              <button className="modal-card__close" onClick={() => setDomainLinkTarget(null)}>
                 <X size={18} />
               </button>
             </div>
             <div className="modal-card__body">
-              <p style={{ margin: 0 }}>{t('db.manageDomainsHint')}</p>
-              {allDomains.length === 0 ? (
+              {(dbDomains[domainLinkTarget] ?? []).length > 0 && (
+                <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+                  {(dbDomains[domainLinkTarget] ?? []).map((dom) => (
+                    <span key={dom} className="tag-chip tag-chip--readonly">
+                      {dom}
+                      <button
+                        title={t('db.unlinkDomain')}
+                        disabled={busy}
+                        onClick={() => void handleUnlinkDomain(domainLinkTarget, dom)}
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </span>
+              )}
+              {allDomains.filter((dom) => !(dbDomains[domainLinkTarget] ?? []).includes(dom)).length === 0 ? (
                 <p className="chmod-path" style={{ margin: 0 }}>
-                  {t('db.noDomainsOnServer')}
+                  {allDomains.length === 0 ? t('db.noDomainsOnServer') : t('db.allDomainsLinked')}
                 </p>
               ) : (
-                <div className="chip-row" style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '8px 0' }}>
-                  {allDomains.map((dom) => (
-                    <label key={dom} className="form-check" style={{ marginTop: 0 }}>
-                      <input
-                        type="checkbox"
-                        checked={domainManageSelected.has(dom)}
-                        onChange={() => toggleDomainManageSelection(dom)}
-                      />
-                      <span>{dom}</span>
-                    </label>
-                  ))}
+                <div className="docker-recreate__row">
+                  <select value={domainLinkChoice} onChange={(e) => setDomainLinkChoice(e.target.value)}>
+                    <option value="">{t('db.pickDomain')}</option>
+                    {allDomains
+                      .filter((dom) => !(dbDomains[domainLinkTarget] ?? []).includes(dom))
+                      .map((dom) => (
+                        <option key={dom} value={dom}>
+                          {dom}
+                        </option>
+                      ))}
+                  </select>
+                  <button className="btn btn--sm btn--primary" disabled={busy || !domainLinkChoice} onClick={() => void handleLinkDomain()}>
+                    {busy && <span className="spinner" />} {t('db.linkToDomain')}
+                  </button>
                 </div>
               )}
             </div>
             <div className="modal-card__footer">
-              <button className="btn btn--ghost" onClick={() => setDomainManageTarget(null)}>
-                {t('common.cancel')}
-              </button>
-              <button className="btn btn--primary" disabled={busy} onClick={() => void handleSaveDomainManage()}>
-                {busy && <span className="spinner" />} {t('common.save')}
+              <button className="btn btn--ghost" onClick={() => setDomainLinkTarget(null)}>
+                {t('common.close')}
               </button>
             </div>
           </div>

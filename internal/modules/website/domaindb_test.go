@@ -122,75 +122,35 @@ func TestListServerDatabaseDomains_RejectsUnknownEngine(t *testing.T) {
 	}
 }
 
-// SetDatabaseDomains adalah REPLACE PENUH, dipakai dialog "Kelola domain"
-// multi-select — satu panggilan bisa menambah DAN melepas beberapa tautan
-// sekaligus, bukan toggle satu domain per klik.
-func TestSetDatabaseDomains_ReplacesFully(t *testing.T) {
+// Database yang sama boleh ditautkan ke BEBERAPA domain sekaligus (link
+// dipanggil satu-satu, bukan replace-penuh) — dan pelepasan satu domain
+// tidak boleh menyentuh tautan domain lain ke database yang sama.
+func TestLinkDomainDatabase_SupportsMultipleDomainsPerDatabase(t *testing.T) {
 	s := newDomainDBTestService(t)
 
-	if err := s.SetDatabaseDomains("srv1", "mysql", "appdb", []string{"a.example.com", "b.example.com"}); err != nil {
-		t.Fatalf("SetDatabaseDomains (awal): %v", err)
+	if err := s.LinkDomainDatabase("srv1", "a.example.com", "mysql", "appdb"); err != nil {
+		t.Fatalf("link a: %v", err)
 	}
+	if err := s.LinkDomainDatabase("srv1", "b.example.com", "mysql", "appdb"); err != nil {
+		t.Fatalf("link b: %v", err)
+	}
+
 	links, err := s.ListServerDatabaseDomains("srv1", "mysql")
 	if err != nil {
 		t.Fatalf("ListServerDatabaseDomains: %v", err)
 	}
 	if len(links) != 2 {
-		t.Fatalf("setelah set awal = %+v, mau 2 domain", links)
+		t.Fatalf("appdb harus tertaut 2 domain, dapat %+v", links)
 	}
 
-	// Ganti jadi satu domain lama + satu domain baru — "a.example.com"
-	// harus tetap ada, "b.example.com" harus lepas, "c.example.com" baru.
-	if err := s.SetDatabaseDomains("srv1", "mysql", "appdb", []string{"a.example.com", "c.example.com"}); err != nil {
-		t.Fatalf("SetDatabaseDomains (ganti): %v", err)
+	if err := s.UnlinkDomainDatabase("srv1", "a.example.com", "mysql", "appdb"); err != nil {
+		t.Fatalf("unlink a: %v", err)
 	}
 	links, err = s.ListServerDatabaseDomains("srv1", "mysql")
 	if err != nil {
-		t.Fatalf("ListServerDatabaseDomains setelah ganti: %v", err)
+		t.Fatalf("ListServerDatabaseDomains setelah unlink: %v", err)
 	}
-	got := map[string]bool{}
-	for _, l := range links {
-		got[l.Domain] = true
-	}
-	if len(got) != 2 || !got["a.example.com"] || !got["c.example.com"] || got["b.example.com"] {
-		t.Fatalf("hasil setelah ganti = %v, mau tepat {a.example.com, c.example.com}", got)
-	}
-}
-
-// Daftar kosong berarti lepas SEMUA tautan database ini — dipakai dialog
-// "Kelola domain" saat user menghapus centang semua domain.
-func TestSetDatabaseDomains_EmptyListClearsAll(t *testing.T) {
-	s := newDomainDBTestService(t)
-	if err := s.SetDatabaseDomains("srv1", "mysql", "appdb", []string{"a.example.com"}); err != nil {
-		t.Fatalf("set awal: %v", err)
-	}
-	if err := s.SetDatabaseDomains("srv1", "mysql", "appdb", nil); err != nil {
-		t.Fatalf("set kosong: %v", err)
-	}
-	links, err := s.ListServerDatabaseDomains("srv1", "mysql")
-	if err != nil {
-		t.Fatalf("ListServerDatabaseDomains: %v", err)
-	}
-	if len(links) != 0 {
-		t.Fatalf("setelah set kosong = %+v, mau tidak ada tautan", links)
-	}
-}
-
-// Database lain di server yang sama tidak boleh ikut tersentuh — replace
-// hanya berlaku untuk (server, engine, db_name) yang diminta.
-func TestSetDatabaseDomains_DoesNotTouchOtherDatabases(t *testing.T) {
-	s := newDomainDBTestService(t)
-	if err := s.LinkDomainDatabase("srv1", "blog.example.com", "mysql", "blogdb"); err != nil {
-		t.Fatalf("link blogdb: %v", err)
-	}
-	if err := s.SetDatabaseDomains("srv1", "mysql", "appdb", []string{"app.example.com"}); err != nil {
-		t.Fatalf("set appdb: %v", err)
-	}
-	links, err := s.ListServerDatabaseDomains("srv1", "mysql")
-	if err != nil {
-		t.Fatalf("ListServerDatabaseDomains: %v", err)
-	}
-	if len(links) != 2 {
-		t.Fatalf("links = %+v, mau 2 (blogdb tetap ada + appdb baru)", links)
+	if len(links) != 1 || links[0].Domain != "b.example.com" {
+		t.Fatalf("setelah lepas a.example.com, harus tersisa hanya b.example.com, dapat %+v", links)
 	}
 }

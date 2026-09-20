@@ -1216,15 +1216,6 @@ func (a *App) ListWebsiteServerDatabaseDomains(serverID, engine string) ([]websi
 	return a.websiteSvc.ListServerDatabaseDomains(serverID, engine)
 }
 
-// SetWebsiteDatabaseDomains menyamakan SEMUA domain yang menautkan satu
-// database sekaligus (replace penuh) — dipakai dialog "Kelola domain" yang
-// mendukung multi-select (satu database boleh dipakai beberapa domain/
-// subdomain), bukan toggle satu domain per klik seperti
-// Link/UnlinkWebsiteDomainDatabase.
-func (a *App) SetWebsiteDatabaseDomains(serverID, engine, dbName string, domains []string) error {
-	return a.websiteSvc.SetDatabaseDomains(serverID, engine, dbName, domains)
-}
-
 // --- Backup: export/import data via satu arsip terenkripsi passphrase ---
 //
 // Mekanisme pindah data antar perangkat TANPA akun/server/layanan pihak

@@ -494,10 +494,6 @@ export function SetTabActiveModule(arg1, arg2) {
   return window['go']['main']['App']['SetTabActiveModule'](arg1, arg2);
 }
 
-export function SetWebsiteDatabaseDomains(arg1, arg2, arg3, arg4) {
-  return window['go']['main']['App']['SetWebsiteDatabaseDomains'](arg1, arg2, arg3, arg4);
-}
-
 export function SetWebsiteDatabaseGrants(arg1) {
   return window['go']['main']['App']['SetWebsiteDatabaseGrants'](arg1);
 }
