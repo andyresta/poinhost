@@ -164,7 +164,13 @@ func (s *Service) run(job *Job) {
 		job.SetStatus(StatusFailed, "Gagal membaca konfigurasi container: "+err.Error())
 		return
 	}
-	job.SetBlueprint(bp)
+	plan, err := buildPlan(bp, job.CopyWorkdir)
+	if err != nil {
+		job.SetStatus(StatusFailed, err.Error())
+		return
+	}
+	job.SetPlan(bp, plan)
+	items := plan.items()
 
 	if err := s.preflight(job, bp); err != nil {
 		job.SetStatus(StatusFailed, err.Error())
@@ -202,12 +208,12 @@ func (s *Service) run(job *Job) {
 	defer s.pool.CloseDedicated(job.DestServerID, dstHandle)
 
 	job.SetStatus(StatusRunning, "Menghitung ukuran…")
-	for _, m := range bp.Mounts {
+	for _, it := range items {
 		if ctx.Err() != nil {
 			break
 		}
 		scanCtx, cancel := context.WithTimeout(ctx, scanTimeout)
-		job.AddTotalBytes(scanMountSize(scanCtx, srcClient, s.docker, job.SourceServerID, m))
+		job.AddTotalBytes(scanMountSize(scanCtx, srcClient, s.docker, job.SourceServerID, it.mount))
 		cancel()
 	}
 	if ctx.Err() != nil {
@@ -218,12 +224,12 @@ func (s *Service) run(job *Job) {
 	job.SetStatus(StatusRunning, "Menyalin data…")
 
 	failed := false
-	for _, m := range bp.Mounts {
+	for _, it := range items {
 		if ctx.Err() != nil {
 			job.SetStatus(StatusCanceled, "Dibatalkan")
 			return
 		}
-		key := mountLabel(m)
+		key, m := it.key, it.mount
 		if mountHasExistingData(ctx, dstClient, s.docker, job.DestServerID, m) {
 			job.SetItemWarning(key, "Tujuan sudah berisi data — akan digabung, bukan ditimpa bersih")
 		}
@@ -282,15 +288,15 @@ func (s *Service) run(job *Job) {
 	if err == nil {
 		job.SetContainerRunning(running)
 	}
-	for _, m := range bp.Mounts {
-		verifyMount(verifyCtx, srcClient, dstClient, s.docker, job.SourceServerID, job.DestServerID, m, job, mountLabel(m))
+	for _, it := range items {
+		verifyMount(verifyCtx, srcClient, dstClient, s.docker, job.SourceServerID, job.DestServerID, it.mount, job, it.key)
 	}
 
 	if err == nil && !running {
 		job.SetStatus(StatusFailed, "Container dibuat tapi tidak berjalan di tujuan — cek log container")
 		return
 	}
-	job.SetStatus(StatusDone, fmt.Sprintf("Migrasi selesai: %d item disalin", len(bp.Mounts)+1))
+	job.SetStatus(StatusDone, fmt.Sprintf("Migrasi selesai: %d item disalin", len(items)+1))
 }
 
 // preflight memeriksa prasyarat SEBELUM data mulai dipindah: Docker sehat di

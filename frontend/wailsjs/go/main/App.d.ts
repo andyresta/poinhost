@@ -4,13 +4,14 @@ import {firewall} from '../models';
 import {docker} from '../models';
 import {files} from '../models';
 import {website} from '../models';
+import {dbxfer} from '../models';
+import {dockerxfer} from '../models';
 import {services} from '../models';
 import {backup} from '../models';
 import {servers} from '../models';
 import {session} from '../models';
+import {sitexfer} from '../models';
 import {filexfer} from '../models';
-import {dockerxfer} from '../models';
-import {dbxfer} from '../models';
 
 export function AddFirewallRule(arg1:firewall.RuleRequest):Promise<firewall.ListResponse>;
 
@@ -88,6 +89,8 @@ export function DockerContainerStats(arg1:string,arg2:string):Promise<docker.Sta
 
 export function DockerXferCancel(arg1:string):Promise<dockerxfer.Progress>;
 
+export function DockerXferComposeInfo(arg1:string,arg2:string):Promise<docker.ComposeMigrationInfo>;
+
 export function DockerXferStart(arg1:dockerxfer.StartRequest):Promise<dockerxfer.Progress>;
 
 export function DockerXferStatus(arg1:string):Promise<dockerxfer.Progress>;
@@ -113,6 +116,8 @@ export function ExtractArchive(arg1:files.ExtractRequest):Promise<void>;
 export function ForgetWebsiteDBCredential(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function GetComposeStatus(arg1:string,arg2:string):Promise<docker.ComposeInfo>;
+
+export function GetFirewallInstallInfo(arg1:string):Promise<firewall.InstallInfo>;
 
 export function GetSystemService(arg1:string,arg2:string):Promise<services.ServiceInfo>;
 
@@ -174,9 +179,9 @@ export function ListWebsiteDatabases(arg1:string,arg2:string):Promise<Array<webs
 
 export function ListWebsiteDomainDatabases(arg1:string,arg2:string):Promise<Array<website.DomainDatabaseLink>>;
 
-export function ListWebsiteServerDatabaseDomains(arg1:string,arg2:string):Promise<Array<website.DomainDatabaseLink>>;
-
 export function ListWebsiteSFTPAccounts(arg1:string,arg2:string):Promise<website.SFTPListResponse>;
+
+export function ListWebsiteServerDatabaseDomains(arg1:string,arg2:string):Promise<Array<website.DomainDatabaseLink>>;
 
 export function ListWebsites(arg1:string):Promise<website.ListResponse>;
 
@@ -268,6 +273,16 @@ export function SetWebsiteProxyDomain(arg1:website.ProxySetDomainRequest):Promis
 
 export function SetWebsiteProxyRule(arg1:website.ProxyRuleRequest):Promise<void>;
 
+export function SiteXferCancel(arg1:string):Promise<sitexfer.Progress>;
+
+export function SiteXferPreview(arg1:sitexfer.StartRequest):Promise<sitexfer.Plan>;
+
+export function SiteXferRepairDBUsers(arg1:sitexfer.StartRequest):Promise<sitexfer.RepairResult>;
+
+export function SiteXferStart(arg1:sitexfer.StartRequest):Promise<sitexfer.Progress>;
+
+export function SiteXferStatus(arg1:string):Promise<sitexfer.Progress>;
+
 export function StartDockerContainer(arg1:string,arg2:string):Promise<void>;
 
 export function StartDockerEngine(arg1:string):Promise<docker.EngineStatus>;
@@ -285,6 +300,8 @@ export function StreamDockerContainerLogs(arg1:docker.LogsRequest):Promise<strin
 export function StreamDockerContainerStats(arg1:string,arg2:string):Promise<string>;
 
 export function StreamDockerEngineInstall(arg1:string):Promise<string>;
+
+export function StreamFirewallInstall(arg1:string,arg2:string):Promise<string>;
 
 export function StreamSystemJournal(arg1:services.JournalRequest):Promise<string>;
 

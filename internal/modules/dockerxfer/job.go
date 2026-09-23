@@ -32,6 +32,7 @@ type Job struct {
 	DestServerID   string
 	ContainerID    string
 	Compress       bool
+	CopyWorkdir    bool
 
 	// Blueprint diisi setelah tahap inspect (lihat SetBlueprint) — kosong
 	// sebelum itu, karena daftar mount container tidak diketahui sebelum
@@ -70,6 +71,7 @@ func newJob(parent context.Context, req StartRequest, emit func(Progress)) *Job 
 		DestServerID:   req.DestServerID,
 		ContainerID:    req.ContainerID,
 		Compress:       req.Compress,
+		CopyWorkdir:    req.CopyWorkdir,
 		startedAt:      time.Now().UTC(),
 		ctx:            ctx,
 		cancel:         cancel,
@@ -113,11 +115,23 @@ func (j *Job) SetStatus(status, message string) {
 // mount, plus satu entri sintetis untuk image) — dipanggil sekali di awal
 // run(), sebelum transfer per-item dimulai.
 func (j *Job) SetBlueprint(bp *docker.MigrationBlueprint) {
+	j.SetPlan(bp, transferPlan{Mounts: bp.Mounts})
+}
+
+// SetPlan seperti SetBlueprint, tapi daftar item mengikuti rencana transfer:
+// direktori proyek compose (kalau ikut disalin) PERTAMA, lalu mount yang
+// tidak tercakup di dalamnya, lalu image.
+func (j *Job) SetPlan(bp *docker.MigrationBlueprint, plan transferPlan) {
 	j.Blueprint = bp
 
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	for _, m := range bp.Mounts {
+	if plan.Workdir != "" {
+		label := workdirLabel(plan.Workdir)
+		j.items[label] = &ItemResult{Label: label, Status: ItemPending, Warning: coveredNote(plan.Covered)}
+		j.itemOrder = append(j.itemOrder, label)
+	}
+	for _, m := range plan.Mounts {
 		label := mountLabel(m)
 		j.items[label] = &ItemResult{Label: label, Status: ItemPending}
 		j.itemOrder = append(j.itemOrder, label)
@@ -258,6 +272,7 @@ func (j *Job) Snapshot() Progress {
 		ContainerID:      j.ContainerID,
 		ContainerName:    containerName,
 		Compress:         j.Compress,
+		CopyWorkdir:      j.CopyWorkdir,
 		TotalBytes:       total,
 		DoneBytes:        done,
 		Percent:          percent,

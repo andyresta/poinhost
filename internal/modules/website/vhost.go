@@ -189,6 +189,12 @@ func buildLocationBlocks(o *vhostOptions) string {
 	}
 
 	b.WriteString("    location / {\n        try_files $uri $uri/ =404;\n    }\n")
+	// Tanpa PHP, nginx menyajikan file .php sebagai file statis biasa —
+	// artinya SOURCE-nya terunduh utuh (termasuk config berisi password
+	// database). Ini nyata terjadi pada situs PHP hasil migrasi website
+	// yang PHP-nya sengaja belum dipasang di server tujuan, atau saat PHP
+	// dimatikan dari tab PHP. Tolak eksplisit sampai PHP diaktifkan.
+	b.WriteString("    location ~ \\.php$ {\n        return 403;\n    }\n")
 	return b.String()
 }
 

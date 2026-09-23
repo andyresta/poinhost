@@ -6,6 +6,12 @@
       "runtimeExecutable": "wails",
       "runtimeArgs": ["dev"],
       "port": 34115
+    },
+    {
+      "name": "wails-dev-skipbindings",
+      "runtimeExecutable": "wails",
+      "runtimeArgs": ["dev", "-skipbindings"],
+      "port": 34115
     }
   ]
 }

@@ -12,6 +12,7 @@ import { firewall } from '../../../wailsjs/go/models';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useT } from '../../i18n';
 import { FirewallRuleModal } from './FirewallRuleModal';
+import { FirewallInstallWizard } from './FirewallInstallWizard';
 
 // Modul Firewall.
 //
@@ -171,11 +172,7 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
 
   if (status && status.backend === 'none') {
     return (
-      <div className="docker-engine">
-        <p>
-          <TriangleAlert size={13} /> {t('fw.noFirewall')}
-        </p>
-      </div>
+      <FirewallInstallWizard serverId={serverId} onInstalled={() => void load()} />
     );
   }
 

@@ -103,3 +103,27 @@ func TestInspectMigrationBlueprint_CapturesExtraNetworks(t *testing.T) {
 		t.Errorf("alias network tambahan = %v, mau [app-web]", extra[0].Aliases)
 	}
 }
+
+func TestParseComposeMigrationInfo(t *testing.T) {
+	out := "MANAGED=1\nPROJECT=proyek\nSERVICE=web\nWORKDIR=/home/andy/proyek\n" +
+		"FILES=/home/andy/proyek/docker-compose.yml, /home/andy/proyek/override.yml\n" +
+		"EXISTS=1\nBYTES=123456\nSIBLING=proyek-db-1\nSIBLING=proyek-redis-1\n"
+	info := parseComposeMigrationInfo(out)
+	if !info.Managed || info.Project != "proyek" || info.Service != "web" {
+		t.Fatalf("info = %+v", info)
+	}
+	if info.WorkingDir != "/home/andy/proyek" || !info.WorkingDirExists || info.WorkingDirBytes != 123456 {
+		t.Fatalf("workdir info = %+v", info)
+	}
+	if len(info.ConfigFiles) != 2 || info.ConfigFiles[1] != "/home/andy/proyek/override.yml" {
+		t.Fatalf("ConfigFiles = %v", info.ConfigFiles)
+	}
+	if len(info.Siblings) != 2 || info.Siblings[0] != "proyek-db-1" {
+		t.Fatalf("Siblings = %v", info.Siblings)
+	}
+
+	plain := parseComposeMigrationInfo("MANAGED=0\n")
+	if plain.Managed || plain.Siblings == nil || plain.ConfigFiles == nil {
+		t.Fatalf("non-compose = %+v, mau Managed=false dengan slice kosong (bukan nil) untuk JSON", plain)
+	}
+}

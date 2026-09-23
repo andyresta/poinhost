@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ArrowRight, Play, X, Info, CheckCircle2, XCircle } from 'lucide-react';
+import { ArrowRight, Play, X, Info, CheckCircle2, XCircle, AlertTriangle } from 'lucide-react';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
-import { DockerXferStart, DockerXferCancel } from '../../../wailsjs/go/main/App';
-import { dockerxfer } from '../../../wailsjs/go/models';
+import { DockerXferStart, DockerXferCancel, DockerXferComposeInfo } from '../../../wailsjs/go/main/App';
+import { docker, dockerxfer } from '../../../wailsjs/go/models';
 import { useTabsStore } from '../../store/tabs';
 import { useT } from '../../i18n';
 import type { MessageKey } from '../../i18n/messages';
@@ -39,7 +39,15 @@ const KIND_LABEL: Record<string, MessageKey> = {
   bind: 'migration.docker.kind.bind',
   volume: 'migration.docker.kind.volume',
   image: 'migration.docker.kind.image',
+  workdir: 'migration.docker.kind.workdir',
 };
+
+// Compose file yang tidak berada di dalam direktori proyek (dipakai lewat
+// `-f` dari tempat lain) tidak ikut tersalin bersama workdir.
+function filesOutside(info: docker.ComposeMigrationInfo): string[] {
+  const dir = info.workingDir.replace(/\/+$/, '');
+  return (info.configFiles ?? []).filter((f) => f !== dir && !f.startsWith(dir + '/'));
+}
 
 // Item label datang dari backend sebagai "kind:value" (mis. "bind:/var/www",
 // "volume:app_data", "image:nginx:1.25") — dipecah di sini murni untuk
@@ -69,6 +77,37 @@ export function DockerMigrationPanel() {
   const [dstServerId, setDstServerId] = useState('');
 
   const [compress, setCompress] = useState(true);
+  const [copyWorkdir, setCopyWorkdir] = useState(false);
+
+  const [compose, setCompose] = useState<docker.ComposeMigrationInfo | null>(null);
+  const [composeLoading, setComposeLoading] = useState(false);
+  const [composeError, setComposeError] = useState<string | null>(null);
+
+  // Info proyek compose dibaca begitu container sumber dipilih, supaya opsi
+  // "salin direktori proyek" hanya bisa dicentang kalau memang ada
+  // direktorinya, dan container lain di proyek yang sama terlihat SEBELUM
+  // migrasi dimulai.
+  useEffect(() => {
+    setCompose(null);
+    setComposeError(null);
+    setCopyWorkdir(false);
+    if (!srcServerId || !srcContainerId) return;
+    let stale = false;
+    setComposeLoading(true);
+    DockerXferComposeInfo(srcServerId, srcContainerId)
+      .then((info) => {
+        if (!stale) setCompose(info);
+      })
+      .catch((e) => {
+        if (!stale) setComposeError(String(e));
+      })
+      .finally(() => {
+        if (!stale) setComposeLoading(false);
+      });
+    return () => {
+      stale = true;
+    };
+  }, [srcServerId, srcContainerId]);
 
   const [job, setJob] = useState<dockerxfer.Progress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +140,7 @@ export function DockerMigrationPanel() {
           containerId: srcContainerId,
           destServerId: dstServerId,
           compress,
+          copyWorkdir,
         }),
       );
       setJob(progress);
@@ -169,6 +209,53 @@ export function DockerMigrationPanel() {
           </div>
         </div>
       </div>
+
+      {srcContainerId !== '' && (
+        <div className="mig-panel__options mig-panel__compose">
+          {composeLoading ? (
+            <span className="mig-panel__compose-note">{t('migration.docker.composeLoading')}</span>
+          ) : composeError ? (
+            <span className="mig-panel__compose-note mig-panel__compose-note--warn">{composeError}</span>
+          ) : compose && !compose.managed ? (
+            <span className="mig-panel__compose-note">{t('migration.docker.notCompose')}</span>
+          ) : compose ? (
+            <>
+              <label className="mig-panel__opt">
+                <input
+                  type="checkbox"
+                  checked={copyWorkdir}
+                  disabled={running || !compose.workingDirExists}
+                  onChange={(e) => setCopyWorkdir(e.target.checked)}
+                />
+                {t('migration.docker.copyWorkdir')}
+              </label>
+              <span className="mig-panel__compose-note">
+                {compose.workingDirExists
+                  ? t('migration.docker.workdirHint', {
+                      dir: compose.workingDir,
+                      size: formatBytes(compose.workingDirBytes),
+                    })
+                  : t('migration.docker.workdirMissing', { dir: compose.workingDir || '—' })}
+              </span>
+              {copyWorkdir && filesOutside(compose).length > 0 && (
+                <span className="mig-panel__compose-note mig-panel__compose-note--warn">
+                  <AlertTriangle size={12} />
+                  {t('migration.docker.configOutside', { files: filesOutside(compose).join(', ') })}
+                </span>
+              )}
+              {compose.siblings.length > 0 && (
+                <span className="mig-panel__compose-note mig-panel__compose-note--warn">
+                  <AlertTriangle size={12} />
+                  {t('migration.docker.siblings', {
+                    project: compose.project,
+                    names: compose.siblings.join(', '),
+                  })}
+                </span>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
 
       <div className="mig-panel__bar">
         <div className="mig-panel__summary">

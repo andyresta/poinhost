@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { FolderSync, Database, Boxes, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FolderSync, Database, Boxes, Globe, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTabsStore } from '../../store/tabs';
 import { useWorkspaceNavStore } from '../../store/workspaceNav';
 import { useT } from '../../i18n';
 import { FileTransferPanel } from './FileTransferPanel';
 import { DockerMigrationPanel } from './DockerMigrationPanel';
 import { DBMigrationPanel } from './DBMigrationPanel';
+import { SiteMigrationPanel } from './SiteMigrationPanel';
 import type { session } from '../../../wailsjs/go/models';
 
 // Menu di dalam tab migrasi. Bentuknya sengaja sama persis dengan nav modul
@@ -15,6 +16,7 @@ const MODULES = [
   { key: 'migration-files', labelKey: 'migration.nav.files', Icon: FolderSync },
   { key: 'migration-database', labelKey: 'migration.nav.database', Icon: Database },
   { key: 'migration-docker', labelKey: 'migration.nav.docker', Icon: Boxes },
+  { key: 'migration-website', labelKey: 'migration.nav.website', Icon: Globe },
 ] as const;
 
 // Isi satu tab migrasi. Panel Files tetap MOUNTED begitu pernah dibuka —
@@ -77,6 +79,12 @@ export function MigrationWorkspace({ tab }: { tab: session.Tab }) {
         {visited.has('migration-database') && (
           <div className="workspace__module" hidden={tab.activeModule !== 'migration-database'}>
             <DBMigrationPanel />
+          </div>
+        )}
+
+        {visited.has('migration-website') && (
+          <div className="workspace__module" hidden={tab.activeModule !== 'migration-website'}>
+            <SiteMigrationPanel />
           </div>
         )}
       </div>

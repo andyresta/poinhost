@@ -19,6 +19,159 @@ export namespace backup {
 
 }
 
+export namespace dbxfer {
+	
+	export class ItemResult {
+	    database: string;
+	    destDatabase: string;
+	    status: string;
+	    error?: string;
+	    warning?: string;
+	    tableCount: number;
+	    verify?: string;
+	    verifyDetail?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ItemResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.database = source["database"];
+	        this.destDatabase = source["destDatabase"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.warning = source["warning"];
+	        this.tableCount = source["tableCount"];
+	        this.verify = source["verify"];
+	        this.verifyDetail = source["verifyDetail"];
+	    }
+	}
+	export class ItemSelection {
+	    database: string;
+	    allTables: boolean;
+	    tables?: string[];
+	    destDatabase?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ItemSelection(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.database = source["database"];
+	        this.allTables = source["allTables"];
+	        this.tables = source["tables"];
+	        this.destDatabase = source["destDatabase"];
+	    }
+	}
+	export class Progress {
+	    jobId: string;
+	    status: string;
+	    sourceServerId: string;
+	    destServerId: string;
+	    engine: string;
+	    totalBytes: number;
+	    doneBytes: number;
+	    percent: number;
+	    currentItems: string[];
+	    items: ItemResult[];
+	    message: string;
+	    // Go type: time
+	    startedAt: any;
+	    // Go type: time
+	    finishedAt?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Progress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.jobId = source["jobId"];
+	        this.status = source["status"];
+	        this.sourceServerId = source["sourceServerId"];
+	        this.destServerId = source["destServerId"];
+	        this.engine = source["engine"];
+	        this.totalBytes = source["totalBytes"];
+	        this.doneBytes = source["doneBytes"];
+	        this.percent = source["percent"];
+	        this.currentItems = source["currentItems"];
+	        this.items = this.convertValues(source["items"], ItemResult);
+	        this.message = source["message"];
+	        this.startedAt = this.convertValues(source["startedAt"], null);
+	        this.finishedAt = this.convertValues(source["finishedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class StartRequest {
+	    sourceServerId: string;
+	    destServerId: string;
+	    engine: string;
+	    items: ItemSelection[];
+	
+	    static createFrom(source: any = {}) {
+	        return new StartRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceServerId = source["sourceServerId"];
+	        this.destServerId = source["destServerId"];
+	        this.engine = source["engine"];
+	        this.items = this.convertValues(source["items"], ItemSelection);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TableListResponse {
+	    tables: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TableListResponse(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.tables = source["tables"];
+	    }
+	}
+
+}
+
 export namespace docker {
 	
 	export class ComposeInfo {
@@ -47,6 +200,32 @@ export namespace docker {
 	        this.verdict = source["verdict"];
 	        this.unknown = source["unknown"];
 	        this.message = source["message"];
+	    }
+	}
+	export class ComposeMigrationInfo {
+	    managed: boolean;
+	    project: string;
+	    service: string;
+	    workingDir: string;
+	    workingDirExists: boolean;
+	    workingDirBytes: number;
+	    configFiles: string[];
+	    siblings: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ComposeMigrationInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.managed = source["managed"];
+	        this.project = source["project"];
+	        this.service = source["service"];
+	        this.workingDir = source["workingDir"];
+	        this.workingDirExists = source["workingDirExists"];
+	        this.workingDirBytes = source["workingDirBytes"];
+	        this.configFiles = source["configFiles"];
+	        this.siblings = source["siblings"];
 	    }
 	}
 	export class ContainerInfo {
@@ -457,6 +636,117 @@ export namespace docker {
 	        this.netIO = source["netIO"];
 	        this.blockIO = source["blockIO"];
 	        this.pids = source["pids"];
+	    }
+	}
+
+}
+
+export namespace dockerxfer {
+	
+	export class ItemResult {
+	    label: string;
+	    status: string;
+	    error?: string;
+	    warning?: string;
+	    verify?: string;
+	    verifyDetail?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ItemResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.label = source["label"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.warning = source["warning"];
+	        this.verify = source["verify"];
+	        this.verifyDetail = source["verifyDetail"];
+	    }
+	}
+	export class Progress {
+	    jobId: string;
+	    status: string;
+	    sourceServerId: string;
+	    destServerId: string;
+	    containerId: string;
+	    containerName: string;
+	    compress: boolean;
+	    copyWorkdir: boolean;
+	    totalBytes: number;
+	    doneBytes: number;
+	    percent: number;
+	    currentItems: string[];
+	    items: ItemResult[];
+	    containerRunning?: boolean;
+	    message: string;
+	    // Go type: time
+	    startedAt: any;
+	    // Go type: time
+	    finishedAt?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Progress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.jobId = source["jobId"];
+	        this.status = source["status"];
+	        this.sourceServerId = source["sourceServerId"];
+	        this.destServerId = source["destServerId"];
+	        this.containerId = source["containerId"];
+	        this.containerName = source["containerName"];
+	        this.compress = source["compress"];
+	        this.copyWorkdir = source["copyWorkdir"];
+	        this.totalBytes = source["totalBytes"];
+	        this.doneBytes = source["doneBytes"];
+	        this.percent = source["percent"];
+	        this.currentItems = source["currentItems"];
+	        this.items = this.convertValues(source["items"], ItemResult);
+	        this.containerRunning = source["containerRunning"];
+	        this.message = source["message"];
+	        this.startedAt = this.convertValues(source["startedAt"], null);
+	        this.finishedAt = this.convertValues(source["finishedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class StartRequest {
+	    sourceServerId: string;
+	    containerId: string;
+	    destServerId: string;
+	    compress: boolean;
+	    copyWorkdir: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new StartRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceServerId = source["sourceServerId"];
+	        this.containerId = source["containerId"];
+	        this.destServerId = source["destServerId"];
+	        this.compress = source["compress"];
+	        this.copyWorkdir = source["copyWorkdir"];
 	    }
 	}
 
@@ -914,266 +1204,6 @@ export namespace filexfer {
 
 }
 
-export namespace dockerxfer {
-	
-	export class ItemResult {
-	    label: string;
-	    status: string;
-	    error?: string;
-	    warning?: string;
-	    verify?: string;
-	    verifyDetail?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ItemResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.label = source["label"];
-	        this.status = source["status"];
-	        this.error = source["error"];
-	        this.warning = source["warning"];
-	        this.verify = source["verify"];
-	        this.verifyDetail = source["verifyDetail"];
-	    }
-	}
-	export class Progress {
-	    jobId: string;
-	    status: string;
-	    sourceServerId: string;
-	    destServerId: string;
-	    containerId: string;
-	    containerName: string;
-	    compress: boolean;
-	    totalBytes: number;
-	    doneBytes: number;
-	    percent: number;
-	    currentItems: string[];
-	    items: ItemResult[];
-	    containerRunning?: boolean;
-	    message: string;
-	    // Go type: time
-	    startedAt: any;
-	    // Go type: time
-	    finishedAt?: any;
-	
-	    static createFrom(source: any = {}) {
-	        return new Progress(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.jobId = source["jobId"];
-	        this.status = source["status"];
-	        this.sourceServerId = source["sourceServerId"];
-	        this.destServerId = source["destServerId"];
-	        this.containerId = source["containerId"];
-	        this.containerName = source["containerName"];
-	        this.compress = source["compress"];
-	        this.totalBytes = source["totalBytes"];
-	        this.doneBytes = source["doneBytes"];
-	        this.percent = source["percent"];
-	        this.currentItems = source["currentItems"];
-	        this.items = this.convertValues(source["items"], ItemResult);
-	        this.containerRunning = source["containerRunning"];
-	        this.message = source["message"];
-	        this.startedAt = this.convertValues(source["startedAt"], null);
-	        this.finishedAt = this.convertValues(source["finishedAt"], null);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class StartRequest {
-	    sourceServerId: string;
-	    containerId: string;
-	    destServerId: string;
-	    compress: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new StartRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.sourceServerId = source["sourceServerId"];
-	        this.containerId = source["containerId"];
-	        this.destServerId = source["destServerId"];
-	        this.compress = source["compress"];
-	    }
-	}
-
-}
-
-export namespace dbxfer {
-	
-	export class ItemResult {
-	    database: string;
-	    destDatabase: string;
-	    status: string;
-	    error?: string;
-	    warning?: string;
-	    tableCount: number;
-	    verify?: string;
-	    verifyDetail?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ItemResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.database = source["database"];
-	        this.destDatabase = source["destDatabase"];
-	        this.status = source["status"];
-	        this.error = source["error"];
-	        this.warning = source["warning"];
-	        this.tableCount = source["tableCount"];
-	        this.verify = source["verify"];
-	        this.verifyDetail = source["verifyDetail"];
-	    }
-	}
-	export class ItemSelection {
-	    database: string;
-	    allTables: boolean;
-	    tables?: string[];
-	    destDatabase?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ItemSelection(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.database = source["database"];
-	        this.allTables = source["allTables"];
-	        this.tables = source["tables"];
-	        this.destDatabase = source["destDatabase"];
-	    }
-	}
-	export class Progress {
-	    jobId: string;
-	    status: string;
-	    sourceServerId: string;
-	    destServerId: string;
-	    engine: string;
-	    totalBytes: number;
-	    doneBytes: number;
-	    percent: number;
-	    currentItems: string[];
-	    items: ItemResult[];
-	    message: string;
-	    // Go type: time
-	    startedAt: any;
-	    // Go type: time
-	    finishedAt?: any;
-	
-	    static createFrom(source: any = {}) {
-	        return new Progress(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.jobId = source["jobId"];
-	        this.status = source["status"];
-	        this.sourceServerId = source["sourceServerId"];
-	        this.destServerId = source["destServerId"];
-	        this.engine = source["engine"];
-	        this.totalBytes = source["totalBytes"];
-	        this.doneBytes = source["doneBytes"];
-	        this.percent = source["percent"];
-	        this.currentItems = source["currentItems"];
-	        this.items = this.convertValues(source["items"], ItemResult);
-	        this.message = source["message"];
-	        this.startedAt = this.convertValues(source["startedAt"], null);
-	        this.finishedAt = this.convertValues(source["finishedAt"], null);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class StartRequest {
-	    sourceServerId: string;
-	    destServerId: string;
-	    engine: string;
-	    items: ItemSelection[];
-	
-	    static createFrom(source: any = {}) {
-	        return new StartRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.sourceServerId = source["sourceServerId"];
-	        this.destServerId = source["destServerId"];
-	        this.engine = source["engine"];
-	        this.items = this.convertValues(source["items"], ItemSelection);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class TableListResponse {
-	    tables: string[];
-	
-	    static createFrom(source: any = {}) {
-	        return new TableListResponse(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.tables = source["tables"];
-	    }
-	}
-
-}
-
 export namespace firewall {
 	
 	export class DockerSubnet {
@@ -1192,6 +1222,36 @@ export namespace firewall {
 	        this.subnet = source["subnet"];
 	        this.gateway = source["gateway"];
 	        this.covered = source["covered"];
+	    }
+	}
+	export class InstallInfo {
+	    distroId: string;
+	    distroName: string;
+	    packageManager: string;
+	    recommended: string;
+	    options: string[];
+	    installed: string[];
+	    blocker?: string;
+	    sshPort: number;
+	    hasDocker: boolean;
+	    canInstall: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.distroId = source["distroId"];
+	        this.distroName = source["distroName"];
+	        this.packageManager = source["packageManager"];
+	        this.recommended = source["recommended"];
+	        this.options = source["options"];
+	        this.installed = source["installed"];
+	        this.blocker = source["blocker"];
+	        this.sshPort = source["sshPort"];
+	        this.hasDocker = source["hasDocker"];
+	        this.canInstall = source["canInstall"];
 	    }
 	}
 	export class Rule {
@@ -1700,6 +1760,317 @@ export namespace session {
 		    }
 		    return a;
 		}
+	}
+
+}
+
+export namespace sitexfer {
+	
+	export class ItemResult {
+	    key: string;
+	    kind: string;
+	    label: string;
+	    status: string;
+	    error?: string;
+	    warning?: string;
+	    detail?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ItemResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.key = source["key"];
+	        this.kind = source["kind"];
+	        this.label = source["label"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	        this.warning = source["warning"];
+	        this.detail = source["detail"];
+	    }
+	}
+	export class Problem {
+	    blocking: boolean;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Problem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.blocking = source["blocking"];
+	        this.message = source["message"];
+	    }
+	}
+	export class PlanSFTP {
+	    username: string;
+	    domain: string;
+	    enabled: boolean;
+	    hashScheme: string;
+	    note?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanSFTP(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.username = source["username"];
+	        this.domain = source["domain"];
+	        this.enabled = source["enabled"];
+	        this.hashScheme = source["hashScheme"];
+	        this.note = source["note"];
+	    }
+	}
+	export class PlanDBUser {
+	    engine: string;
+	    username: string;
+	    host?: string;
+	    databases: string[];
+	    action: string;
+	    note?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanDBUser(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.engine = source["engine"];
+	        this.username = source["username"];
+	        this.host = source["host"];
+	        this.databases = source["databases"];
+	        this.action = source["action"];
+	        this.note = source["note"];
+	    }
+	}
+	export class PlanDatabase {
+	    engine: string;
+	    name: string;
+	    domains: string[];
+	    owner?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanDatabase(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.engine = source["engine"];
+	        this.name = source["name"];
+	        this.domains = source["domains"];
+	        this.owner = source["owner"];
+	    }
+	}
+	export class PlanPath {
+	    path: string;
+	    excludes: string[];
+	    files: number;
+	    bytes: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanPath(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.excludes = source["excludes"];
+	        this.files = source["files"];
+	        this.bytes = source["bytes"];
+	    }
+	}
+	export class PlanDomain {
+	    domain: string;
+	    parent?: string;
+	    isSubdomain: boolean;
+	    root: string;
+	    enabled: boolean;
+	    phpVersion?: string;
+	    sslEnabled: boolean;
+	    proxy: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlanDomain(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.parent = source["parent"];
+	        this.isSubdomain = source["isSubdomain"];
+	        this.root = source["root"];
+	        this.enabled = source["enabled"];
+	        this.phpVersion = source["phpVersion"];
+	        this.sslEnabled = source["sslEnabled"];
+	        this.proxy = source["proxy"];
+	    }
+	}
+	export class Plan {
+	    domains: PlanDomain[];
+	    paths: PlanPath[];
+	    databases: PlanDatabase[];
+	    dbUsers: PlanDBUser[];
+	    sftp: PlanSFTP[];
+	    cronJobs: number;
+	    totalBytes: number;
+	    problems: Problem[];
+	    canStart: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Plan(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domains = this.convertValues(source["domains"], PlanDomain);
+	        this.paths = this.convertValues(source["paths"], PlanPath);
+	        this.databases = this.convertValues(source["databases"], PlanDatabase);
+	        this.dbUsers = this.convertValues(source["dbUsers"], PlanDBUser);
+	        this.sftp = this.convertValues(source["sftp"], PlanSFTP);
+	        this.cronJobs = source["cronJobs"];
+	        this.totalBytes = source["totalBytes"];
+	        this.problems = this.convertValues(source["problems"], Problem);
+	        this.canStart = source["canStart"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	
+	
+	
+	
+	
+	export class Progress {
+	    jobId: string;
+	    status: string;
+	    sourceServerId: string;
+	    destServerId: string;
+	    domains: string[];
+	    totalBytes: number;
+	    doneBytes: number;
+	    percent: number;
+	    items: ItemResult[];
+	    report: string[];
+	    message: string;
+	    // Go type: time
+	    startedAt: any;
+	    // Go type: time
+	    finishedAt?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Progress(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.jobId = source["jobId"];
+	        this.status = source["status"];
+	        this.sourceServerId = source["sourceServerId"];
+	        this.destServerId = source["destServerId"];
+	        this.domains = source["domains"];
+	        this.totalBytes = source["totalBytes"];
+	        this.doneBytes = source["doneBytes"];
+	        this.percent = source["percent"];
+	        this.items = this.convertValues(source["items"], ItemResult);
+	        this.report = source["report"];
+	        this.message = source["message"];
+	        this.startedAt = this.convertValues(source["startedAt"], null);
+	        this.finishedAt = this.convertValues(source["finishedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RepairResult {
+	    items: ItemResult[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RepairResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], ItemResult);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class StartRequest {
+	    sourceServerId: string;
+	    destServerId: string;
+	    domains: string[];
+	    includeDatabases: boolean;
+	    includeSftp: boolean;
+	    includeCron: boolean;
+	    compress: boolean;
+	    dbUserPasswords?: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new StartRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.sourceServerId = source["sourceServerId"];
+	        this.destServerId = source["destServerId"];
+	        this.domains = source["domains"];
+	        this.includeDatabases = source["includeDatabases"];
+	        this.includeSftp = source["includeSftp"];
+	        this.includeCron = source["includeCron"];
+	        this.compress = source["compress"];
+	        this.dbUserPasswords = source["dbUserPasswords"];
+	    }
 	}
 
 }

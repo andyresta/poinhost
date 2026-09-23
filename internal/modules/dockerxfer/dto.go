@@ -50,6 +50,12 @@ type StartRequest struct {
 	// homepoin yang selalu meng-gzip image tapi tidak pernah meng-gzip
 	// volume/bind, tanpa opsi apa pun untuk menyamakannya).
 	Compress bool `json:"compress"`
+	// CopyWorkdir: ikut salin direktori proyek compose (label
+	// com.docker.compose.project.working_dir) ke path yang SAMA di tujuan —
+	// Dockerfile, source, docker-compose.yml, .env — supaya
+	// `docker compose` tetap bisa dipakai di server tujuan. Tanpa ini hanya
+	// mount container yang disalin.
+	CopyWorkdir bool `json:"copyWorkdir"`
 }
 
 // ItemResult status satu item transfer: satu mount (bind atau named volume)
@@ -80,6 +86,7 @@ type Progress struct {
 	ContainerID    string       `json:"containerId"`
 	ContainerName  string       `json:"containerName"`
 	Compress       bool         `json:"compress"`
+	CopyWorkdir    bool         `json:"copyWorkdir"`
 	TotalBytes     int64        `json:"totalBytes"`
 	DoneBytes      int64        `json:"doneBytes"`
 	Percent        float64      `json:"percent"`

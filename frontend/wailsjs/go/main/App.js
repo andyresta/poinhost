@@ -154,6 +154,10 @@ export function DockerXferCancel(arg1) {
   return window['go']['main']['App']['DockerXferCancel'](arg1);
 }
 
+export function DockerXferComposeInfo(arg1, arg2) {
+  return window['go']['main']['App']['DockerXferComposeInfo'](arg1, arg2);
+}
+
 export function DockerXferStart(arg1) {
   return window['go']['main']['App']['DockerXferStart'](arg1);
 }
@@ -204,6 +208,10 @@ export function ForgetWebsiteDBCredential(arg1, arg2, arg3, arg4) {
 
 export function GetComposeStatus(arg1, arg2) {
   return window['go']['main']['App']['GetComposeStatus'](arg1, arg2);
+}
+
+export function GetFirewallInstallInfo(arg1) {
+  return window['go']['main']['App']['GetFirewallInstallInfo'](arg1);
 }
 
 export function GetSystemService(arg1, arg2) {
@@ -326,12 +334,12 @@ export function ListWebsiteDomainDatabases(arg1, arg2) {
   return window['go']['main']['App']['ListWebsiteDomainDatabases'](arg1, arg2);
 }
 
-export function ListWebsiteServerDatabaseDomains(arg1, arg2) {
-  return window['go']['main']['App']['ListWebsiteServerDatabaseDomains'](arg1, arg2);
-}
-
 export function ListWebsiteSFTPAccounts(arg1, arg2) {
   return window['go']['main']['App']['ListWebsiteSFTPAccounts'](arg1, arg2);
+}
+
+export function ListWebsiteServerDatabaseDomains(arg1, arg2) {
+  return window['go']['main']['App']['ListWebsiteServerDatabaseDomains'](arg1, arg2);
 }
 
 export function ListWebsites(arg1) {
@@ -514,6 +522,26 @@ export function SetWebsiteProxyRule(arg1) {
   return window['go']['main']['App']['SetWebsiteProxyRule'](arg1);
 }
 
+export function SiteXferCancel(arg1) {
+  return window['go']['main']['App']['SiteXferCancel'](arg1);
+}
+
+export function SiteXferPreview(arg1) {
+  return window['go']['main']['App']['SiteXferPreview'](arg1);
+}
+
+export function SiteXferRepairDBUsers(arg1) {
+  return window['go']['main']['App']['SiteXferRepairDBUsers'](arg1);
+}
+
+export function SiteXferStart(arg1) {
+  return window['go']['main']['App']['SiteXferStart'](arg1);
+}
+
+export function SiteXferStatus(arg1) {
+  return window['go']['main']['App']['SiteXferStatus'](arg1);
+}
+
 export function StartDockerContainer(arg1, arg2) {
   return window['go']['main']['App']['StartDockerContainer'](arg1, arg2);
 }
@@ -548,6 +576,10 @@ export function StreamDockerContainerStats(arg1, arg2) {
 
 export function StreamDockerEngineInstall(arg1) {
   return window['go']['main']['App']['StreamDockerEngineInstall'](arg1);
+}
+
+export function StreamFirewallInstall(arg1, arg2) {
+  return window['go']['main']['App']['StreamFirewallInstall'](arg1, arg2);
 }
 
 export function StreamSystemJournal(arg1) {

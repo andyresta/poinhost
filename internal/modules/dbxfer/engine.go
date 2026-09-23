@@ -123,7 +123,11 @@ func runOneItem(ctx context.Context, srcClient, dstClient *ssh.Client, websiteSv
 	if err != nil {
 		return fmt.Errorf("bungkus perintah dump: %w", err)
 	}
-	restoreCmd, err := websiteSvc.WrapCommand(dstServerID, buildRestoreCmd(engine, destDatabase))
+	// WrapStreamingCommand, BUKAN WrapCommand: restore membaca dump dari
+	// stdin sesi SSH, sedangkan WrapCommand menyalurkan password sudo lewat
+	// pipa yang ikut menjadi stdin psql/mysql — dump-nya tidak pernah sampai
+	// dan restore "berhasil" dengan input kosong (user non-root + password).
+	restoreCmd, err := websiteSvc.WrapStreamingCommand(dstServerID, buildRestoreCmd(engine, destDatabase))
 	if err != nil {
 		return fmt.Errorf("bungkus perintah restore: %w", err)
 	}

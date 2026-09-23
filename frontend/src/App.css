@@ -2334,3 +2334,170 @@ button svg {
   font-size: 11px;
   color: var(--neutral);
 }
+
+.mig-panel__compose {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.mig-panel__compose-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.5;
+  color: var(--neutral);
+  word-break: break-all;
+}
+.mig-panel__compose-note svg {
+  flex: 0 0 auto;
+  margin-top: 3px;
+}
+.mig-panel__compose-note--warn {
+  color: var(--warning);
+}
+
+/* Migrasi Website */
+.mig-site__sub {
+  padding-left: 22px;
+}
+.mig-site__badges {
+  white-space: nowrap;
+  text-align: right;
+}
+.mig-site__badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--neutral);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.mig-site__badge--muted {
+  opacity: 0.6;
+}
+.mig-site__plan,
+.mig-site__report {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.mig-site__section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-weight: 600;
+  color: var(--text);
+}
+.mig-site__problem {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 10px;
+  line-height: 1.5;
+  color: var(--warning);
+  background: var(--warning-bg);
+  border-radius: var(--radius-md);
+}
+.mig-site__problem svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.mig-site__problem--blocking {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+.mig-site__problem--ok {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.mig-site__muted {
+  font-size: 11px;
+  color: var(--neutral);
+}
+.mig-site__action--skip-exists,
+.mig-site__action--skip-global {
+  color: var(--warning);
+}
+.mig-site__report ul {
+  margin: 0;
+  padding-left: 18px;
+  line-height: 1.6;
+  color: var(--neutral);
+}
+.mig-site__pw {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  margin-top: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.mig-site__action--needs-password {
+  color: var(--danger);
+}
+.mig-site__repair {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+/* Wizard instalasi firewall */
+.fw-install__distro {
+  color: var(--neutral);
+  font-size: 12px;
+}
+.fw-install__options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+.fw-install__option {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.fw-install__name {
+  font-weight: 600;
+  color: var(--text);
+}
+.fw-install__badge {
+  padding: 0 6px;
+  font-size: 10.5px;
+  line-height: 16px;
+  color: var(--success);
+  background: var(--success-bg);
+  border-radius: var(--radius-sm);
+}
+.fw-install__desc {
+  color: var(--neutral);
+}
+.fw-install__note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--neutral);
+}
+.fw-install__note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}

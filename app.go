@@ -23,6 +23,7 @@ import (
 	"github.com/andyresta/poinhost/internal/modules/firewall"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 	"github.com/andyresta/poinhost/internal/modules/services"
+	"github.com/andyresta/poinhost/internal/modules/sitexfer"
 	"github.com/andyresta/poinhost/internal/modules/terminal"
 	"github.com/andyresta/poinhost/internal/modules/website"
 	"github.com/andyresta/poinhost/internal/session"
@@ -52,6 +53,7 @@ type App struct {
 	dockerSvc     *docker.Service
 	dockerxferSvc *dockerxfer.Service
 	dbxferSvc     *dbxfer.Service
+	sitexferSvc   *sitexfer.Service
 	servicesSvc   *services.Service
 	firewallSvc   *firewall.Service
 	websiteSvc    *website.Service
@@ -116,6 +118,7 @@ func NewApp() *App {
 	firewallSvc := firewall.NewService(serversSvc, executor, mutex)
 	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault, firewallSvc)
 	dbxferSvc := dbxfer.NewService(serversSvc, websiteSvc, pool)
+	sitexferSvc := sitexfer.NewService(serversSvc, websiteSvc, pool)
 	backupSvc := backup.NewService(serversSvc, websiteSvc)
 
 	return &App{
@@ -132,6 +135,7 @@ func NewApp() *App {
 		dockerSvc:     dockerSvc,
 		dockerxferSvc: dockerxferSvc,
 		dbxferSvc:     dbxferSvc,
+		sitexferSvc:   sitexferSvc,
 		servicesSvc:   servicesSvc,
 		firewallSvc:   firewallSvc,
 		websiteSvc:    websiteSvc,
@@ -219,6 +223,9 @@ func (a *App) startup(ctx context.Context) {
 	// per job ("dbxfer:progress:<jobId>").
 	a.dbxferSvc.SetEmitter(func(p dbxfer.Progress) {
 		runtime.EventsEmit(ctx, "dbxfer:progress:"+p.JobID, p)
+	})
+	a.sitexferSvc.SetEmitter(func(p sitexfer.Progress) {
+		runtime.EventsEmit(ctx, "sitexfer:progress:"+p.JobID, p)
 	})
 }
 
@@ -1382,6 +1389,40 @@ func (a *App) ReloadFirewall(serverID string) (*firewall.ListResponse, error) {
 	return a.firewallSvc.Reload(serverID)
 }
 
+// GetFirewallInstallInfo mendeteksi distro & firewall yang bisa dipasang
+// (dipakai panel Firewall saat server belum punya firewall sama sekali).
+func (a *App) GetFirewallInstallInfo(serverID string) (*firewall.InstallInfo, error) {
+	return a.firewallSvc.InstallInfo(serverID)
+}
+
+// StreamFirewallInstall memasang ufw/firewalld sesuai distro TANPA
+// menyalakannya, progres lewat event "firewall:install:<streamID>".
+// Dibatalkan lewat StopDockerStream (registry stream yang sama).
+func (a *App) StreamFirewallInstall(serverID, backend string) (string, error) {
+	streamID := uuid.NewString()
+	ctx, cancel := context.WithTimeout(a.ctx, 20*time.Minute)
+	a.registerStream(streamID, cancel)
+	eventName := "firewall:install:" + streamID
+
+	go func() {
+		err := a.firewallSvc.StreamInstall(ctx, serverID, backend, func(line string) error {
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "line", Line: line})
+			return nil
+		})
+		a.stopStream(streamID)
+		switch {
+		case err == nil:
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "end"})
+		case errors.Is(err, context.Canceled):
+		case errors.Is(err, context.DeadlineExceeded):
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "error", Message: "Instalasi melebihi batas waktu (20 menit) — periksa koneksi atau lock paket di server."})
+		default:
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "error", Message: err.Error()})
+		}
+	}()
+	return streamID, nil
+}
+
 // DetectDockerSubnets membaca subnet bridge Docker yang benar-benar ada di
 // server — dipakai supaya aturan firewall disusun dari keadaan nyata, bukan
 // dari rentang yang diasumsikan.
@@ -1448,6 +1489,13 @@ func (a *App) DockerXferCancel(jobID string) (*dockerxfer.Progress, error) {
 	return a.dockerxferSvc.Cancel(jobID)
 }
 
+// DockerXferComposeInfo membaca info proyek compose container sumber
+// (direktori proyek, ukurannya, container lain dalam proyek yang sama) —
+// dipakai panel migrasi untuk opsi "salin direktori proyek".
+func (a *App) DockerXferComposeInfo(serverID, containerID string) (*docker.ComposeMigrationInfo, error) {
+	return a.dockerSvc.ComposeMigrationInfo(serverID, containerID)
+}
+
 // ---------------------------------------------------------------------
 // Bindings: Migrasi — migrasi database (MySQL/PostgreSQL) antar server
 // (lihat internal/modules/dbxfer; daftar database sumber memakai
@@ -1476,4 +1524,36 @@ func (a *App) DbXferStatus(jobID string) (*dbxfer.Progress, error) {
 // DbXferCancel membatalkan migrasi yang sedang berjalan.
 func (a *App) DbXferCancel(jobID string) (*dbxfer.Progress, error) {
 	return a.dbxferSvc.Cancel(jobID)
+}
+
+// ---------------------------------------------------------------------
+// Bindings: Migrasi Website (lihat internal/modules/sitexfer)
+// ---------------------------------------------------------------------
+
+// SiteXferPreview menyusun rencana migrasi website + preflight (bentrok
+// domain/database/username di tujuan, engine yang belum terpasang) tanpa
+// mengubah apa pun di server mana pun.
+func (a *App) SiteXferPreview(req sitexfer.StartRequest) (*sitexfer.Plan, error) {
+	return a.sitexferSvc.Preview(req)
+}
+
+// SiteXferStart memulai migrasi website; progress lewat event
+// "sitexfer:progress:<jobId>".
+func (a *App) SiteXferStart(req sitexfer.StartRequest) (*sitexfer.Progress, error) {
+	return a.sitexferSvc.Start(req)
+}
+
+func (a *App) SiteXferStatus(jobID string) (*sitexfer.Progress, error) {
+	return a.sitexferSvc.Status(jobID)
+}
+
+func (a *App) SiteXferCancel(jobID string) (*sitexfer.Progress, error) {
+	return a.sitexferSvc.Cancel(jobID)
+}
+
+// SiteXferRepairDBUsers membuat HANYA user database (dan grant-nya) untuk
+// domain yang sudah dimigrasi — mis. setelah migrasi MySQL 8 → MariaDB yang
+// usernya tidak bisa dibuat dari hash. User yang sudah ada dilewati.
+func (a *App) SiteXferRepairDBUsers(req sitexfer.StartRequest) (*sitexfer.RepairResult, error) {
+	return a.sitexferSvc.RepairDBUsers(req)
 }

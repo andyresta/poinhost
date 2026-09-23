@@ -175,7 +175,18 @@ func (s *Service) CreateSFTPAccount(req SFTPCreateAccountRequest) error {
 	if err != nil {
 		return err
 	}
+	return s.provisionSFTPAccount(access, domain, username, chroot, homeDir, req.Password, false)
+}
 
+// provisionSFTPAccount menjalankan pembuatan akun (lihat CreateSFTPAccount)
+// dengan secret berupa password polos, ATAU — kalau encrypted — hash
+// /etc/shadow apa adanya (`chpasswd -e`), dipakai migrasi website supaya
+// password akun SFTP ikut pindah tanpa pernah diketahui plaintext-nya.
+func (s *Service) provisionSFTPAccount(access *websiteAccess, domain, username, chroot, homeDir, secret string, encrypted bool) error {
+	chpasswdFlag := ""
+	if encrypted {
+		chpasswdFlag = " -e"
+	}
 	confPath := sftpConfPath(username)
 	confB64 := base64.StdEncoding.EncodeToString([]byte(buildSFTPConfig(domain, chroot, homeDir, username)))
 	homeAbs := chroot
@@ -216,7 +227,7 @@ if getent group "$WEBGROUP" >/dev/null 2>&1; then
 else
   useradd -M -s /usr/sbin/nologin -d /nonexistent %s
 fi
-printf '%%s:%%s\n' %s %s | chpasswd
+printf '%%s:%%s\n' %s %s | chpasswd%s
 
 HOME_ABS=%s
 mkdir -p "$HOME_ABS"
@@ -241,7 +252,7 @@ trap - ERR
 		shellQuote(chroot),
 		shellQuote(username), shellQuote(username), shellQuote(username),
 		shellQuote(username), shellQuote(username),
-		shellQuote(username), shellQuote(req.Password),
+		shellQuote(username), shellQuote(secret), chpasswdFlag,
 		shellQuote(homeAbs),
 		shellQuote(username),
 		shellQuote(confB64),

@@ -450,3 +450,107 @@ func (s *Service) ContainerIsRunning(serverID, name string) (bool, error) {
 	}
 	return strings.TrimSpace(res.Stdout) == "true", nil
 }
+
+// Label compose yang dipakai migrasi untuk menemukan direktori proyek.
+const (
+	LabelComposeProject     = "com.docker.compose.project"
+	LabelComposeService     = "com.docker.compose.service"
+	LabelComposeWorkingDir  = "com.docker.compose.project.working_dir"
+	LabelComposeConfigFiles = "com.docker.compose.project.config_files"
+)
+
+// ComposeMigrationInfo ringkasan proyek compose satu container, dipakai
+// panel migrasi SEBELUM migrasi dimulai: apakah opsi "salin direktori
+// proyek" bisa dipakai, seberapa besar direktorinya, dan container lain
+// dalam proyek yang sama yang TIDAK ikut termigrasi (migrasi Docker
+// bekerja per container, bukan per proyek).
+type ComposeMigrationInfo struct {
+	Managed    bool   `json:"managed"`
+	Project    string `json:"project"`
+	Service    string `json:"service"`
+	WorkingDir string `json:"workingDir"`
+	// WorkingDirExists false kalau label menunjuk direktori yang sudah
+	// tidak ada di server asal (proyek dipindah/dihapus setelah `up`).
+	WorkingDirExists bool  `json:"workingDirExists"`
+	WorkingDirBytes  int64 `json:"workingDirBytes"`
+	// ConfigFiles compose file yang dipakai saat `up` (dipisah koma oleh
+	// compose sendiri) — bisa berada di luar WorkingDir kalau `-f` dipakai.
+	ConfigFiles []string `json:"configFiles"`
+	// Siblings nama container LAIN dalam proyek compose yang sama.
+	Siblings []string `json:"siblings"`
+}
+
+func composeMigrationInfoScript(containerID string) string {
+	id := shellQuote(containerID)
+	return `set +e
+lbl() { docker inspect ` + id + ` -f "{{index .Config.Labels \"$1\"}}" 2>/dev/null; }
+PROJ=$(lbl ` + LabelComposeProject + `)
+if [ -z "$PROJ" ] || [ "$PROJ" = "<no value>" ]; then echo "MANAGED=0"; exit 0; fi
+echo "MANAGED=1"
+echo "PROJECT=$PROJ"
+echo "SERVICE=$(lbl ` + LabelComposeService + `)"
+WORKDIR=$(lbl ` + LabelComposeWorkingDir + `)
+echo "WORKDIR=$WORKDIR"
+echo "FILES=$(lbl ` + LabelComposeConfigFiles + `)"
+if [ -n "$WORKDIR" ] && [ -d "$WORKDIR" ]; then
+  echo "EXISTS=1"
+  echo "BYTES=$(du -sb "$WORKDIR" 2>/dev/null | cut -f1)"
+fi
+SELF=$(docker inspect ` + id + ` -f '{{.Name}}' 2>/dev/null | sed 's#^/##')
+docker ps -a --filter "label=` + LabelComposeProject + `=$PROJ" --format '{{.Names}}' 2>/dev/null | while read -r n; do
+  [ -n "$n" ] && [ "$n" != "$SELF" ] && echo "SIBLING=$n"
+done
+exit 0`
+}
+
+// ComposeMigrationInfo membaca info proyek compose satu container.
+func (s *Service) ComposeMigrationInfo(serverID, rawID string) (*ComposeMigrationInfo, error) {
+	cid, err := normalizeContainerID(rawID)
+	if err != nil {
+		return nil, err
+	}
+	access, err := s.resolveAccess(serverID)
+	if err != nil {
+		return nil, err
+	}
+	res, err := s.runDocker(access, composeMigrationInfoScript(cid), 60*time.Second)
+	if err != nil {
+		return nil, err
+	}
+	return parseComposeMigrationInfo(res.Stdout), nil
+}
+
+// parseComposeMigrationInfo dipisah supaya bisa diuji tanpa SSH.
+func parseComposeMigrationInfo(stdout string) *ComposeMigrationInfo {
+	info := &ComposeMigrationInfo{ConfigFiles: []string{}, Siblings: []string{}}
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSpace(strings.TrimRight(line, "\r"))
+		key, val, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "MANAGED":
+			info.Managed = val == "1"
+		case "PROJECT":
+			info.Project = val
+		case "SERVICE":
+			info.Service = val
+		case "WORKDIR":
+			info.WorkingDir = val
+		case "FILES":
+			for _, f := range strings.Split(val, ",") {
+				if f = strings.TrimSpace(f); f != "" {
+					info.ConfigFiles = append(info.ConfigFiles, f)
+				}
+			}
+		case "EXISTS":
+			info.WorkingDirExists = val == "1"
+		case "BYTES":
+			fmt.Sscan(val, &info.WorkingDirBytes)
+		case "SIBLING":
+			info.Siblings = append(info.Siblings, val)
+		}
+	}
+	return info
+}
