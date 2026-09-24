@@ -8,9 +8,17 @@ import (
 	"strings"
 )
 
-// Migrate menjalankan semua file migrasi SQL idempotent setiap startup.
+// Migrate menjalankan migrasi bawaan package ini. Ini yang dipakai jalur
+// normal — app desktop maupun agent — supaya keduanya tidak pernah bisa
+// menjalankan schema yang berbeda.
+func Migrate(db *sql.DB) error {
+	return MigrateFS(db, embeddedMigrations)
+}
+
+// MigrateFS menjalankan semua file migrasi SQL idempotent dari fs.FS mana pun.
 // Setiap file harus aman diulang (CREATE IF NOT EXISTS, INSERT OR IGNORE, dll).
-func Migrate(db *sql.DB, migrationsFS fs.FS) error {
+// Dipisah dari Migrate supaya test bisa menyuntikkan kumpulan migrasi sendiri.
+func MigrateFS(db *sql.DB, migrationsFS fs.FS) error {
 	entries, err := fs.ReadDir(migrationsFS, "migrations")
 	if err != nil {
 		return fmt.Errorf("baca folder migrations: %w", err)

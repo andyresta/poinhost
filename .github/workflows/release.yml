@@ -12,8 +12,35 @@ permissions:
   contents: write
 
 jobs:
+  # Binary agent dibangun SEKALI di job terpisah, lalu diunduh ketiga job
+  # desktop. Selain hemat, ini menjamin build Windows/macOS/Linux membawa byte
+  # agent yang IDENTIK — versi agent yang dipasang user jadi tidak bergantung
+  # pada OS desktop yang kebetulan mereka pakai.
+  #
+  # Cross-compile tidak butuh toolchain C sama sekali karena driver SQLite-nya
+  # modernc.org/sqlite (murni Go), jadi CGO_ENABLED=0 cukup.
+  agent:
+    name: Agent binaries (linux amd64 + arm64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+      - name: Build agent
+        run: make agent VERSION="${GITHUB_REF_NAME:-dev}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-binaries
+          path: |
+            internal/agent/dist/bin/*.gz
+            internal/agent/dist/bin/version.txt
+          if-no-files-found: error
+
   build:
     name: ${{ matrix.name }}
+    needs: agent
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -55,9 +82,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
 
+      # Harus SEBELUM `wails build`: binary agent di-embed saat kompilasi.
+      - name: Fetch agent binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: agent-binaries
+          path: internal/agent/dist/bin
+
       - name: Install Wails CLI
         run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.15.0
 
+      # Versi agent TIDAK ditanam lewat -ldflags di sini: `make agent` sudah
+      # menulisnya ke internal/agent/dist/bin/version.txt bersama binary-nya,
+      # dan berkas itu ikut ter-embed. Satu sumber, jadi versi yang dilaporkan
+      # tidak mungkin berbeda dari binary yang benar-benar dibundel.
       - name: Build
         shell: bash
         run: |
@@ -89,8 +127,12 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
+      # `pattern` penting: tanpa itu artifact agent-binaries ikut terunduh ke
+      # dist/ dan ikut terpublikasi sebagai file release, padahal binary agent
+      # sudah ada DI DALAM app desktop.
       - uses: actions/download-artifact@v4
         with:
+          pattern: poinhost-*
           path: dist
           merge-multiple: true
 
@@ -100,8 +142,10 @@ jobs:
           draft: false
           generate_release_notes: true
           body: |
-            Desktop builds of poinhost. Nothing is installed on your server —
-            the app connects over SSH only.
+            Desktop builds of poinhost. Nothing is installed on your server
+            unless you choose to — the app connects over SSH only, and the
+            optional Agent Control feature installs poinhost-agent from a
+            binary bundled inside the app (no downloads on your server).
 
             | Platform | Download |
             |---|---|

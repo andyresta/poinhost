@@ -113,6 +113,69 @@ func (s *KnownHostsStore) Trust(hostname string, key ssh.PublicKey) error {
 	return os.WriteFile(s.path, []byte(content), 0o600)
 }
 
+// LinesFor mengembalikan baris known_hosts yang cocok untuk satu host.
+//
+// Dipakai saat mendaftarkan server ke poinhost-agent: agent tidak punya
+// manusia yang bisa menyetujui dialog fingerprint, jadi host key yang SUDAH
+// disetujui user di app desktop ikut dikirimkan. Tanpa itu setiap server yang
+// ditautkan akan gagal dengan SSH_HOST_KEY_MISMATCH.
+func (s *KnownHostsStore) LinesFor(hostname string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	host := normalizeHost(hostname)
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		return nil
+	}
+
+	var out []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 3 || !hostMatches(fields[0], host) {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// ReplaceLinesFor menulis ulang seluruh entri untuk satu host.
+//
+// Entri host LAIN tidak disentuh — itu penting di sisi agent, yang known_hosts
+// -nya memuat banyak server sekaligus.
+func (s *KnownHostsStore) ReplaceLinesFor(hostname string, lines []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	host := normalizeHost(hostname)
+	if err := os.MkdirAll(dirOf(s.path), 0o700); err != nil {
+		return err
+	}
+
+	var existing []byte
+	if data, err := os.ReadFile(s.path); err == nil {
+		existing = data
+	}
+
+	content := strings.TrimSpace(removeHostEntries(string(existing), host))
+	if content != "" {
+		content += "\n"
+	}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		content += line + "\n"
+	}
+	return os.WriteFile(s.path, []byte(content), 0o600)
+}
+
 // FingerprintSHA256 menghitung fingerprint SHA256 host key.
 func FingerprintSHA256(key ssh.PublicKey) string {
 	hash := sha256.Sum256(key.Marshal())

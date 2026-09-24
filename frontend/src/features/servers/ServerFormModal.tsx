@@ -101,9 +101,18 @@ export function ServerFormModal({
   }
 
   async function handleTrust() {
+    // Fingerprint yang dikirim balik adalah persis yang ditampilkan di layar
+    // dan disetujui user. Backend menolak menyimpan host key lain -- lihat
+    // sshpool.Pool.TrustHostKey.
+    const approved = testDetail.fingerprint;
+    if (!approved) {
+      setTestDetail({ message: t('srv.trustNeedsTest') });
+      setTestState('error');
+      return;
+    }
     setBusy(true);
     try {
-      await TrustServerHostKey(form);
+      await TrustServerHostKey(form, approved);
       // Setelah host key dipercaya, ulangi tes supaya status benar-benar
       // terverifikasi "ok" (bukan diasumsikan) sebelum Save diaktifkan.
       await handleTest();
