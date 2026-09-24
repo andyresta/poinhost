@@ -15,6 +15,7 @@ import (
 	"github.com/andyresta/poinhost/internal/core/database"
 	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
+	"github.com/andyresta/poinhost/internal/modules/agentctl"
 	"github.com/andyresta/poinhost/internal/modules/dbxfer"
 	"github.com/andyresta/poinhost/internal/modules/docker"
 	"github.com/andyresta/poinhost/internal/modules/dockerxfer"
@@ -58,6 +59,7 @@ type App struct {
 	firewallSvc   *firewall.Service
 	websiteSvc    *website.Service
 	backupSvc     *backup.Service
+	agentSvc      *agentctl.Service
 
 	// streamMu/streams melacak stream Docker yang sedang berjalan (logs,
 	// stats, instalasi engine) supaya frontend bisa membatalkannya secara
@@ -84,7 +86,7 @@ func NewApp() *App {
 	if err != nil {
 		log.Fatalf("buka database: %v", err)
 	}
-	if err := database.Migrate(db, migrationsFS); err != nil {
+	if err := database.Migrate(db); err != nil {
 		log.Fatalf("migrasi database: %v", err)
 	}
 
@@ -98,7 +100,10 @@ func NewApp() *App {
 	// kredensial database (website.Service, fitur Explore) — bukan dua vault
 	// terpisah untuk hal yang secara prinsip sama (rahasia di mesin user,
 	// tidak pernah ditulis ke server target).
-	vault := secrets.New(cfg.DataDir)
+	vault, err := secrets.New(cfg.DataDir)
+	if err != nil {
+		log.Fatalf("vault rahasia: %v", err)
+	}
 
 	serversRepo := servers.NewRepository(db)
 	serversSvc := servers.NewService(serversRepo, pool, executor, vault)
@@ -120,6 +125,7 @@ func NewApp() *App {
 	dbxferSvc := dbxfer.NewService(serversSvc, websiteSvc, pool)
 	sitexferSvc := sitexfer.NewService(serversSvc, websiteSvc, pool)
 	backupSvc := backup.NewService(serversSvc, websiteSvc)
+	agentSvc := agentctl.NewService(serversSvc, executor, sftpClient, knownHosts)
 
 	return &App{
 		cfg:           cfg,
@@ -140,6 +146,7 @@ func NewApp() *App {
 		firewallSvc:   firewallSvc,
 		websiteSvc:    websiteSvc,
 		backupSvc:     backupSvc,
+		agentSvc:      agentSvc,
 		streams:       make(map[string]context.CancelFunc),
 	}
 }
@@ -221,6 +228,13 @@ func (a *App) startup(ctx context.Context) {
 
 	// Sama seperti filexfer/dockerxfer: progress migrasi database dikirim
 	// per job ("dbxfer:progress:<jobId>").
+	// Pemasangan/update agent melibatkan unggahan beberapa megabyte dan
+	// restart service — per server, karena tiap tab bisa menjalankan operasi
+	// yang berbeda pada saat bersamaan.
+	a.agentSvc.SetEmitter(func(p agentctl.Progress) {
+		runtime.EventsEmit(ctx, "agent:progress:"+p.ServerID, p)
+	})
+
 	a.dbxferSvc.SetEmitter(func(p dbxfer.Progress) {
 		runtime.EventsEmit(ctx, "dbxfer:progress:"+p.JobID, p)
 	})
@@ -277,8 +291,12 @@ func (a *App) TestServerConnection(req servers.SaveServerRequest) (*servers.Conn
 // supaya bisa dipanggil di tengah alur TAMBAH server (sebelum ID ada) saat
 // probe pertama kali menemukan host key baru — bukan hanya untuk server
 // yang sudah tersimpan.
-func (a *App) TrustServerHostKey(req servers.SaveServerRequest) error {
-	return a.serversSvc.TrustHostKey(req)
+//
+// `fingerprint` adalah fingerprint yang ditampilkan TestServerConnection dan
+// disetujui user; frontend mengirimkannya kembali apa adanya. Host key yang
+// tidak cocok dengan itu ditolak, bukan disimpan.
+func (a *App) TrustServerHostKey(req servers.SaveServerRequest, fingerprint string) error {
+	return a.serversSvc.TrustHostKey(req, fingerprint)
 }
 
 // ---------------------------------------------------------------------
@@ -1556,4 +1574,119 @@ func (a *App) SiteXferCancel(jobID string) (*sitexfer.Progress, error) {
 // usernya tidak bisa dibuat dari hash. User yang sudah ada dilewati.
 func (a *App) SiteXferRepairDBUsers(req sitexfer.StartRequest) (*sitexfer.RepairResult, error) {
 	return a.sitexferSvc.RepairDBUsers(req)
+}
+
+// ---------------------------------------------------------------------
+// Bindings: Agent Control (lihat internal/modules/agentctl)
+// ---------------------------------------------------------------------
+
+// DetectAgent memeriksa keadaan poinhost-agent di satu server: belum
+// terpasang, terpasang tapi mati, atau berjalan — plus apakah server ini
+// memenuhi syarat pemasangan sama sekali.
+func (a *App) DetectAgent(serverID string) (*agentctl.Status, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.Detect(ctx, serverID)
+}
+
+// InstallAgent memasang agent: unggah binary, tulis config + unit systemd,
+// nyalakan service, lalu tunggu sampai health check-nya benar-benar lulus.
+func (a *App) InstallAgent(req agentctl.InstallRequest) (*agentctl.Status, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
+	defer cancel()
+	return a.agentSvc.Install(ctx, req)
+}
+
+// UpdateAgent mengganti binary agent dengan versi yang dibawa build ini,
+// dengan rollback otomatis kalau versi baru gagal sehat.
+func (a *App) UpdateAgent(serverID string) (*agentctl.Status, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
+	defer cancel()
+	return a.agentSvc.Update(ctx, serverID)
+}
+
+// ListAgentLinkedServers membaca daftar server yang benar-benar terdaftar di
+// agent — dibaca dari agent, bukan dari catatan sisi desktop.
+func (a *App) ListAgentLinkedServers(serverID string) ([]agentctl.LinkedServer, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.LinkedServers(ctx, serverID)
+}
+
+// LinkServersToAgent menautkan server pilihan user ke agent beserta
+// kredensial dan host key-nya, dikirim dalam bentuk terenkripsi.
+func (a *App) LinkServersToAgent(req agentctl.LinkRequest) ([]agentctl.LinkedServer, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 3*time.Minute)
+	defer cancel()
+	return a.agentSvc.LinkServers(ctx, req)
+}
+
+// UnlinkServerFromAgent mencabut satu server dari agent.
+func (a *App) UnlinkServerFromAgent(serverID, targetID string) ([]agentctl.LinkedServer, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.UnlinkServer(ctx, serverID, targetID)
+}
+
+// EnableAgentSelfManagement memasang kunci SSH khusus agent lalu menyalakan
+// pengelolaan mesin tempat agent berjalan — untuk agent yang dipasang tanpa
+// opsi itu, atau yang config-nya perlu dipulihkan.
+func (a *App) EnableAgentSelfManagement(serverID string) (*agentctl.Status, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 3*time.Minute)
+	defer cancel()
+	return a.agentSvc.EnableSelfManagement(ctx, serverID)
+}
+
+// UninstallAgent menghapus agent beserta config, data, unit systemd, dan
+// kunci SSH yang dipasangnya.
+func (a *App) UninstallAgent(serverID string) (*agentctl.Status, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
+	defer cancel()
+	return a.agentSvc.Uninstall(ctx, serverID)
+}
+
+// AgentLifecycle menjalankan start/stop/restart pada service agent.
+func (a *App) AgentLifecycle(serverID, action string) (*agentctl.Status, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
+	defer cancel()
+	return a.agentSvc.Lifecycle(ctx, serverID, action)
+}
+
+// AgentLogs mengambil ekor journalctl service agent.
+func (a *App) AgentLogs(serverID string, lines int) (string, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.Logs(ctx, serverID, lines)
+}
+
+// TestAgentTelegramToken memverifikasi token bot DARI SERVER, sehingga
+// sekaligus membuktikan server itu bisa menjangkau api.telegram.org.
+func (a *App) TestAgentTelegramToken(serverID, token string) (*agentctl.TelegramTestResult, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.TestTelegramToken(ctx, serverID, token)
+}
+
+// ConfigureAgentTelegram menyimpan konfigurasi bot lalu me-restart agent.
+// Token kosong berarti "jangan ubah" — layar tidak pernah menampilkan token
+// yang tersimpan.
+func (a *App) ConfigureAgentTelegram(req agentctl.TelegramRequest) (*agentctl.Status, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 3*time.Minute)
+	defer cancel()
+	return a.agentSvc.ConfigureTelegram(ctx, req)
+}
+
+// CreateAgentPairingCode membuat kode sekali-pakai supaya user bisa
+// mendaftarkan akun Telegram-nya lewat perintah /pair di bot.
+func (a *App) CreateAgentPairingCode(serverID string) (*agentctl.PairingCode, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.CreatePairingCode(ctx, serverID)
+}
+
+// RevokeAgentTelegramUser mencabut akses satu user Telegram.
+func (a *App) RevokeAgentTelegramUser(serverID string, userID int64) (*agentctl.Status, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.RevokeTelegramUser(ctx, serverID, userID)
 }

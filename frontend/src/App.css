@@ -2501,3 +2501,139 @@ button svg {
   flex: 0 0 auto;
   margin-top: 2px;
 }
+
+/* ---------------------------------------------------------------------
+   Agent Control (lihat features/servers/AgentControlPanel.tsx)
+   --------------------------------------------------------------------- */
+.agent-section {
+  margin: 0 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.agent-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+.agent-subhead {
+  margin: 16px 0 6px;
+  font-size: 12px;
+  color: var(--neutral);
+}
+/* Keterangan di panel ini menjelaskan konsekuensi, bukan sekadar mengulang
+   label — jadi sengaja diberi ruang baca, bukan diperkecil sampai terabaikan. */
+.agent-hint {
+  margin: 4px 0 10px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--neutral);
+  max-width: 64ch;
+}
+.agent-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  max-width: 420px;
+}
+.agent-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+.agent-logs {
+  margin: 10px 0 0;
+  padding: 10px;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.agent-users {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+.agent-users li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+.agent-pairing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 0;
+}
+/* Kode pairing dibaca dari layar laptop lalu diketik ulang di HP, jadi dibuat
+   besar dan berjarak — bukan sekadar <code> sebaris. */
+.agent-pairing__code {
+  padding: 6px 12px;
+  font-size: 18px;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  background: var(--bg);
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+}
+.agent-selfmanage {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.agent-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+.agent-progress__bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.agent-progress__fill {
+  height: 100%;
+  background: var(--accent);
+  /* Transisi dibuat pendek: bar yang "mengejar" terlalu lambat justru terlihat
+     macet saat unggahan berjalan cepat. */
+  transition: width 0.2s linear;
+}
+.agent-progress__label {
+  font-size: 11.5px;
+  color: var(--neutral);
+  white-space: nowrap;
+}
+.agent-linkerr {
+  color: var(--warning);
+  font-style: normal;
+  font-size: 11px;
+}

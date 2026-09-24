@@ -7,6 +7,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -47,19 +49,47 @@ type ExecutorConfig struct {
 	RetryBackoff    []time.Duration
 }
 
-// Default mengembalikan konfigurasi default, dioverride oleh environment
-// variable bila di-set (dipakai untuk dev/testing, bukan .env seperti homepoin
-// karena poinhost adalah aplikasi desktop, bukan server yang di-deploy).
+// EnvDataDir memindahkan seluruh direktori data lewat environment variable.
+// Berguna untuk dev/test, dan untuk menjalankan dua instance berdampingan.
+const EnvDataDir = "POINHOST_DATA_DIR"
+
+// Default mengembalikan konfigurasi untuk app desktop: data di
+// ~/.poinhost, kecuali POINHOST_DATA_DIR di-set.
+//
+// Ini TIDAK cocok untuk proses yang berjalan sebagai service systemd —
+// direktori home root tidak selalu ada dan bukan tempat yang benar untuk data
+// service. Jalur itu memakai At() dengan path yang eksplisit.
 func Default() (*Config, error) {
+	if dir := os.Getenv(EnvDataDir); dir != "" {
+		return At(dir)
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
 	}
-	dataDir := filepath.Join(home, ".poinhost")
+	return At(filepath.Join(home, ".poinhost"))
+}
+
+// At mengembalikan konfigurasi dengan direktori data yang ditentukan
+// pemanggil — mis. /var/lib/poinhost-agent untuk service systemd, atau
+// direktori sementara di dalam test.
+//
+// Semua override environment untuk timeout/retry tetap berlaku sama; yang
+// berbeda hanya letak datanya. Dengan begitu app desktop dan agent memakai
+// satu struct Config dan satu perilaku, bukan dua konfigurasi paralel yang
+// lama-lama menyimpang.
+func At(dataDir string) (*Config, error) {
+	if strings.TrimSpace(dataDir) == "" {
+		return nil, errors.New("config: direktori data tidak boleh kosong")
+	}
+	abs, err := filepath.Abs(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("config: resolve direktori data %q: %w", dataDir, err)
+	}
 
 	cfg := &Config{
-		DataDir:  dataDir,
-		LogDir:   filepath.Join(dataDir, "logs"),
+		DataDir:  abs,
+		LogDir:   filepath.Join(abs, "logs"),
 		LogLevel: getEnv("POINHOST_LOG_LEVEL", "info"),
 		SSH: SSHConfig{
 			SharedMuxConns:          clampInt(getEnvInt("SSH_SHARED_MUX_CONNS", 2), 1, 4),

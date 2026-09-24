@@ -90,14 +90,30 @@ Konsekuensi praktis:
 poinhost/
 ├── main.go                     # wails.Run(...), embed frontend/dist
 ├── app.go                      # App struct = SEMUA method yang di-bind ke frontend
-├── embed.go                    # embed migrations/
 ├── wails.json
+├── Makefile                    # `make agent` — cross-compile binary agent
+│
+├── cmd/
+│   └── poinhost-agent/         # service opsional yang dipasang DI server (§16)
 │
 ├── internal/
+│   ├── agent/                  # milik poinhost-agent, bukan app desktop (§16)
+│   │   ├── agentcfg/           # config.json agent; listen WAJIB loopback
+│   │   ├── api/                # HTTP loopback: /healthz + kontrol lokal
+│   │   ├── backend/            # adaptor bot -> servers.Service/Collector
+│   │   ├── bot/                # konektor Telegram: perintah + kode pairing
+│   │   ├── telegram/           # klien Bot API seperlunya (long-polling)
+│   │   └── dist/bin/           # binary agent ter-gzip yang di-embed ke desktop
+│   │
 │   ├── core/                   # infra lintas-modul (setara internal/shared/ homepoin)
 │   │   ├── backup/             # export/import arsip terenkripsi passphrase (§15)
 │   │   ├── config/             # parameter runtime (trimmed — lihat §6 roadmap)
 │   │   ├── database/           # buka SQLite WAL, migration runner
+│   │   │   ├── embed.go           # embed migrations/ (di package ini, bukan main —
+│   │   │   │                      # supaya app desktop & agent pakai schema yang sama)
+│   │   │   └── migrations/
+│   │   │       └── 001_core.sql   # servers, app_settings, activity_logs, ui_tabs,
+│   │   │                          # website_db_credentials, website_domain_databases (§14)
 │   │   ├── secrets/            # vault password LOKAL: OS keychain + fallback file AES-GCM (§14)
 │   │   └── sshpool/            # pool koneksi (lihat §3), executor, sftp, known_hosts, tunnel (§14)
 │   │
@@ -107,6 +123,7 @@ poinhost/
 │   │   └── terminal.go          # TerminalRegistry (tab -> koneksi dedicated)
 │   │
 │   └── modules/                 # vertical slice per fitur, sama filosofi homepoin
+│       ├── agentctl/           # pasang/deteksi/update/copot agent lewat SSH (§16)
 │       ├── servers/              # CRUD server + status/metrik (lihat §8)
 │       │   ├── dto.go
 │       │   ├── repository.go     # CRUD tabel `servers`
@@ -152,10 +169,6 @@ poinhost/
 │           ├── mysqlexplore.go    # Explore MySQL: koneksi driver asli tunneled (§14)
 │           ├── pgexplore.go       # Explore PostgreSQL: satu koneksi per database (§14)
 │           └── domaindb.go        # tautan domain<->database, kurasi lokal (§14)
-│
-├── migrations/
-│   └── 001_core.sql             # servers, app_settings, activity_logs, ui_tabs,
-│                                 # website_db_credentials, website_domain_databases (§14)
 │
 └── frontend/
     ├── src/

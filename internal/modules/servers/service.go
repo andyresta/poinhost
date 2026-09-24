@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
@@ -205,6 +206,17 @@ func (s *Service) UpsertFromBackup(srv *Server, rawPassword string) error {
 		return err
 	}
 	s.registerToPool(saved)
+	// Koneksi dihangatkan seperti di Save. Tanpa ini server yang baru masuk
+	// terdaftar di pool tapi belum pernah disambungkan, sehingga statusnya
+	// "offline" sampai polling metrik pertama menyentuhnya — untuk server idle
+	// itu bisa sampai satu setengah menit. Di agent, jeda itu tampil di bot
+	// sebagai server yang baru ditautkan tapi "not connected", tanpa sebab yang
+	// bisa dilihat siapa pun.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), s.pool.DialTimeout()+5*time.Second)
+		defer cancel()
+		_ = s.pool.WarmConnection(ctx, saved.ID)
+	}()
 	return nil
 }
 
@@ -255,13 +267,18 @@ func (s *Service) TestConnection(req SaveServerRequest) (*ConnectionTestResult, 
 // persis di tengah alur tambah server saat probe pertama kali menemukan host
 // key baru. Kalau req.ID sudah ada, itu jalur "trust ulang" untuk server yang
 // sudah tersimpan (mis. setelah VPS di-rebuild).
-func (s *Service) TrustHostKey(req SaveServerRequest) error {
+//
+// `fingerprint` WAJIB: ini fingerprint yang barusan dikembalikan
+// TestConnection dan benar-benar dibaca user di layar. Yang disimpan hanya
+// host key yang cocok dengan itu — lihat sshpool.Pool.TrustHostKey untuk
+// alasan lengkapnya.
+func (s *Service) TrustHostKey(req SaveServerRequest, fingerprint string) error {
 	cfg := s.probeConfig(req)
 
 	ctx, cancel := sshpool.NewProbeContext(s.pool.DialTimeout())
 	defer cancel()
 
-	return s.pool.TrustHostKey(ctx, cfg)
+	return s.pool.TrustHostKey(ctx, cfg, fingerprint)
 }
 
 // probeConfig membangun sshpool.ServerConfig dari request form. Kalau field

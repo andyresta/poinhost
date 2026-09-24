@@ -1,3 +1,195 @@
+export namespace agentctl {
+	
+	export class InstallRequest {
+	    serverId: string;
+	    port: number;
+	    manageSelf: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new InstallRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.port = source["port"];
+	        this.manageSelf = source["manageSelf"];
+	    }
+	}
+	export class LinkRequest {
+	    serverId: string;
+	    targetIds: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new LinkRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.targetIds = source["targetIds"];
+	    }
+	}
+	export class LinkedServer {
+	    id: string;
+	    name: string;
+	    host: string;
+	    isSelf: boolean;
+	    connection?: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LinkedServer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.host = source["host"];
+	        this.isSelf = source["isSelf"];
+	        this.connection = source["connection"];
+	        this.error = source["error"];
+	    }
+	}
+	export class PairingCode {
+	    code: string;
+	    expiresAt: string;
+	    ttlSecond: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PairingCode(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.code = source["code"];
+	        this.expiresAt = source["expiresAt"];
+	        this.ttlSecond = source["ttlSecond"];
+	    }
+	}
+	export class TelegramStatus {
+	    configured: boolean;
+	    enabled: boolean;
+	    botUsername?: string;
+	    lastError?: string;
+	    allowedUsers: number[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TelegramStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.configured = source["configured"];
+	        this.enabled = source["enabled"];
+	        this.botUsername = source["botUsername"];
+	        this.lastError = source["lastError"];
+	        this.allowedUsers = source["allowedUsers"];
+	    }
+	}
+	export class Status {
+	    state: string;
+	    installed: boolean;
+	    version?: string;
+	    active: boolean;
+	    enabled: boolean;
+	    healthy: boolean;
+	    listen?: string;
+	    selfManaged: boolean;
+	    uptimeSeconds?: number;
+	    serverCount?: number;
+	    telegram: TelegramStatus;
+	    arch?: string;
+	    archSupported: boolean;
+	    hasSystemd: boolean;
+	    canElevate: boolean;
+	    bundledVersion?: string;
+	    bundleAvailable: boolean;
+	    updateAvailable: boolean;
+	    problem?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Status(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.state = source["state"];
+	        this.installed = source["installed"];
+	        this.version = source["version"];
+	        this.active = source["active"];
+	        this.enabled = source["enabled"];
+	        this.healthy = source["healthy"];
+	        this.listen = source["listen"];
+	        this.selfManaged = source["selfManaged"];
+	        this.uptimeSeconds = source["uptimeSeconds"];
+	        this.serverCount = source["serverCount"];
+	        this.telegram = this.convertValues(source["telegram"], TelegramStatus);
+	        this.arch = source["arch"];
+	        this.archSupported = source["archSupported"];
+	        this.hasSystemd = source["hasSystemd"];
+	        this.canElevate = source["canElevate"];
+	        this.bundledVersion = source["bundledVersion"];
+	        this.bundleAvailable = source["bundleAvailable"];
+	        this.updateAvailable = source["updateAvailable"];
+	        this.problem = source["problem"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class TelegramRequest {
+	    serverId: string;
+	    enabled: boolean;
+	    token: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TelegramRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.enabled = source["enabled"];
+	        this.token = source["token"];
+	    }
+	}
+	
+	export class TelegramTestResult {
+	    ok: boolean;
+	    botUsername?: string;
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TelegramTestResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ok = source["ok"];
+	        this.botUsername = source["botUsername"];
+	        this.message = source["message"];
+	    }
+	}
+
+}
+
 export namespace backup {
 	
 	export class ImportSummary {

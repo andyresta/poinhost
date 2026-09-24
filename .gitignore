@@ -12,3 +12,9 @@ frontend/dist
 
 # Arsip backup poinhost (terenkripsi, tapi tetap tidak untuk repo).
 *.poinhostbkp
+
+# Binary agent yang di-embed ke app desktop — artefak build CI, bukan sumber.
+# README.md di folder itu SENGAJA tetap di-commit; tanpa file yang cocok,
+# pola //go:embed gagal saat kompilasi di clone yang bersih.
+internal/agent/dist/bin/*.gz
+internal/agent/dist/bin/version.txt

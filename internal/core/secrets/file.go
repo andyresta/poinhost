@@ -6,11 +6,20 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
 )
+
+// keyLen adalah panjang kunci AES-256 dalam byte.
+const keyLen = 32
+
+// ErrKeyUnreadable menandai secret.key yang ADA tapi tidak bisa dipakai
+// (tidak terbaca, atau ukurannya salah). Ini sengaja dibedakan dari "belum
+// ada": yang pertama tidak boleh ditimpa kunci baru, yang kedua boleh.
+var ErrKeyUnreadable = errors.New("secrets: kunci vault lokal tidak bisa dibaca")
 
 // fileVault adalah fallback kalau OS keychain tidak tersedia (mis. Linux
 // tanpa Secret Service jalan): satu file JSON di ~/.poinhost/secrets.json
@@ -24,6 +33,12 @@ type fileVault struct {
 	mu       sync.Mutex
 	keyPath  string
 	dataPath string
+
+	// key di-cache setelah pembacaan pertama yang berhasil. Selain menghemat
+	// satu syscall per operasi vault, ini juga membuat kunci yang dipakai
+	// selama satu proses hidup TIDAK bisa berubah diam-diam di tengah jalan
+	// kalau file di disk tersentuh pihak lain.
+	key []byte
 }
 
 func newFileVault(dir string) (*fileVault, error) {
@@ -40,19 +55,76 @@ func newFileVault(dir string) (*fileVault, error) {
 	return fv, nil
 }
 
+// loadOrCreateKey membaca secret.key, dan HANYA membuat kunci baru kalau
+// filenya memang belum ada. Pemanggil harus memegang v.mu (atau memanggil
+// sebelum fileVault dibagikan ke goroutine lain).
+//
+// Kunci baru SENGAJA tidak dibuat untuk kasus error baca apa pun selain
+// "file tidak ada", dan tidak juga untuk file berukuran salah: secrets.json
+// di sebelahnya masih terenkripsi dengan kunci LAMA, jadi menimpa secret.key
+// berarti menghapus seluruh isinya secara permanen tanpa bisa dipulihkan.
+// Lebih baik gagal keras dan membiarkan user memperbaiki/memulihkan filenya
+// daripada "berhasil" jalan di atas vault yang isinya sudah tidak terbaca.
 func (v *fileVault) loadOrCreateKey() ([]byte, error) {
-	b, err := os.ReadFile(v.keyPath)
-	if err == nil && len(b) == 32 {
-		return b, nil
+	if v.key != nil {
+		return v.key, nil
 	}
-	key := make([]byte, 32)
+
+	b, err := os.ReadFile(v.keyPath)
+	switch {
+	case err == nil && len(b) == keyLen:
+		v.key = b
+		return v.key, nil
+
+	case err == nil:
+		return nil, fmt.Errorf(
+			"%w: %s berukuran %d byte, seharusnya %d — jangan hapus file ini, "+
+				"pulihkan dari backup kalau ada (menimpanya membuat semua rahasia tersimpan tidak bisa dibuka lagi)",
+			ErrKeyUnreadable, v.keyPath, len(b), keyLen)
+
+	case !os.IsNotExist(err):
+		return nil, fmt.Errorf(
+			"%w: %s ada tapi tidak bisa dibaca (%v) — periksa permission/kepemilikan file",
+			ErrKeyUnreadable, v.keyPath, err)
+	}
+
+	key := make([]byte, keyLen)
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
-	if err := os.WriteFile(v.keyPath, key, 0o600); err != nil {
+	// O_EXCL: kalau ada proses lain yang menang balapan membuat file ini,
+	// kita pakai punya dia alih-alih menimpanya.
+	f, err := os.OpenFile(v.keyPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if os.IsExist(err) {
+			return v.rereadKey()
+		}
 		return nil, err
 	}
-	return key, nil
+	if _, err := f.Write(key); err != nil {
+		_ = f.Close()
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
+
+	v.key = key
+	return v.key, nil
+}
+
+// rereadKey dipakai saat pembuatan kalah balapan dengan proses lain.
+func (v *fileVault) rereadKey() ([]byte, error) {
+	b, err := os.ReadFile(v.keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s (%v)", ErrKeyUnreadable, v.keyPath, err)
+	}
+	if len(b) != keyLen {
+		return nil, fmt.Errorf("%w: %s berukuran %d byte, seharusnya %d",
+			ErrKeyUnreadable, v.keyPath, len(b), keyLen)
+	}
+	v.key = b
+	return v.key, nil
 }
 
 func (v *fileVault) gcm() (cipher.AEAD, error) {

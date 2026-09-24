@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { LayoutDashboard, Globe, Database, FolderOpen, TerminalSquare, Settings2, Boxes, Shield, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, Globe, Database, FolderOpen, TerminalSquare, Settings2, Boxes, Shield, Bot, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTabsStore } from '../../store/tabs';
 import { useT } from '../../i18n';
 import { useWorkspaceNavStore } from '../../store/workspaceNav';
@@ -11,6 +11,7 @@ import { WebsitePanel } from './WebsitePanel';
 import { DatabaseManagerPanel } from './DatabaseManagerPanel';
 import { ServicesPanel } from './ServicesPanel';
 import { FirewallPanel } from './FirewallPanel';
+import { AgentControlPanel } from './AgentControlPanel';
 import type { session } from '../../../wailsjs/go/models';
 
 // Ikon dipakai saat nav diciutkan (hanya ikon yang tampak) — pola yang
@@ -24,6 +25,7 @@ const MODULES = [
   { key: 'services', labelKey: 'module.services', Icon: Settings2 },
   { key: 'firewall', labelKey: 'module.firewall', Icon: Shield },
   { key: 'docker', labelKey: 'module.docker', Icon: Boxes },
+  { key: 'agent', labelKey: 'module.agent', Icon: Bot },
 ] as const;
 
 // Modul yang punya koneksi/state nyata yang MAHAL untuk dibuang & dibuat
@@ -32,7 +34,7 @@ const MODULES = [
 // `hidden`, bukan unmount) selama tab ini masih terbuka. Modul lain masih
 // placeholder, belum ada state yang perlu dipertahankan, jadi render
 // sederhana saja.
-const STATEFUL_MODULES = new Set(['overview', 'terminal', 'files', 'docker', 'website', 'database', 'services', 'firewall']);
+const STATEFUL_MODULES = new Set(['overview', 'terminal', 'files', 'docker', 'website', 'database', 'services', 'firewall', 'agent']);
 
 // Isi satu tab: nav modul di kiri + panel konten modul aktif di kanan.
 // Modul services di sini masih placeholder — akan di-porting bertahap dari
@@ -128,6 +130,12 @@ export function ServerWorkspace({ tab }: { tab: session.Tab }) {
         {visited.has('firewall') && (
           <div className="workspace__module" hidden={tab.activeModule !== 'firewall'}>
             <FirewallPanel serverId={tab.serverId} />
+          </div>
+        )}
+
+        {visited.has('agent') && (
+          <div className="workspace__module" hidden={tab.activeModule !== 'agent'}>
+            <AgentControlPanel serverId={tab.serverId} />
           </div>
         )}
 
