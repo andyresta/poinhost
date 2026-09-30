@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { CircleCheck, TriangleAlert, Boxes, Link2, KeyRound, Search, X, UserPlus, Trash2, ArrowLeft } from 'lucide-react';
 import { ActionMenu } from './ActionMenu';
 import { useConfirm } from '../../components/ConfirmDialog';
@@ -186,6 +186,11 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
   // "Link to domain", TIDAK bergantung engine (domain website tidak
   // terikat MySQL/PostgreSQL).
   const [allDomains, setAllDomains] = useState<string[]>([]);
+  // domainsError: kenapa daftar domain gagal dimuat. Dibedakan dari daftar
+  // yang memang kosong — dulu keduanya berakhir sama, yaitu array kosong,
+  // sehingga kegagalan koneksi tampil sebagai "Belum ada domain di server
+  // ini" dan user diberi tahu sesuatu yang tidak benar tentang servernya.
+  const [domainsError, setDomainsError] = useState<string | null>(null);
   // domainLinkTarget: database yang sedang dibuka modal "Link to
   // domain"-nya — null berarti modal tertutup. domainLinkChoice: domain
   // yang sedang dipilih di dropdown modal itu.
@@ -303,11 +308,34 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
   // Daftar domain/subdomain di server ini — dipakai dialog "Kelola domain"
   // dan form buat database, TIDAK bergantung engine (jadi ambil sekali per
   // server, tidak ikut re-fetch tiap ganti MySQL<->PostgreSQL).
-  useEffect(() => {
-    ListWebsites(serverId)
-      .then((res) => setAllDomains((res.domains ?? []).map((d) => d.domain)))
-      .catch(() => setAllDomains([]));
+  const loadDomains = useCallback(async () => {
+    setDomainsError(null);
+    try {
+      const res = await ListWebsites(serverId);
+      setAllDomains((res.domains ?? []).map((d) => d.domain));
+    } catch (e) {
+      setAllDomains([]);
+      setDomainsError(String(e));
+    }
   }, [serverId]);
+
+  useEffect(() => {
+    void loadDomains();
+  }, [loadDomains]);
+
+  // Dicoba lagi saat dialog dibuka kalau daftarnya masih kosong.
+  //
+  // Pengambilannya SEKALI per server, jadi satu kegagalan sesaat — mis.
+  // "ssh: rejected: connect failed" saat pool sedang sibuk — membuat
+  // daftar domain kosong sampai tab servernya ditutup dan dibuka lagi.
+  // Yang terlihat user: menu "Tautkan ke domain" selamanya bilang server
+  // ini tidak punya domain, padahal domainnya ada.
+  useEffect(() => {
+    if (domainLinkTarget !== null && allDomains.length === 0) {
+      void loadDomains();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domainLinkTarget]);
 
   function credentialFor(username: string, host: string) {
     const normalizedHost = engine === 'mysql' ? host || '%' : '-';
@@ -1301,7 +1329,16 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                   ))}
                 </span>
               )}
-              {allDomains.filter((dom) => !(dbDomains[domainLinkTarget] ?? []).includes(dom)).length === 0 ? (
+              {domainsError ? (
+                <div className="docker-recreate__row">
+                  <span className="mig-panel__path-note--error">
+                    {t('db.domainsLoadFailed')} {domainsError}
+                  </span>
+                  <button className="btn btn--sm" onClick={() => void loadDomains()}>
+                    {t('common.refresh')}
+                  </button>
+                </div>
+              ) : allDomains.filter((dom) => !(dbDomains[domainLinkTarget] ?? []).includes(dom)).length === 0 ? (
                 <p className="chmod-path" style={{ margin: 0 }}>
                   {allDomains.length === 0 ? t('db.noDomainsOnServer') : t('db.allDomainsLinked')}
                 </p>
