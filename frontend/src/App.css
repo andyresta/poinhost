@@ -2765,3 +2765,15 @@ button svg {
   color: var(--success);
   background: var(--success-bg);
 }
+
+/* Modal hasil migrasi website: lebih lebar dari modal biasa karena isinya
+   tabel tiga kolom plus daftar tindak lanjut, dan bagian isinya yang
+   men-scroll — bukan seluruh kartu — supaya judul dan tombol tutup tetap
+   di tempatnya saat laporannya panjang. */
+.modal-card--wide {
+  width: 760px;
+  overflow: hidden;
+}
+.modal-card--wide .modal-card__body {
+  overflow-y: auto;
+}

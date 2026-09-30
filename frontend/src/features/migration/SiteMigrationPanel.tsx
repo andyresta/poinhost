@@ -126,6 +126,11 @@ export function SiteMigrationPanel() {
   const [destDomains, setDestDomains] = useState<string[]>([]);
   const [destError, setDestError] = useState<string | null>(null);
   const [loadingDest, setLoadingDest] = useState(false);
+  // Modal hasil dibuka otomatis saat migrasi dimulai dan boleh ditutup
+  // kapan saja — termasuk saat masih berjalan. Job-nya tetap hidup, dan
+  // tombol di baris aksi membukanya kembali; menutup modal tidak boleh
+  // berarti kehilangan jejak pekerjaan yang sedang jalan.
+  const [showJobModal, setShowJobModal] = useState(false);
   const [repair, setRepair] = useState<sitexfer.RepairResult | null>(null);
   const [repairing, setRepairing] = useState(false);
 
@@ -255,6 +260,7 @@ export function SiteMigrationPanel() {
     setError(null);
     try {
       setJob(await SiteXferStart(withPasswords()));
+      setShowJobModal(true);
       setPasswords({});
     } catch (e) {
       setError(String(e));
@@ -525,6 +531,11 @@ export function SiteMigrationPanel() {
         <div className="mig-panel__summary">
           {t('migration.site.summary', { count: String(selected.size), dest: dstServerName })}
         </div>
+        {job && !showJobModal && (
+          <button className="btn btn--sm" onClick={() => setShowJobModal(true)}>
+            <ListChecks size={13} /> {t('migration.site.showResult')}
+          </button>
+        )}
         {running ? (
           <button className="btn btn--sm btn--danger" onClick={() => void handleCancel()}>
             <X size={13} /> {t('common.cancel')}
@@ -704,59 +715,81 @@ export function SiteMigrationPanel() {
         </div>
       )}
 
-      {job && (
-        <div className="mig-panel__progress">
-          <div className="mig-panel__progress-head">
-            <span className={`mig-panel__status mig-panel__status--${job.status}`}>
-              {t(STATUS_LABEL[job.status] ?? 'migration.db.status.queued')}
-            </span>
-            <span className="mig-panel__bytes">
-              {formatBytes(job.doneBytes)}
-              {job.totalBytes > 0 && ` / ${formatBytes(job.totalBytes)}`}
-            </span>
-            {job.message && <span className="mig-panel__message">{job.message}</span>}
-          </div>
-          <div className="mig-panel__meter">
-            <div
-              className="mig-panel__meter-fill"
-              style={{ width: `${job.totalBytes > 0 ? job.percent : running ? 100 : 0}%` }}
-            />
-          </div>
-          <table className="mig-panel__paths">
-            <tbody>
-              {job.items.map((it) => (
-                <tr key={it.key}>
-                  <td className="mig-panel__path-name">
-                    {KIND_LABEL[it.kind] && <span className="mig-panel__item-kind">{t(KIND_LABEL[it.kind])}</span>}
-                    {it.label}
-                  </td>
-                  <td className={`mig-panel__path-state mig-panel__path-state--${it.status}`}>
-                    {t(ITEM_LABEL[it.status] ?? 'migration.site.item.pending')}
-                  </td>
-                  <td
-                    className={
-                      'mig-panel__path-note' +
-                      (it.error ? ' mig-panel__path-note--error' : it.warning ? ' mig-panel__path-note--warn' : '')
-                    }
-                  >
-                    {it.error || it.warning || it.detail || ''}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {job.report.length > 0 && (
-            <div className="mig-site__report">
-              <div className="mig-site__section">
-                <ListChecks size={13} /> {t('migration.site.report')}
-              </div>
-              <ul>
-                {job.report.map((line, i) => (
-                  <li key={i}>{line}</li>
-                ))}
-              </ul>
+      {/* Hasil migrasi tampil sebagai modal, bukan blok yang menempel di
+          bawah panel. Laporannya panjang dan baru berguna sesudah migrasi
+          selesai; dibiarkan inline, ia mendorong rencana dan pilihan domain
+          keluar layar justru saat user ingin menyiapkan domain berikutnya. */}
+      {job && showJobModal && (
+        <div
+          className="modal-overlay"
+          onMouseDown={(e) => e.target === e.currentTarget && setShowJobModal(false)}
+        >
+          <div className="modal-card modal-card--wide">
+            <div className="modal-card__header">
+              <h2>{t('migration.site.resultTitle')}</h2>
+              <button className="modal-card__close" onClick={() => setShowJobModal(false)}>
+                <X size={18} />
+              </button>
             </div>
-          )}
+            <div className="modal-card__body">
+            <div className="mig-panel__progress-head">
+              <span className={`mig-panel__status mig-panel__status--${job.status}`}>
+                {t(STATUS_LABEL[job.status] ?? 'migration.db.status.queued')}
+              </span>
+              <span className="mig-panel__bytes">
+                {formatBytes(job.doneBytes)}
+                {job.totalBytes > 0 && ` / ${formatBytes(job.totalBytes)}`}
+              </span>
+              {job.message && <span className="mig-panel__message">{job.message}</span>}
+            </div>
+            <div className="mig-panel__meter">
+              <div
+                className="mig-panel__meter-fill"
+                style={{ width: `${job.totalBytes > 0 ? job.percent : running ? 100 : 0}%` }}
+              />
+            </div>
+            <table className="mig-panel__paths">
+              <tbody>
+                {job.items.map((it) => (
+                  <tr key={it.key}>
+                    <td className="mig-panel__path-name">
+                      {KIND_LABEL[it.kind] && <span className="mig-panel__item-kind">{t(KIND_LABEL[it.kind])}</span>}
+                      {it.label}
+                    </td>
+                    <td className={`mig-panel__path-state mig-panel__path-state--${it.status}`}>
+                      {t(ITEM_LABEL[it.status] ?? 'migration.site.item.pending')}
+                    </td>
+                    <td
+                      className={
+                        'mig-panel__path-note' +
+                        (it.error ? ' mig-panel__path-note--error' : it.warning ? ' mig-panel__path-note--warn' : '')
+                      }
+                    >
+                      {it.error || it.warning || it.detail || ''}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {job.report.length > 0 && (
+              <div className="mig-site__report">
+                <div className="mig-site__section">
+                  <ListChecks size={13} /> {t('migration.site.report')}
+                </div>
+                <ul>
+                  {job.report.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            </div>
+            <div className="modal-card__footer">
+              <button className="btn btn--ghost" onClick={() => setShowJobModal(false)}>
+                {t('common.close')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
