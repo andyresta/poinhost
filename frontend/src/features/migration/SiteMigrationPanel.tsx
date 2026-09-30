@@ -192,6 +192,13 @@ export function SiteMigrationPanel() {
     setError(null);
     try {
       if (!keepRepair) setRepair(null);
+      // Laporan migrasi yang SUDAH selesai menutupi rencana: panel hanya
+      // menampilkan rencana selama `job` masih null. Tanpa dibersihkan di
+      // sini, memilih domain lain lalu menekan Cek terlihat seperti tidak
+      // terjadi apa-apa — rencananya benar-benar diperbarui, tapi yang
+      // terpampang tetap hasil migrasi sebelumnya. Job yang masih BERJALAN
+      // tidak disentuh; itu memang harus tetap terlihat.
+      setJob((j) => (j !== null && !RUNNING.has(j.status) ? null : j));
       const p = await SiteXferPreview(request);
       setPlan(p);
       setPlanKey(requestKey);

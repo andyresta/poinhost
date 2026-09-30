@@ -992,13 +992,26 @@ func buildReport(job *Job, pd *planData, vhostOK map[string]bool) {
 			job.AddReport(fmt.Sprintf("%s nonaktif di server asal dan tetap nonaktif di tujuan.", d.Domain))
 		}
 	}
+	// Satu user bisa punya beberapa host (mis. bengkelhas@127.0.0.1 dan
+	// bengkelhas@localhost). Sarannya sama untuk semuanya dan tidak
+	// menyebut host, jadi tanpa penyaringan ini laporannya memuat baris
+	// yang persis sama dua kali dan terbaca seperti salah cetak.
+	reported := map[string]bool{}
 	for _, u := range pd.plan.DBUsers {
-		if u.Action == DBUserSkipGlobal {
-			job.AddReport(fmt.Sprintf("User database %s TIDAK dimigrasi (%s) — buat manual kalau dibutuhkan.", u.Username, u.Note))
+		var line string
+		switch u.Action {
+		case DBUserSkipGlobal:
+			line = fmt.Sprintf("User database %s TIDAK dimigrasi (%s) — buat manual kalau dibutuhkan.", u.Username, u.Note)
+		case DBUserSkipExists:
+			line = fmt.Sprintf("User database %s sudah ada di tujuan dan dilewati — pastikan password-nya sama dengan yang dipakai aplikasi.", u.Username)
+		default:
+			continue
 		}
-		if u.Action == DBUserSkipExists {
-			job.AddReport(fmt.Sprintf("User database %s sudah ada di tujuan dan dilewati — pastikan password-nya sama dengan yang dipakai aplikasi.", u.Username))
+		if reported[line] {
+			continue
 		}
+		reported[line] = true
+		job.AddReport(line)
 	}
 	for _, a := range pd.plan.SFTP {
 		if a.Note != "" {
