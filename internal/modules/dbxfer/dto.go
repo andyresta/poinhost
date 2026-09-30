@@ -118,4 +118,15 @@ type Progress struct {
 // TableListResponse daftar tabel satu database, untuk picker frontend.
 type TableListResponse struct {
 	Tables []string `json:"tables"`
+	// Counts jumlah baris per tabel, best-effort.
+	//
+	// COUNT(*) pada tabel yang sangat besar bisa lama, dan daftar tabel
+	// jauh lebih berguna daripada tidak ada apa-apa — jadi kegagalan atau
+	// timeout saat menghitung TIDAK menggagalkan pemanggilan ini, hanya
+	// membuat map ini kosong. Frontend menampilkan tabelnya tanpa angka
+	// kalau begitu, bukan pesan error.
+	Counts map[string]int64 `json:"counts,omitempty"`
+	// CountsError alasan jumlah baris tidak tersedia, kalau memang gagal —
+	// supaya "tidak ada angka" bisa dibedakan dari "angkanya nol".
+	CountsError string `json:"countsError,omitempty"`
 }

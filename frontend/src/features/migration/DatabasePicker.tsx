@@ -4,6 +4,8 @@ import { ListWebsiteDatabases, DbXferListTables } from '../../../wailsjs/go/main
 import type { website, servers } from '../../../wailsjs/go/models';
 import { useT } from '../../i18n';
 
+const nf = new Intl.NumberFormat();
+
 // Satu database yang dipilih user, plus subset tabelnya (kalau tidak
 // "semua tabel"). Disimpan sebagai Map di komponen induk, keyed by nama
 // database — bentuk ini yang paling langsung diterjemahkan ke
@@ -44,6 +46,9 @@ export function DatabasePicker({
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [tablesByDB, setTablesByDB] = useState<Record<string, string[]>>({});
+  // Jumlah baris per tabel, best-effort — kosong kalau server tidak sempat
+  // menghitungnya (lihat TableListResponse.Counts di backend).
+  const [countsByDB, setCountsByDB] = useState<Record<string, Record<string, number>>>({});
   const [tablesLoading, setTablesLoading] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -91,6 +96,7 @@ export function DatabasePicker({
       try {
         const res = await DbXferListTables(serverId, engine, name);
         setTablesByDB((m) => ({ ...m, [name]: res.tables ?? [] }));
+        setCountsByDB((m) => ({ ...m, [name]: res.counts ?? {} }));
       } catch (e) {
         setError(String(e));
       } finally {
@@ -171,6 +177,7 @@ export function DatabasePicker({
                   const sel = selected.get(d.name);
                   const isExpanded = expanded === d.name;
                   const tables = tablesByDB[d.name] ?? [];
+                  const counts = countsByDB[d.name] ?? {};
                   return (
                     <Fragment key={d.name}>
                       <tr>
@@ -218,14 +225,22 @@ export function DatabasePicker({
                                 </label>
                                 <div className="mig-db-picker__tablelist">
                                   {tables.map((tbl) => (
-                                    <label key={tbl} className="mig-panel__opt">
+                                    <label key={tbl} className="mig-panel__opt mig-db-picker__tablerow">
                                       <input
                                         type="checkbox"
                                         checked={sel.allTables || sel.tables.has(tbl)}
                                         disabled={disabled}
                                         onChange={() => toggleTable(d.name, tbl)}
                                       />
-                                      {tbl}
+                                      <span className="mig-db-picker__tablename">{tbl}</span>
+                                      {/* Jumlah baris di sumber, supaya
+                                          besaran yang akan dipindahkan
+                                          terlihat sebelum dijalankan — dan
+                                          jadi angka pembanding terhadap
+                                          daftar di sisi tujuan. */}
+                                      <span className="dbmig__num">
+                                        {counts[tbl] === undefined ? '—' : nf.format(counts[tbl])}
+                                      </span>
                                     </label>
                                   ))}
                                   {tables.length === 0 && <span>{t('migration.db.noTables')}</span>}

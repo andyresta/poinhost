@@ -7,6 +7,7 @@ import { useTabsStore } from '../../store/tabs';
 import { useT } from '../../i18n';
 import type { MessageKey } from '../../i18n/messages';
 import { DatabasePicker, type DBSelection } from './DatabasePicker';
+import { TargetDatabaseList } from './TargetDatabaseList';
 import { formatBytes } from './RemoteBrowser';
 
 const RUNNING = new Set(['queued', 'inspecting', 'running', 'verifying']);
@@ -61,6 +62,7 @@ export function DBMigrationPanel() {
   // migrasi belasan database dengan puluhan tabel akan jadi dinding angka
   // yang justru menyembunyikan baris yang tidak cocok.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [targetReload, setTargetReload] = useState(0);
 
   function toggleRows(db: string) {
     setExpanded((prev) => {
@@ -81,6 +83,16 @@ export function DBMigrationPanel() {
     });
     return off;
   }, [jobId]);
+
+  // Begitu job berhenti, daftar database di tujuan dimuat ulang — kalau
+  // tidak, yang terpampang adalah keadaan SEBELUM transfer, tepat pada saat
+  // user ingin memastikan hasilnya.
+  const jobStatus = job?.status ?? '';
+  useEffect(() => {
+    if (jobStatus && !RUNNING.has(jobStatus)) {
+      setTargetReload((n) => n + 1);
+    }
+  }, [jobStatus]);
 
   const running = job !== null && RUNNING.has(job.status);
   const canStart = !busy && !running && srcServerId !== '' && dstServerId !== '' && selected.size > 0;
@@ -182,6 +194,10 @@ export function DBMigrationPanel() {
               </select>
             </div>
           </div>
+          {/* Daftar database yang sudah ada di tujuan: dipakai sebelum
+              migrasi untuk melihat apa yang akan tertimpa, dan sesudahnya
+              untuk memastikan datanya benar-benar mendarat. */}
+          <TargetDatabaseList serverId={dstServerId} engine={engine} reloadToken={targetReload} />
           {singleSelection && (
             <input
               className="mig-panel__destpath"

@@ -82,7 +82,18 @@ func (s *Service) ListTables(serverID, engine, database string) (*TableListRespo
 	if err != nil {
 		return nil, err
 	}
-	return &TableListResponse{Tables: tables}, nil
+	out := &TableListResponse{Tables: tables}
+	if len(tables) == 0 {
+		return out, nil
+	}
+	// Best-effort: lihat catatan di TableListResponse.Counts.
+	counts, cErr := s.website.DBTableRowCounts(serverID, engine, database, tables)
+	if cErr != nil {
+		out.CountsError = cErr.Error()
+		return out, nil
+	}
+	out.Counts = counts
+	return out, nil
 }
 
 // Start memvalidasi permintaan lalu menjalankan job migrasi di latar

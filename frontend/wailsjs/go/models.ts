@@ -389,6 +389,8 @@ export namespace dbxfer {
 	}
 	export class TableListResponse {
 	    tables: string[];
+	    counts?: Record<string, number>;
+	    countsError?: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TableListResponse(source);
@@ -397,6 +399,8 @@ export namespace dbxfer {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.tables = source["tables"];
+	        this.counts = source["counts"];
+	        this.countsError = source["countsError"];
 	    }
 	}
 

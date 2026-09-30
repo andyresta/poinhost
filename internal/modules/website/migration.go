@@ -149,26 +149,109 @@ func (s *Service) DBTableRowCounts(serverID, engine, database string, tables []s
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]int64, len(tables))
+
+	safe := make([]string, 0, len(tables))
 	for _, raw := range tables {
 		table, err := normalizeDBName(raw)
 		if err != nil {
 			return nil, err
 		}
-		var res string
-		if engine == "mysql" {
-			res, err = s.runMySQL(access, "SELECT COUNT(*) FROM `"+dbName+"`.`"+table+"`")
-		} else {
-			res, err = s.runPostgres(access, dbName, `SELECT COUNT(*) FROM "`+table+`"`)
+		safe = append(safe, table)
+	}
+
+	out := make(map[string]int64, len(safe))
+	// Dihitung per rombongan lewat SATU kueri UNION ALL, bukan satu kueri
+	// per tabel. Sebelumnya tiap tabel berarti satu round-trip SSH sendiri:
+	// skema dengan 80 tabel membutuhkan 80 kali buka-tutup sesi, dan itulah
+	// yang membuat verifikasi terasa menggantung pada database yang lebar.
+	// Rombongan tetap dibatasi supaya kuerinya tidak tumbuh tanpa batas.
+	for start := 0; start < len(safe); start += rowCountBatch {
+		end := start + rowCountBatch
+		if end > len(safe) {
+			end = len(safe)
 		}
+		chunk := safe[start:end]
+		res, err := s.runRowCountBatch(access, engine, dbName, chunk)
 		if err != nil {
 			return nil, err
 		}
-		n, convErr := strconv.ParseInt(strings.TrimSpace(res), 10, 64)
-		if convErr != nil {
-			return nil, errFmt("hasil COUNT(*) tabel %q tidak terbaca: %q", table, res)
+		for k, v := range res {
+			out[k] = v
 		}
-		out[table] = n
+	}
+	return out, nil
+}
+
+// rowCountBatch membatasi berapa tabel digabung dalam satu kueri. Angkanya
+// menjaga panjang SQL tetap wajar (jauh di bawah max_allowed_packet) tanpa
+// kembali ke pola satu round-trip per tabel.
+const rowCountBatch = 50
+
+// runRowCountBatch menghitung baris beberapa tabel sekaligus dan
+// mengembalikannya sebagai peta nama tabel -> jumlah baris.
+func (s *Service) runRowCountBatch(access *websiteAccess, engine, dbName string, tables []string) (map[string]int64, error) {
+	sql := rowCountSQL(engine, dbName, tables)
+
+	var res string
+	var err error
+	if engine == "mysql" {
+		res, err = s.runMySQL(access, sql)
+	} else {
+		res, err = s.runPostgres(access, dbName, sql)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return parseRowCounts(res, tables)
+}
+
+// rowCountSQL menyusun satu kueri UNION ALL yang menghitung banyak tabel
+// sekaligus. Dipisah dari eksekusinya supaya bentuknya bisa diuji.
+func rowCountSQL(engine, dbName string, tables []string) string {
+	var sb strings.Builder
+	for i, table := range tables {
+		if i > 0 {
+			sb.WriteString(" UNION ALL ")
+		}
+		// Nama tabel dikirim DUA kali: sebagai literal agar barisnya bisa
+		// dikenali kembali, dan sebagai identifier yang dihitung. Urutan
+		// hasil UNION ALL tidak dijamin, jadi label inilah yang memetakan
+		// angka ke tabelnya — bukan posisi baris.
+		if engine == "mysql" {
+			sb.WriteString("SELECT '" + mysqlEscape(table) + "', COUNT(*) FROM `" + dbName + "`.`" + table + "`")
+		} else {
+			sb.WriteString(`SELECT '` + pgEscape(table) + `', COUNT(*) FROM "` + table + `"`)
+		}
+	}
+	return sb.String()
+}
+
+// parseRowCounts membaca keluaran kueri di atas menjadi peta nama tabel ->
+// jumlah baris.
+func parseRowCounts(res string, tables []string) (map[string]int64, error) {
+	out := make(map[string]int64, len(tables))
+	for _, line := range strings.Split(res, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		name, count, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		n, convErr := strconv.ParseInt(strings.TrimSpace(count), 10, 64)
+		if convErr != nil {
+			return nil, errFmt("hasil COUNT(*) tabel %q tidak terbaca: %q", name, count)
+		}
+		out[name] = n
+	}
+	// Tabel yang tidak muncul di hasil dianggap kegagalan, bukan nol: nol
+	// adalah jawaban yang sah dan tidak boleh dikarang dari baris yang
+	// hilang — verifikasi memakai angka ini untuk memutuskan cocok/tidak.
+	for _, table := range tables {
+		if _, ok := out[table]; !ok {
+			return nil, errFmt("jumlah baris tabel %q tidak ada di hasil", table)
+		}
 	}
 	return out, nil
 }
