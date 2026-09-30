@@ -2637,3 +2637,63 @@ button svg {
   font-style: normal;
   font-size: 11px;
 }
+
+/* Catatan per item migrasi database: warnanya mengikuti JENIS pesan.
+   Sebelumnya error, peringatan, dan keterangan verifikasi memakai satu
+   kelas berwarna danger, sehingga "database tujuan sudah ada" — yang cuma
+   informasi — terbaca seperti kegagalan. */
+.mig-panel__path-note {
+  padding-left: 10px;
+  color: var(--neutral);
+}
+.mig-panel__path-note--error {
+  color: var(--danger);
+}
+.mig-panel__path-note--warn {
+  color: var(--warning);
+}
+
+/* Rincian jumlah baris per tabel, dibuka per database. */
+.dbmig__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.dbmig__toggle:hover {
+  color: var(--accent);
+}
+.dbmig__rows-cell {
+  padding: 4px 0 8px 18px !important;
+}
+.dbmig__rows {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.dbmig__rows th {
+  padding: 2px 8px 4px 0;
+  text-align: left;
+  font-weight: 600;
+  color: var(--neutral);
+  border-bottom: 1px solid var(--border);
+}
+.dbmig__rows td {
+  padding: 2px 8px 2px 0;
+  color: var(--neutral);
+  white-space: nowrap;
+}
+.dbmig__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+/* Tabel yang jumlah barisnya berbeda — inilah baris yang dicari user saat
+   membuka rincian, jadi ia yang ditandai, bukan yang cocok. */
+.dbmig__row--mismatch td {
+  color: var(--danger);
+}

@@ -48,17 +48,33 @@ func (s *Service) DBDatabaseExists(serverID, engine, name string) (bool, error) 
 		return false, err
 	}
 	if engine == "mysql" {
-		res, err := s.runMySQL(access, "SHOW DATABASES LIKE '"+mysqlEscape(dbName)+"'")
+		res, err := s.runMySQL(access, dbExistsQuery(engine, dbName))
 		if err != nil {
 			return false, err
 		}
 		return strings.TrimSpace(res) != "", nil
 	}
-	res, err := s.runPostgres(access, "", "SELECT 1 FROM pg_database WHERE datname = '"+pgEscape(dbName)+"'")
+	res, err := s.runPostgres(access, "", dbExistsQuery(engine, dbName))
 	if err != nil {
 		return false, err
 	}
 	return strings.TrimSpace(res) == "1", nil
+}
+
+// dbExistsQuery menyusun kueri keberadaan satu database.
+//
+// MySQL memakai information_schema.SCHEMATA dengan pembanding "=", BUKAN
+// `SHOW DATABASES LIKE`. Pada LIKE, "_" adalah wildcard satu karakter, jadi
+// mencari "app_data" juga cocok dengan "appxdata" — sebuah database yang
+// sebenarnya tidak ada bisa dilaporkan ada, dan nama dengan garis bawah
+// sangat lazim.
+//
+// Dipisah dari eksekusinya supaya bentuk kuerinya bisa diuji tanpa server.
+func dbExistsQuery(engine, name string) string {
+	if engine == "mysql" {
+		return "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '" + mysqlEscape(name) + "'"
+	}
+	return "SELECT 1 FROM pg_database WHERE datname = '" + pgEscape(name) + "'"
 }
 
 // DBTableNames mengembalikan semua nama tabel di satu database — SEMUA

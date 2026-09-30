@@ -34,5 +34,9 @@ func VerifyDatabase(websiteSvc *website.Service, srcServerID, dstServerID, engin
 	if err != nil {
 		return VerifySkipped, "gagal membaca daftar tabel: " + err.Error()
 	}
-	return verifyDatabase(websiteSvc, srcServerID, dstServerID, engine, database, database, tables)
+	// Rincian per tabel sengaja dibuang di sini: pemanggilnya (migrasi
+	// website) hanya menampilkan ringkasan per database, tidak punya tempat
+	// untuk daftar tabel.
+	verify, detail, _ = verifyDatabase(websiteSvc, srcServerID, dstServerID, engine, database, database, tables)
+	return verify, detail
 }

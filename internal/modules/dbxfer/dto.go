@@ -63,6 +63,20 @@ type StartRequest struct {
 	Items  []ItemSelection `json:"items"`
 }
 
+// TableVerify jumlah baris satu tabel di kedua sisi, hasil pembandingan
+// yang sudah dilakukan saat verifikasi.
+//
+// Angkanya sudah dihitung untuk menentukan cocok/tidak; sebelumnya hanya
+// ringkasannya yang sampai ke layar, jadi user harus percaya kata "cocok"
+// tanpa bisa melihat dasarnya. Dibuka apa adanya di sini supaya "betulan
+// termigrasi atau tidak" bisa dinilai sendiri, per tabel.
+type TableVerify struct {
+	Table      string `json:"table"`
+	SourceRows int64  `json:"sourceRows"`
+	DestRows   int64  `json:"destRows"`
+	Match      bool   `json:"match"`
+}
+
 // ItemResult status migrasi satu database.
 type ItemResult struct {
 	Database     string `json:"database"`
@@ -78,6 +92,9 @@ type ItemResult struct {
 	TableCount   int    `json:"tableCount"`
 	Verify       string `json:"verify,omitempty"`
 	VerifyDetail string `json:"verifyDetail,omitempty"`
+	// Tables rincian per tabel di balik Verify — kosong selama verifikasi
+	// belum jalan atau dilewati.
+	Tables []TableVerify `json:"tables,omitempty"`
 }
 
 // Progress snapshot kemajuan satu job migrasi, dikirim ke frontend lewat

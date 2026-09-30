@@ -348,8 +348,8 @@ func (s *Service) run(job *Job, explicitTables map[string][]string) {
 		switch it.Status {
 		case ItemDone:
 			done++
-			verify, detail := verifyDatabase(s.website, job.SourceServerID, job.DestServerID, job.Engine, it.Database, it.DestDatabase, resolvedTables[it.Database])
-			job.SetItemVerify(it.Database, verify, detail)
+			verify, detail, rows := verifyDatabase(s.website, job.SourceServerID, job.DestServerID, job.Engine, it.Database, it.DestDatabase, resolvedTables[it.Database])
+			job.SetItemVerify(it.Database, verify, detail, rows)
 		case ItemFailed:
 			failedCount++
 		}

@@ -159,11 +159,12 @@ func (j *Job) SetItemTableCount(db string, n int) {
 }
 
 // SetItemVerify mencatat hasil verifikasi satu item.
-func (j *Job) SetItemVerify(db, verify, detail string) {
+func (j *Job) SetItemVerify(db, verify, detail string, rows []TableVerify) {
 	j.mu.Lock()
 	if r, ok := j.items[db]; ok {
 		r.Verify = verify
 		r.VerifyDetail = detail
+		r.Tables = rows
 	}
 	j.mu.Unlock()
 	j.publish(true)

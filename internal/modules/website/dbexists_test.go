@@ -6,7 +6,7 @@ import (
 )
 
 // Keberadaan database ditanyakan ke katalog engine, bukan disimpulkan dari
-// teks error.
+// teks error, dan pembandingnya PERSIS.
 //
 // Kasus yang memicu ini: migrasi database ke nama yang sudah ada selalu
 // gagal. Pemanggilnya mencoba mentoleransi kondisi itu dengan mencari
@@ -31,6 +31,19 @@ func TestDBExistsQuery_AsksTheCatalog(t *testing.T) {
 	}
 	if !strings.Contains(pg, "'alkana'") {
 		t.Errorf("nama database tidak masuk kueri: %s", pg)
+	}
+}
+
+// `SHOW DATABASES LIKE 'app_data'` juga cocok dengan "appxdata", karena di
+// LIKE garis bawah adalah wildcard satu karakter — dan nama database dengan
+// garis bawah sangat lazim. Pembandingnya harus "=" atas katalog, bukan LIKE.
+func TestDBExistsQuery_MySQLDoesNotUseLike(t *testing.T) {
+	got := dbExistsQuery("mysql", "app_data")
+	if strings.Contains(strings.ToUpper(got), "LIKE") {
+		t.Errorf("masih memakai LIKE (garis bawah jadi wildcard): %s", got)
+	}
+	if !strings.Contains(got, "SCHEMA_NAME = 'app_data'") {
+		t.Errorf("bukan pembandingan persis: %s", got)
 	}
 }
 

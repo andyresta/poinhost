@@ -16,41 +16,43 @@ import (
 // katalog SISI TUJUAN saja, tidak pernah membandingkan ke sumber sama
 // sekali — jadi "verifikasi"-nya di sana sebenarnya cuma "database
 // tujuan tidak kosong", bukan "data yang sampai memang cocok".
-func verifyDatabase(websiteSvc *website.Service, srcServerID, dstServerID, engine, srcDB, dstDB string, tables []string) (verify, detail string) {
+func verifyDatabase(websiteSvc *website.Service, srcServerID, dstServerID, engine, srcDB, dstDB string, tables []string) (verify, detail string, rows []TableVerify) {
 	if len(tables) == 0 {
-		return VerifySkipped, "tidak ada tabel untuk diverifikasi"
+		return VerifySkipped, "tidak ada tabel untuk diverifikasi", nil
 	}
 
 	srcCounts, err := websiteSvc.DBTableRowCounts(srcServerID, engine, srcDB, tables)
 	if err != nil {
-		return VerifySkipped, "gagal membaca jumlah baris sumber: " + err.Error()
+		return VerifySkipped, "gagal membaca jumlah baris sumber: " + err.Error(), nil
 	}
 	dstCounts, err := websiteSvc.DBTableRowCounts(dstServerID, engine, dstDB, tables)
 	if err != nil {
-		return VerifySkipped, "gagal membaca jumlah baris tujuan: " + err.Error()
+		return VerifySkipped, "gagal membaca jumlah baris tujuan: " + err.Error(), nil
 	}
 	return compareRowCounts(tables, srcCounts, dstCounts)
 }
 
 // compareRowCounts adalah logika perbandingan murni (tanpa SSH/SQL apa
 // pun), dipisah dari verifyDatabase supaya bisa dites langsung.
-func compareRowCounts(tables []string, srcCounts, dstCounts map[string]int64) (verify, detail string) {
+func compareRowCounts(tables []string, srcCounts, dstCounts map[string]int64) (verify, detail string, rows []TableVerify) {
 	sortedTables := append([]string(nil), tables...)
 	sort.Strings(sortedTables)
 
 	var mismatches []string
 	var totalSrc int64
+	rows = make([]TableVerify, 0, len(sortedTables))
 	for _, t := range sortedTables {
 		sc := srcCounts[t]
 		dc := dstCounts[t]
 		totalSrc += sc
+		rows = append(rows, TableVerify{Table: t, SourceRows: sc, DestRows: dc, Match: sc == dc})
 		if sc != dc {
 			mismatches = append(mismatches, fmt.Sprintf("%s: sumber=%d tujuan=%d", t, sc, dc))
 		}
 	}
 
 	if len(mismatches) == 0 {
-		return VerifyMatch, fmt.Sprintf("%d tabel, %d baris cocok", len(tables), totalSrc)
+		return VerifyMatch, fmt.Sprintf("%d tabel, %d baris cocok", len(tables), totalSrc), rows
 	}
 	shown := mismatches
 	more := ""
@@ -58,5 +60,5 @@ func compareRowCounts(tables []string, srcCounts, dstCounts map[string]int64) (v
 		more = fmt.Sprintf(" (+%d lainnya)", len(shown)-3)
 		shown = shown[:3]
 	}
-	return VerifyMismatch, fmt.Sprintf("%d/%d tabel tidak cocok: %s%s", len(mismatches), len(tables), strings.Join(shown, "; "), more)
+	return VerifyMismatch, fmt.Sprintf("%d/%d tabel tidak cocok: %s%s", len(mismatches), len(tables), strings.Join(shown, "; "), more), rows
 }

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, Play, X, Info } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
+import { ArrowRight, Play, X, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { DbXferStart, DbXferCancel } from '../../../wailsjs/go/main/App';
 import { dbxfer } from '../../../wailsjs/go/models';
@@ -10,6 +10,8 @@ import { DatabasePicker, type DBSelection } from './DatabasePicker';
 import { formatBytes } from './RemoteBrowser';
 
 const RUNNING = new Set(['queued', 'inspecting', 'running', 'verifying']);
+
+const nf = new Intl.NumberFormat();
 
 const STATUS_LABEL: Record<string, MessageKey> = {
   queued: 'migration.db.status.queued',
@@ -55,6 +57,19 @@ export function DBMigrationPanel() {
   const [destDatabase, setDestDatabase] = useState('');
 
   const [job, setJob] = useState<dbxfer.Progress | null>(null);
+  // Rincian per tabel dibuka per database, bukan semuanya sekaligus:
+  // migrasi belasan database dengan puluhan tabel akan jadi dinding angka
+  // yang justru menyembunyikan baris yang tidak cocok.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  function toggleRows(db: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(db)) next.delete(db);
+      else next.add(db);
+      return next;
+    });
+  }
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -220,24 +235,75 @@ export function DBMigrationPanel() {
           </div>
           <table className="mig-panel__paths">
             <tbody>
-              {job.items.map((it) => (
-                <tr key={it.database}>
-                  <td className="mig-panel__path-name">
-                    {it.database}
-                    {it.destDatabase !== it.database && ` → ${it.destDatabase}`}
-                    {it.tableCount > 0 && ` (${it.tableCount})`}
-                  </td>
-                  <td className={`mig-panel__path-state mig-panel__path-state--${it.status}`}>
-                    {t(ITEM_LABEL[it.status] ?? 'migration.db.item.pending')}
-                  </td>
-                  <td className="mig-panel__path-verify">
-                    {it.verify ? t(VERIFY_LABEL[it.verify] ?? 'migration.db.verify.skipped') : ''}
-                  </td>
-                  <td className="mig-panel__path-error">
-                    {it.error || it.warning || it.verifyDetail || ''}
-                  </td>
-                </tr>
-              ))}
+              {job.items.map((it) => {
+                const rows = it.tables ?? [];
+                const open = expanded.has(it.database);
+                return (
+                  <Fragment key={it.database}>
+                    <tr>
+                      <td className="mig-panel__path-name">
+                        {rows.length > 0 ? (
+                          <button className="dbmig__toggle" onClick={() => toggleRows(it.database)}>
+                            {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                            {it.database}
+                          </button>
+                        ) : (
+                          it.database
+                        )}
+                        {it.destDatabase !== it.database && ` → ${it.destDatabase}`}
+                        {it.tableCount > 0 && ` (${it.tableCount})`}
+                      </td>
+                      <td className={`mig-panel__path-state mig-panel__path-state--${it.status}`}>
+                        {t(ITEM_LABEL[it.status] ?? 'migration.db.item.pending')}
+                      </td>
+                      <td className="mig-panel__path-verify">
+                        {it.verify ? t(VERIFY_LABEL[it.verify] ?? 'migration.db.verify.skipped') : ''}
+                      </td>
+                      {/* Kegagalan, peringatan, dan keterangan verifikasi
+                          dulu berbagi satu sel berwarna merah, sehingga
+                          "database tujuan sudah ada" — yang cuma informasi —
+                          terbaca seperti error. Sekarang warnanya mengikuti
+                          jenisnya. */}
+                      <td
+                        className={
+                          'mig-panel__path-note' +
+                          (it.error
+                            ? ' mig-panel__path-note--error'
+                            : it.warning
+                              ? ' mig-panel__path-note--warn'
+                              : '')
+                        }
+                      >
+                        {it.error || it.warning || it.verifyDetail || ''}
+                      </td>
+                    </tr>
+                    {open && (
+                      <tr>
+                        <td colSpan={4} className="dbmig__rows-cell">
+                          <table className="dbmig__rows">
+                            <thead>
+                              <tr>
+                                <th>{t('migration.db.table')}</th>
+                                <th className="dbmig__num">{t('migration.db.sourceRows')}</th>
+                                <th className="dbmig__num">{t('migration.db.destRows')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((r) => (
+                                <tr key={r.table} className={r.match ? '' : 'dbmig__row--mismatch'}>
+                                  <td>{r.table}</td>
+                                  <td className="dbmig__num">{nf.format(r.sourceRows)}</td>
+                                  <td className="dbmig__num">{nf.format(r.destRows)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
