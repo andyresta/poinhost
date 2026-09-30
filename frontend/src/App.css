@@ -2749,3 +2749,11 @@ button svg {
   background: var(--well-bg);
   border-radius: var(--radius-sm);
 }
+
+/* Penanda "sudah ada di tujuan" di daftar sumber: warnanya sukses, bukan
+   netral seperti badge PHP/SSL — ini status pekerjaan, bukan atribut
+   domainnya, dan itulah yang dicari mata saat memindahkan banyak situs. */
+.mig-site__badge--done {
+  color: var(--success);
+  background: var(--success-bg);
+}

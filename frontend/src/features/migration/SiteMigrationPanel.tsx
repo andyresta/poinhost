@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Play, X, Info, RefreshCw, Search, AlertTriangle, XCircle, CheckCircle2, ListChecks } from 'lucide-react';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import {
@@ -119,8 +119,30 @@ export function SiteMigrationPanel() {
   // dan PHP 8.2) tidak saling mematikan.
   const [installing, setInstalling] = useState<string | null>(null);
   const [installLines, setInstallLines] = useState<string[]>([]);
+  // Domain yang SUDAH ada di server tujuan. Dipakai dua kali: ditampilkan
+  // sebagai daftar tersendiri di sisi tujuan, dan dipakai menandai baris di
+  // sisi sumber — tanpa itu, satu-satunya cara tahu sebuah domain sudah
+  // pindah adalah menekan Cek dan membaca blokirnya satu per satu.
+  const [destDomains, setDestDomains] = useState<string[]>([]);
+  const [destError, setDestError] = useState<string | null>(null);
+  const [loadingDest, setLoadingDest] = useState(false);
   const [repair, setRepair] = useState<sitexfer.RepairResult | null>(null);
   const [repairing, setRepairing] = useState(false);
+
+  const loadDestDomains = useCallback(async (serverId: string) => {
+    setDestDomains([]);
+    setDestError(null);
+    if (!serverId) return;
+    setLoadingDest(true);
+    try {
+      const res = await ListWebsites(serverId);
+      setDestDomains(orderDomains(res.domains ?? []).map((d) => d.domain));
+    } catch (e) {
+      setDestError(String(e));
+    } finally {
+      setLoadingDest(false);
+    }
+  }, []);
 
   async function loadDomains(serverId: string) {
     setDomains([]);
@@ -166,6 +188,24 @@ export function SiteMigrationPanel() {
   );
   const requestKey = JSON.stringify(request);
   const planFresh = plan !== null && planKey === requestKey;
+
+  useEffect(() => {
+    void loadDestDomains(dstServerId);
+  }, [dstServerId, loadDestDomains]);
+
+  // Daftar tujuan dimuat ulang begitu migrasi berhenti — kalau tidak, yang
+  // terpampang adalah keadaan SEBELUM domainnya pindah, tepat saat user
+  // ingin melihat hasilnya.
+  const jobStatus = job?.status ?? '';
+  useEffect(() => {
+    if (jobStatus && !RUNNING.has(jobStatus)) {
+      void loadDestDomains(dstServerId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobStatus]);
+
+  const destSet = useMemo(() => new Set(destDomains), [destDomains]);
+  const srcNames = useMemo(() => new Set(domains.map((d) => d.domain)), [domains]);
 
   const running = job !== null && RUNNING.has(job.status);
   const ready = srcServerId !== '' && dstServerId !== '' && selected.size > 0;
@@ -364,6 +404,11 @@ export function SiteMigrationPanel() {
                             <span className="mig-browser__ellipsis">{d.domain}</span>
                           </td>
                           <td className="mig-site__badges">
+                            {destSet.has(d.domain) && (
+                              <span className="mig-site__badge mig-site__badge--done">
+                                {t('migration.site.alreadyThere')}
+                              </span>
+                            )}
                             {d.phpVersion && <span className="mig-site__badge">PHP {d.phpVersion}</span>}
                             {d.sslEnabled && <span className="mig-site__badge">SSL</span>}
                             {(d.proxyTarget || (d.proxyRules?.length ?? 0) > 0) && (
@@ -407,6 +452,51 @@ export function SiteMigrationPanel() {
                     </option>
                   ))}
               </select>
+              <button
+                className="btn btn--sm"
+                title={t('common.refresh')}
+                disabled={!dstServerId || loadingDest}
+                onClick={() => void loadDestDomains(dstServerId)}
+              >
+                <RefreshCw size={13} />
+              </button>
+            </div>
+
+            {/* Website yang SUDAH ada di server tujuan. Tanpa ini, satu-
+                satunya cara tahu sebuah domain sudah pindah adalah menekan
+                Cek dan membaca blokirnya. */}
+            <div className="mig-browser__list">
+              <div className="mig-browser__scroll">
+                {!dstServerId && (
+                  <div className="mig-browser__empty">{t('migration.pickServerFirst')}</div>
+                )}
+                {dstServerId && destError && <div className="mig-browser__error">{destError}</div>}
+                {dstServerId && !destError && destDomains.length === 0 && !loadingDest && (
+                  <div className="mig-browser__empty">{t('migration.site.noDomains')}</div>
+                )}
+                {dstServerId && !destError && destDomains.length > 0 && (
+                  <table className="mig-browser__table">
+                    <tbody>
+                      {destDomains.map((d) => (
+                        <tr key={d}>
+                          <td className="mig-browser__name">
+                            <span className="mig-browser__ellipsis">{d}</span>
+                          </td>
+                          {/* Ditandai kalau domain ini juga ada di sumber:
+                              itulah yang berarti "sudah dimigrasi", bukan
+                              sekadar "ada di sini". */}
+                          <td className="mig-site__badges">
+                            {srcNames.has(d) && (
+                              <span className="mig-site__badge">{t('migration.site.alreadyThere')}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              {loadingDest && <div className="mig-browser__loading">{t('common.loading')}</div>}
             </div>
           </div>
         </div>
