@@ -1352,3 +1352,77 @@ func (s *Service) applyGrants(access *websiteAccess, engine, username, host stri
 // keseluruhan perintah exec sudah menangani lapisan shell-nya).
 func mysqlEscape(s string) string { return strings.ReplaceAll(s, "'", "''") }
 func pgEscape(s string) string    { return strings.ReplaceAll(s, "'", "''") }
+
+// DBEnsureDatabase memastikan sebuah database ADA, tanpa mempersoalkan
+// apakah ia baru dibuat atau memang sudah ada sebelumnya. Mengembalikan
+// true kalau database itu benar-benar baru dibuat di panggilan ini.
+//
+// Ini bukan sekadar DBCreateDatabase yang errornya diabaikan. Pemanggil
+// sebelumnya (migrasi database) mencoba mentoleransi database yang sudah
+// ada dengan mencocokkan potongan teks "already exists" pada pesan error —
+// dan itu meleset, karena MySQL sebenarnya berkata "Can't create database
+// 'x'; database exists". Teks error server bukan API: ia berbeda antar
+// engine, antar versi, dan berubah mengikuti bahasa server. Keberadaan
+// database ditanyakan langsung ke engine-nya.
+//
+// Pemilik (req.Owner) hanya diterapkan untuk database yang BARU dibuat.
+// Database yang sudah ada dibiarkan kepemilikan dan hak aksesnya apa adanya:
+// mengubahnya diam-diam saat migrasi akan mencabut akses aplikasi yang
+// sedang berjalan di server tujuan.
+func (s *Service) DBEnsureDatabase(req DBCreateDatabaseRequest) (bool, error) {
+	engine, err := normalizeDBEngine(req.Engine)
+	if err != nil {
+		return false, err
+	}
+	name, err := normalizeDBName(req.Name)
+	if err != nil {
+		return false, err
+	}
+	access, err := s.resolveAccess(req.ServerID)
+	if err != nil {
+		return false, err
+	}
+
+	exists, err := s.dbExists(access, engine, name)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return false, nil
+	}
+	if err := s.DBCreateDatabase(req); err != nil {
+		// Balapan: proses lain (atau worker lain) bisa saja membuatnya di
+		// sela pengecekan dan pembuatan. Kalau sekarang sudah ada, tujuan
+		// kita tercapai — itu bukan kegagalan.
+		if again, checkErr := s.dbExists(access, engine, name); checkErr == nil && again {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// dbExistsQuery menyusun kueri keberadaan database untuk satu engine.
+// Dipisah dari eksekusinya supaya bentuk kuerinya bisa diuji tanpa server.
+func dbExistsQuery(engine, name string) string {
+	if engine == "mysql" {
+		return "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = '" + mysqlEscape(name) + "'"
+	}
+	return "SELECT 1 FROM pg_database WHERE datname = '" + pgEscape(name) + "'"
+}
+
+// dbExists menanyakan keberadaan satu database langsung ke katalog engine.
+func (s *Service) dbExists(access *websiteAccess, engine, name string) (bool, error) {
+	q := dbExistsQuery(engine, name)
+	var out string
+	var err error
+	if engine == "mysql" {
+		out, err = s.runMySQL(access, q)
+	} else {
+		out, err = s.runPostgres(access, "", q)
+	}
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) != "", nil
+}

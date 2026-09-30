@@ -302,11 +302,17 @@ func (s *Service) run(job *Job, explicitTables map[string][]string) {
 			for q := range queue {
 				job.SetItemStatus(q.Database, ItemRunning, "")
 
-				createErr := s.website.DBCreateDatabase(website.DBCreateDatabaseRequest{
+				// Database tujuan yang sudah ada BUKAN kegagalan: isinya
+				// ditimpa oleh dump (mysqldump --add-drop-table / pg_dump
+				// --clean --if-exists menjatuhkan tiap objek sebelum
+				// membuatnya lagi). Keberadaannya ditanyakan ke katalog
+				// engine, bukan disimpulkan dari teks error — cara lama
+				// mencocokkan "already exists" dan meleset, karena MySQL
+				// sebenarnya berkata "database exists", sehingga migrasi ke
+				// database yang sudah ada selalu gagal.
+				if _, createErr := s.website.DBEnsureDatabase(website.DBCreateDatabaseRequest{
 					ServerID: job.DestServerID, Engine: job.Engine, Name: q.DestDatabase,
-				})
-				if createErr != nil && !strings.Contains(strings.ToLower(createErr.Error()), "already exists") &&
-					!strings.Contains(strings.ToLower(createErr.Error()), "sudah ada") {
+				}); createErr != nil {
 					job.SetItemStatus(q.Database, ItemFailed, "gagal menyiapkan database tujuan: "+createErr.Error())
 					continue
 				}
