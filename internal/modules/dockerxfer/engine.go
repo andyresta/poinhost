@@ -300,6 +300,22 @@ func runImage(ctx context.Context, srcClient, dstClient *ssh.Client, dockerSvc *
 		return false, fmt.Errorf("koneksi SSH tidak tersedia")
 	}
 
+	// Ukuran image baru dimasukkan ke taksiran DI SINI, bukan di fase
+	// hitung-ukuran bersama mount, karena barulah pada titik ini diketahui
+	// image-nya memang akan disalurkan — bukan dilewati (sudah ada di
+	// tujuan) atau ditarik dari registry, yang keduanya tidak mengalirkan
+	// satu byte pun lewat pipe ini.
+	//
+	// Tanpa ini, byte image tetap dihitung sebagai kemajuan tapi tidak
+	// pernah masuk penyebutnya: progress melewati 100% dan angkanya jadi
+	// omong kosong (mis. "62 MiB / 22 MiB"), karena image biasanya justru
+	// jauh lebih besar daripada volume dan project dir digabung.
+	// Gagal membacanya tidak fatal — taksiran meleset lebih baik daripada
+	// migrasi yang batal.
+	if size, sizeErr := dockerSvc.ImageSizeOnServer(srcServerID, image); sizeErr == nil {
+		job.AddTotalBytes(size)
+	}
+
 	saveCmd := "docker save " + shellQuote(image)
 	loadCmd := "docker load"
 	if compress {

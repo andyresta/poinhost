@@ -2,6 +2,7 @@ package docker
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -553,4 +554,33 @@ func parseComposeMigrationInfo(stdout string) *ComposeMigrationInfo {
 		}
 	}
 	return info
+}
+
+// ImageSizeOnServer mengembalikan ukuran image (byte) menurut Docker di
+// server itu — dipakai migrasi untuk memasukkan image ke dalam taksiran
+// total sebelum menyalurkannya.
+//
+// Angkanya ukuran layer yang sudah terurai, yang secara praktis sepadan
+// dengan besar arsip `docker save` (arsipnya memang tar dari layer-layer
+// itu). Taksiran, bukan janji: cukup untuk membuat bar progress berarti,
+// tidak dipakai memverifikasi apa pun.
+func (s *Service) ImageSizeOnServer(serverID, image string) (int64, error) {
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return 0, fmt.Errorf("nama image kosong")
+	}
+	access, err := s.resolveAccess(serverID)
+	if err != nil {
+		return 0, err
+	}
+	cmd := fmt.Sprintf("docker image inspect --format %s %s", shellQuote("{{.Size}}"), shellQuote(image))
+	res, err := s.runDocker(access, cmd, 20*time.Second)
+	if err != nil {
+		return 0, err
+	}
+	n, convErr := strconv.ParseInt(strings.TrimSpace(res.Stdout), 10, 64)
+	if convErr != nil {
+		return 0, fmt.Errorf("ukuran image %q tidak terbaca: %q", image, strings.TrimSpace(res.Stdout))
+	}
+	return n, nil
 }
