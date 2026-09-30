@@ -211,6 +211,7 @@ func (s *Service) buildPlan(req StartRequest) (*planData, error) {
 		}
 	}
 
+	s.planDestPaths(dst, pd)
 	s.planRuntime(dst, pd)
 
 	if req.IncludeDatabases {
@@ -260,6 +261,62 @@ func (s *Service) buildPlan(req StartRequest) (*planData, error) {
 // adalah kapan user mengetahuinya: dulu hanya muncul sebagai catatan di
 // laporan SESUDAH migrasi, jadi file dan vhost sudah mendarat sebelum orang
 // sadar PHP-nya belum ada dan domainnya menjawab 403.
+
+// planDestPaths memeriksa folder tujuan di server TUJUAN: cukup ruangkah
+// disknya, dan apakah foldernya sudah berisi.
+//
+// Keduanya tidak pernah diperiksa sebelumnya. Ukuran total sudah dihitung
+// untuk progress bar tapi tidak pernah diadu dengan sisa disk, jadi
+// memindahkan lebih banyak daripada yang muat baru ketahuan saat transfer
+// mati di tengah — dengan sebagian file sudah mendarat. Dan karena file
+// disalin ke path yang sama, folder tujuan yang sudah berisi akan bercampur
+// dengan hasil migrasi tanpa sepatah kata pun.
+func (s *Service) planDestPaths(dst string, pd *planData) {
+	if len(pd.plan.Paths) == 0 {
+		return
+	}
+	paths := make([]string, 0, len(pd.plan.Paths))
+	need := make(map[string]int64, len(pd.plan.Paths))
+	for _, p := range pd.plan.Paths {
+		paths = append(paths, p.Path)
+		need[p.Path] += p.Bytes
+	}
+
+	out, err := s.website.RunRootScript(dst, destProbeScript(paths), scanTimeout)
+	if err != nil {
+		pd.warn("Gagal memeriksa folder tujuan di server tujuan: %v", err)
+		return
+	}
+	probes := parseDestProbe(out)
+
+	for _, p := range pd.plan.Paths {
+		if pr, ok := probes[p.Path]; ok && pr.NonEmpty {
+			pd.warn("Folder %s sudah ada dan berisi di server tujuan — isinya akan bercampur dengan hasil migrasi (file bernama sama ditimpa, sisanya dibiarkan)", p.Path)
+		}
+	}
+
+	for mount, v := range spaceShortfall(need, probes) {
+		pd.block("Ruang disk di server tujuan tidak cukup pada %s — butuh %s, tersedia %s",
+			mount, humanBytes(v[0]), humanBytes(v[1]))
+	}
+}
+
+// humanBytes memformat ukuran dalam satuan biner, sama seperti yang
+// ditampilkan frontend, supaya angka di pesan masalah dan di daftar folder
+// tidak memakai skala yang berbeda.
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit && exp < 3; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGT"[exp])
+}
+
 func (s *Service) planRuntime(dst string, pd *planData) {
 	wantPHP := map[string]bool{}
 	wantCertbot := false
