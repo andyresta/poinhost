@@ -674,3 +674,21 @@ func (s *Service) dropUnresolvedOptional(access *websiteAccess, targets []sanTar
 	}
 	return kept
 }
+
+// CertbotInstalled memeriksa keberadaan certbot di server, tanpa terikat
+// pada satu domain.
+//
+// SSLStatus tidak bisa dipakai untuk ini saat memeriksa server TUJUAN
+// migrasi: ia menuntut domainnya sudah terdaftar di server itu, sedangkan
+// yang ingin diketahui justru kesiapan server sebelum domainnya pindah.
+func (s *Service) CertbotInstalled(serverID string) (bool, error) {
+	access, err := s.resolveAccess(serverID)
+	if err != nil {
+		return false, err
+	}
+	res, err := s.run(access, detectCertbotScript, 15*time.Second)
+	if err != nil {
+		return false, err
+	}
+	return strings.Contains(res.Stdout, "CERTBOT=1"), nil
+}

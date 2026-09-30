@@ -1,12 +1,27 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Play, X, Info, RefreshCw, Search, AlertTriangle, XCircle, CheckCircle2, ListChecks } from 'lucide-react';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
-import { ListWebsites, SiteXferPreview, SiteXferStart, SiteXferCancel, SiteXferRepairDBUsers } from '../../../wailsjs/go/main/App';
+import {
+  ListWebsites,
+  SiteXferPreview,
+  SiteXferStart,
+  SiteXferCancel,
+  SiteXferRepairDBUsers,
+  StreamWebsiteInstall,
+} from '../../../wailsjs/go/main/App';
 import { sitexfer, website } from '../../../wailsjs/go/models';
 import { useTabsStore } from '../../store/tabs';
 import { useT } from '../../i18n';
 import type { MessageKey } from '../../i18n/messages';
 import { formatBytes } from './RemoteBrowser';
+
+// Bentuk event dari StreamWebsiteInstall — sama dengan yang dipakai panel
+// Website; instalasinya memang jalur yang sama.
+interface StreamLineEvent {
+  type: 'line' | 'end' | 'error';
+  line?: string;
+  message?: string;
+}
 
 const RUNNING = new Set(['queued', 'inspecting', 'running', 'verifying']);
 
@@ -99,6 +114,11 @@ export function SiteMigrationPanel() {
   // membuat hasil Periksa basi, dan password tidak pernah ikut di-JSON-kan
   // untuk perbandingan.
   const [passwords, setPasswords] = useState<Record<string, string>>({});
+  // Instalasi yang sedang berjalan di server tujuan, dipicu dari daftar
+  // masalah. Kuncinya "kind:param" supaya dua tombol berbeda (mis. PHP 8.1
+  // dan PHP 8.2) tidak saling mematikan.
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [installLines, setInstallLines] = useState<string[]>([]);
   const [repair, setRepair] = useState<sitexfer.RepairResult | null>(null);
   const [repairing, setRepairing] = useState(false);
 
@@ -196,6 +216,40 @@ export function SiteMigrationPanel() {
     }
   }
 
+  // Menjalankan satu pemasangan di server tujuan lalu memeriksa ulang.
+  //
+  // Sengaja memakai jalur streaming yang sama dengan panel Website
+  // (StreamWebsiteInstall) — bukan menyalin skrip instalasi ke sini —
+  // supaya deteksi distro dan pemilihan paketnya tidak pernah berbeda
+  // antara memasang dari sana dan dari sini.
+  async function handleInstall(fix: { kind: string; param?: string }) {
+    const key = `${fix.kind}:${fix.param ?? ''}`;
+    setInstalling(key);
+    setInstallLines([]);
+    setError(null);
+    try {
+      const streamId = await StreamWebsiteInstall(dstServerId, fix.kind, fix.param ?? '');
+      const unsub = EventsOn(`website:install:${streamId}`, (evt: StreamLineEvent) => {
+        if (evt.type === 'line' && evt.line) {
+          setInstallLines((l) => [...l, evt.line as string]);
+        } else if (evt.type === 'error') {
+          setError(evt.message ?? 'Instalasi gagal');
+          setInstalling(null);
+          unsub();
+        } else if (evt.type === 'end') {
+          setInstalling(null);
+          unsub();
+          // Sama alasannya dengan sesudah membuat user database: rencana
+          // yang terpampang sudah basi begitu paketnya terpasang.
+          void handleCheck(true);
+        }
+      });
+    } catch (e) {
+      setError(String(e));
+      setInstalling(null);
+    }
+  }
+
   async function handleRepair() {
     setRepairing(true);
     setError(null);
@@ -226,6 +280,25 @@ export function SiteMigrationPanel() {
   const dstServerName = serverList.find((s) => s.id === dstServerId)?.name ?? '—';
   const blocking = plan?.problems.filter((p) => p.blocking) ?? [];
   const warnings = plan?.problems.filter((p) => !p.blocking) ?? [];
+
+  // Tombol pemasangan yang menempel pada masalahnya. Masalah tanpa `fix`
+  // memang tidak bisa diselesaikan poinhost sendiri (mis. nama domain
+  // bentrok di tujuan) dan tetap tampil sebagai teks saja.
+  function renderFix(p: sitexfer.Problem) {
+    if (!p.fix) return null;
+    const key = `${p.fix.kind}:${p.fix.param ?? ''}`;
+    const busyHere = installing === key;
+    return (
+      <button
+        className="btn btn--sm"
+        disabled={installing !== null || checking || running || !dstServerId}
+        onClick={() => void handleInstall(p.fix!)}
+      >
+        {busyHere && <span className="spinner" />}
+        {busyHere ? t('migration.site.installing') : p.fix.label}
+      </button>
+    );
+  }
 
   return (
     <div className="mig-panel">
@@ -382,14 +455,19 @@ export function SiteMigrationPanel() {
           )}
           {blocking.map((p, i) => (
             <div key={`b${i}`} className="mig-site__problem mig-site__problem--blocking">
-              <XCircle size={13} /> {p.message}
+              <XCircle size={13} /> <span className="mig-site__problem-text">{p.message}</span>
+              {renderFix(p)}
             </div>
           ))}
           {warnings.map((p, i) => (
             <div key={`w${i}`} className="mig-site__problem">
-              <AlertTriangle size={13} /> {p.message}
+              <AlertTriangle size={13} /> <span className="mig-site__problem-text">{p.message}</span>
+              {renderFix(p)}
             </div>
           ))}
+          {installLines.length > 0 && (
+            <pre className="mig-site__installlog">{installLines.slice(-12).join('\n')}</pre>
+          )}
           {planFresh && plan.canStart && (
             <div className="mig-site__problem mig-site__problem--ok">
               <CheckCircle2 size={13} /> {t('migration.site.plan.ready', { size: formatBytes(plan.totalBytes) })}

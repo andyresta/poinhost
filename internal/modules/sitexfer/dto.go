@@ -127,6 +127,27 @@ type PlanSFTP struct {
 type Problem struct {
 	Blocking bool   `json:"blocking"`
 	Message  string `json:"message"`
+	// Fix menyebut instalasi yang akan menyelesaikan masalah ini, kalau
+	// poinhost memang bisa mengerjakannya sendiri di server tujuan.
+	//
+	// Sebelumnya pesan masalah hanya menyuruh user "pasang dulu dari menu
+	// Website server tujuan" — padahal perintahnya sudah ada di aplikasi
+	// ini juga. Menyebutkan jenisnya secara terstruktur (bukan menyuruh
+	// lewat kalimat) membuat tombolnya bisa muncul tepat di sebelah
+	// masalahnya.
+	Fix *ProblemFix `json:"fix,omitempty"`
+}
+
+// ProblemFix satu tindakan pemasangan di server TUJUAN.
+//
+// Kind dan Param diteruskan apa adanya ke website.StreamInstall, jadi
+// nilainya harus sesuai yang dikenal di sana: nginx, php-repo, php,
+// certbot, mysql, postgresql.
+type ProblemFix struct {
+	Kind  string `json:"kind"`
+	Param string `json:"param,omitempty"`
+	// Label teks tombol, sudah siap tampil.
+	Label string `json:"label"`
 }
 
 // Plan hasil preview: apa saja yang akan dipindah dan apa yang menghalangi.

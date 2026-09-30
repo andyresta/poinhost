@@ -2729,3 +2729,23 @@ button svg {
   font-size: 11px;
   color: var(--warning);
 }
+
+/* Tombol perbaikan menempel di kanan pesan masalahnya, bukan di baris
+   sendiri — supaya jelas tombol itu menyelesaikan masalah yang mana. */
+.mig-site__problem-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mig-site__installlog {
+  max-height: 160px;
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--well-fg);
+  background: var(--well-bg);
+  border-radius: var(--radius-sm);
+}

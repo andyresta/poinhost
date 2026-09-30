@@ -123,3 +123,50 @@ func TestPathFor(t *testing.T) {
 		t.Errorf("prefix nama mirip tidak boleh cocok: %q", got)
 	}
 }
+
+// Masalah yang bisa diselesaikan poinhost sendiri harus membawa jenis
+// instalasinya secara terstruktur, bukan hanya menyuruh lewat kalimat.
+// Pesannya dulu berbunyi "pasang dulu dari menu Website server tujuan" —
+// menyuruh user pindah tab untuk perintah yang ada di aplikasi yang sama.
+func TestPlanData_BlockFixCarriesInstallKind(t *testing.T) {
+	pd := &planData{}
+	pd.blockFix(ProblemFix{Kind: "nginx", Label: "Pasang Nginx"}, "Nginx belum terpasang di server tujuan")
+
+	if len(pd.plan.Problems) != 1 {
+		t.Fatalf("jumlah masalah = %d, mau 1", len(pd.plan.Problems))
+	}
+	p := pd.plan.Problems[0]
+	if !p.Blocking {
+		t.Error("seharusnya memblokir")
+	}
+	if p.Fix == nil || p.Fix.Kind != "nginx" {
+		t.Fatalf("fix = %+v, mau kind nginx", p.Fix)
+	}
+}
+
+// PHP dan certbot TIDAK memblokir: situsnya tetap boleh dipindahkan, hanya
+// belum bisa melayani sampai paketnya ada. Memblokir di sini akan menahan
+// migrasi karena sesuatu yang justru baru relevan sesudahnya.
+func TestPlanData_WarnFixDoesNotBlock(t *testing.T) {
+	pd := &planData{}
+	pd.warnFix(ProblemFix{Kind: "php", Param: "8.1", Label: "Pasang PHP 8.1"}, "PHP 8.1 belum terpasang")
+
+	p := pd.plan.Problems[0]
+	if p.Blocking {
+		t.Error("PHP yang belum terpasang seharusnya tidak memblokir migrasi")
+	}
+	if p.Fix == nil || p.Fix.Kind != "php" || p.Fix.Param != "8.1" {
+		t.Fatalf("fix = %+v, mau php/8.1", p.Fix)
+	}
+}
+
+// Masalah yang memang di luar jangkauan poinhost (mis. nama domain sudah
+// dipakai di tujuan) tidak boleh membawa tombol — tombol yang tidak
+// menyelesaikan apa pun lebih buruk daripada tidak ada tombol.
+func TestPlanData_PlainProblemHasNoFix(t *testing.T) {
+	pd := &planData{}
+	pd.block("Domain %s sudah ada di server tujuan", "contoh.com")
+	if pd.plan.Problems[0].Fix != nil {
+		t.Error("masalah tanpa jalan keluar otomatis seharusnya tidak punya fix")
+	}
+}

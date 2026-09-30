@@ -78,6 +78,23 @@ func (pd *planData) warn(format string, args ...any) {
 	pd.plan.Problems = append(pd.plan.Problems, Problem{Message: fmt.Sprintf(format, args...)})
 }
 
+// blockFix mencatat masalah yang memblokir SEKALIGUS cara poinhost
+// menyelesaikannya sendiri di server tujuan.
+func (pd *planData) blockFix(fix ProblemFix, format string, args ...any) {
+	pd.plan.Problems = append(pd.plan.Problems, Problem{
+		Blocking: true, Message: fmt.Sprintf(format, args...), Fix: &fix,
+	})
+}
+
+// warnFix sama seperti blockFix tapi tidak menghalangi migrasi — dipakai
+// untuk yang baru dibutuhkan SESUDAH pindah (PHP, certbot): situsnya tetap
+// bisa dipindahkan, hanya belum bisa melayani sampai ini dipasang.
+func (pd *planData) warnFix(fix ProblemFix, format string, args ...any) {
+	pd.plan.Problems = append(pd.plan.Problems, Problem{
+		Message: fmt.Sprintf(format, args...), Fix: &fix,
+	})
+}
+
 func normalizeRequest(req StartRequest) (StartRequest, error) {
 	req.SourceServerID = strings.TrimSpace(req.SourceServerID)
 	req.DestServerID = strings.TrimSpace(req.DestServerID)
@@ -180,7 +197,8 @@ func (s *Service) buildPlan(req StartRequest) (*planData, error) {
 		return nil, fmt.Errorf("baca server tujuan: %w", err)
 	}
 	if !dstList.Nginx.Installed {
-		pd.block("Nginx belum terpasang di server tujuan — pasang dulu dari menu Website server tujuan")
+		pd.blockFix(ProblemFix{Kind: "nginx", Label: "Pasang Nginx"},
+			"Nginx belum terpasang di server tujuan")
 	} else {
 		existing := map[string]bool{}
 		for _, d := range dstList.Domains {
@@ -192,6 +210,8 @@ func (s *Service) buildPlan(req StartRequest) (*planData, error) {
 			}
 		}
 	}
+
+	s.planRuntime(dst, pd)
 
 	if req.IncludeDatabases {
 		if err := s.planDatabases(req, pd); err != nil {
@@ -229,6 +249,60 @@ func (s *Service) buildPlan(req StartRequest) (*planData, error) {
 		pd.plan.SFTP = []PlanSFTP{}
 	}
 	return pd, nil
+}
+
+
+// planRuntime memeriksa hal-hal yang baru dibutuhkan SESUDAH domain pindah:
+// PHP-FPM dengan versi yang dipakai tiap domain, dan certbot untuk domain
+// yang di server asal ber-SSL.
+//
+// Keduanya TIDAK memblokir — situsnya tetap boleh dipindahkan. Yang berubah
+// adalah kapan user mengetahuinya: dulu hanya muncul sebagai catatan di
+// laporan SESUDAH migrasi, jadi file dan vhost sudah mendarat sebelum orang
+// sadar PHP-nya belum ada dan domainnya menjawab 403.
+func (s *Service) planRuntime(dst string, pd *planData) {
+	wantPHP := map[string]bool{}
+	wantCertbot := false
+	for _, d := range pd.selected {
+		if v := strings.TrimSpace(d.PHPVersion); v != "" {
+			wantPHP[v] = true
+		}
+		if d.SSLEnabled {
+			wantCertbot = true
+		}
+	}
+
+	if len(wantPHP) > 0 {
+		st, err := s.website.PHPStatus(dst, "")
+		if err != nil {
+			pd.warn("Gagal memeriksa PHP di server tujuan: %v", err)
+		} else {
+			have := map[string]bool{}
+			for _, v := range st.Versions {
+				have[v.Version] = true
+			}
+			versions := make([]string, 0, len(wantPHP))
+			for v := range wantPHP {
+				versions = append(versions, v)
+			}
+			sort.Strings(versions)
+			for _, v := range versions {
+				if have[v] {
+					continue
+				}
+				pd.warnFix(ProblemFix{Kind: "php", Param: v, Label: "Pasang PHP " + v},
+					"PHP %s belum terpasang di server tujuan — domain yang memakainya akan menolak file .php (403) sampai dipasang", v)
+			}
+		}
+	}
+
+	if wantCertbot {
+		installed, err := s.website.CertbotInstalled(dst)
+		if err == nil && !installed {
+			pd.warnFix(ProblemFix{Kind: "certbot", Label: "Pasang certbot"},
+				"certbot belum terpasang di server tujuan — dibutuhkan untuk menerbitkan sertifikat setelah DNS diarahkan")
+		}
+	}
 }
 
 func (s *Service) planDatabases(req StartRequest, pd *planData) error {
@@ -274,7 +348,8 @@ func (s *Service) planDatabases(req StartRequest, pd *planData) error {
 		names := byEngine[engine]
 		st, err := s.website.DBStatus(dst, engine)
 		if err != nil || !st.Installed || !st.Active {
-			pd.block("%s belum terpasang/aktif di server tujuan — dibutuhkan untuk database %s", engineLabel(engine), strings.Join(names, ", "))
+			pd.blockFix(ProblemFix{Kind: engine, Label: "Pasang " + engineLabel(engine)},
+				"%s belum terpasang/aktif di server tujuan — dibutuhkan untuk database %s", engineLabel(engine), strings.Join(names, ", "))
 			continue
 		}
 		for _, n := range names {
