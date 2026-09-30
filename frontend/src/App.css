@@ -1961,6 +1961,14 @@ button svg {
   display: table-cell;
   max-width: 0;
   width: 100%;
+  /* Nama TIDAK boleh terdesak habis. Sel badge di sebelahnya memakai
+     white-space: nowrap sehingga tidak bisa mengecil; pada `max-width: 0`
+     saja — yang memang tidak mengikat untuk sel tabel — kolom nama
+     menyerah sepenuhnya begitu badge-nya bertambah satu, dan barisnya
+     tampil tanpa nama domain sama sekali. Dengan lebar minimum, yang
+     terpotong (dan bisa di-scroll) adalah badge-nya, bukan identitas
+     barisnya. */
+  min-width: 150px;
 }
 .mig-browser__icon {
   display: inline-flex;
