@@ -179,6 +179,24 @@ func (s *Service) InspectMigrationBlueprint(serverID, rawID string) (*MigrationB
 // ContainerNameExists memeriksa apakah nama container sudah dipakai di
 // server (dicek sebelum create, supaya kolisi nama gagal cepat dengan pesan
 // yang jelas, bukan di tengah proses create).
+
+// containerNameExistsCmd menyusun pemeriksaan keberadaan CONTAINER bernama
+// `name`.
+//
+// Memakai `docker container inspect`, bukan `docker inspect` biasa. Yang
+// terakhir itu inspector serba guna: ia mencocokkan container, IMAGE,
+// volume, dan network sekaligus. Karena migrasi ini juga memindahkan image
+// yang namanya sama dengan containernya — devpoin-app dan
+// devpoin-app:latest — pemeriksaan lama terus melaporkan "nama sudah
+// dipakai" sesudah containernya dihapus, karena yang ditemukannya adalah
+// image-nya. Lebih buruk lagi, image itu mendarat di tujuan pada percobaan
+// migrasi pertama, sehingga setiap percobaan berikutnya pasti gagal dan
+// tidak ada cara keluar selain menghapus image yang justru baru saja
+// dikirim.
+func containerNameExistsCmd(name string) string {
+	return fmt.Sprintf("docker container inspect --format '{{.Id}}' %s >/dev/null 2>&1 && echo yes || echo no", shellQuote(name))
+}
+
 func (s *Service) ContainerNameExists(serverID, name string) (bool, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -188,7 +206,7 @@ func (s *Service) ContainerNameExists(serverID, name string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	cmd := fmt.Sprintf("docker inspect --format '{{.Id}}' %s >/dev/null 2>&1 && echo yes || echo no", shellQuote(name))
+	cmd := containerNameExistsCmd(name)
 	res, err := s.runDocker(access, cmd, 15*time.Second)
 	if err != nil {
 		return false, err
