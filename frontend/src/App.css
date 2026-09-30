@@ -2441,8 +2441,11 @@ button svg {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
+/* Meminta password bukan kegagalan, melainkan tindakan yang diminta ke
+   user — warnanya warning, bukan danger. Merah disisakan untuk hal yang
+   benar-benar gagal. */
 .mig-site__action--needs-password {
-  color: var(--danger);
+  color: var(--warning);
 }
 .mig-site__repair {
   display: flex;

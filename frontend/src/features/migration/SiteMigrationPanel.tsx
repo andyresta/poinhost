@@ -165,11 +165,13 @@ export function SiteMigrationPanel() {
     });
   }
 
-  async function handleCheck() {
+  // keepRepair dipakai saat pemeriksaan ulang otomatis sesudah user dibuat:
+  // hasil pembuatannya masih ingin dilihat, jadi jangan ikut dibersihkan.
+  async function handleCheck(keepRepair = false) {
     setChecking(true);
     setError(null);
     try {
-      setRepair(null);
+      if (!keepRepair) setRepair(null);
       const p = await SiteXferPreview(request);
       setPlan(p);
       setPlanKey(requestKey);
@@ -200,6 +202,11 @@ export function SiteMigrationPanel() {
     try {
       setRepair(await SiteXferRepairDBUsers(withPasswords()));
       setPasswords({});
+      // Rencana yang terpampang sudah basi begitu user dibuat — tanpa
+      // memeriksa ulang, daftarnya masih bilang "perlu dibuat" untuk user
+      // yang barusan ada, dan tombol Migrasi masih terkunci sampai user
+      // menekan Cek sendiri.
+      await handleCheck(true);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -418,7 +425,7 @@ export function SiteMigrationPanel() {
                         <span className="mig-panel__item-kind">{d.engine === 'postgresql' ? 'PostgreSQL' : 'MySQL'}</span>
                         {d.name}
                       </td>
-                      <td className="mig-panel__path-error">{d.domains.join(', ')}</td>
+                      <td className="mig-panel__path-note">{d.domains.join(', ')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -440,14 +447,22 @@ export function SiteMigrationPanel() {
                       <td className={`mig-panel__path-state mig-site__action--${u.action}`}>
                         {t(ACTION_LABEL[u.action] ?? 'migration.site.action.create')}
                       </td>
-                      <td className="mig-panel__path-error">
+                      {/* Keterangan di sini tidak pernah berarti kegagalan —
+                          "sudah ada di tujuan" hanyalah kabar. Diwarnai
+                          netral; yang membawa warna adalah kolom aksi di
+                          sebelahnya. */}
+                      <td className="mig-panel__path-note">
                         {u.note || u.databases.join(', ')}
-                        {u.action === 'needs-password' && (
+                        {(u.action === 'needs-password' || u.action === 'create') && (
                           <input
                             type="password"
                             className="mig-site__pw"
                             autoComplete="off"
-                            placeholder={t('migration.site.passwordPlaceholder')}
+                            placeholder={
+                              u.action === 'create'
+                                ? t('migration.site.passwordOptional')
+                                : t('migration.site.passwordPlaceholder')
+                            }
                             value={passwords[userKey(u)] ?? ''}
                             onChange={(e) => setPasswords((p) => ({ ...p, [userKey(u)]: e.target.value }))}
                           />
@@ -477,7 +492,14 @@ export function SiteMigrationPanel() {
                     <td className={`mig-panel__path-state mig-panel__path-state--${it.status}`}>
                       {t(ITEM_LABEL[it.status] ?? 'migration.site.item.pending')}
                     </td>
-                    <td className="mig-panel__path-error">{it.error || it.warning || ''}</td>
+                    <td
+                      className={
+                        'mig-panel__path-note' +
+                        (it.error ? ' mig-panel__path-note--error' : it.warning ? ' mig-panel__path-note--warn' : '')
+                      }
+                    >
+                      {it.error || it.warning || ''}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -493,7 +515,7 @@ export function SiteMigrationPanel() {
                     <tr key={a.username}>
                       <td className="mig-panel__path-name">{a.username}</td>
                       <td className="mig-panel__path-verify">{a.domain}</td>
-                      <td className="mig-panel__path-error">{a.note || ''}</td>
+                      <td className="mig-panel__path-note">{a.note || ''}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -536,7 +558,14 @@ export function SiteMigrationPanel() {
                   <td className={`mig-panel__path-state mig-panel__path-state--${it.status}`}>
                     {t(ITEM_LABEL[it.status] ?? 'migration.site.item.pending')}
                   </td>
-                  <td className="mig-panel__path-error">{it.error || it.warning || it.detail || ''}</td>
+                  <td
+                    className={
+                      'mig-panel__path-note' +
+                      (it.error ? ' mig-panel__path-note--error' : it.warning ? ' mig-panel__path-note--warn' : '')
+                    }
+                  >
+                    {it.error || it.warning || it.detail || ''}
+                  </td>
                 </tr>
               ))}
             </tbody>
