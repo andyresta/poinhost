@@ -36,7 +36,6 @@ type Status struct {
 	// SelfManaged: agent punya entri server untuk mesinnya sendiri.
 	SelfManaged   bool  `json:"selfManaged"`
 	UptimeSeconds int64 `json:"uptimeSeconds,omitempty"`
-	ServerCount   int   `json:"serverCount,omitempty"`
 
 	// APIConfigured: config agent sudah punya apiToken, jadi API Mobile
 	// Control bisa dipakai. Tanpa token, seluruh endpoint selain /healthz

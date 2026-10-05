@@ -9,6 +9,12 @@
 // Seluruh endpoint di sini BACA saja. Tidak ada satu pun yang mengubah
 // server, sesuai tahap pertama Mobile Control — aksi baru dipertimbangkan
 // setelah model autentikasinya terbukti di pemakaian nyata.
+//
+// Bentuknya TUNGGAL, bukan daftar. Satu agent hanya mengurus mesinnya
+// sendiri, jadi endpoint daftar server dan endpoint "status server ke-N"
+// hanya akan mengembalikan satu baris yang sama selamanya — bentuk jamak
+// yang menjanjikan sesuatu yang tidak pernah ada, dan membuat aplikasi di HP
+// menulis loop untuk koleksi beranggota satu.
 package api
 
 import (
@@ -28,17 +34,7 @@ type Deps struct {
 	StartedAt time.Time
 	APIToken  string
 
-	Reader  backend.Reader
-	Servers ServerStore
-}
-
-// ServerStore adalah daftar server yang dikenal agent.
-//
-// Sejak satu agent hanya mengurus mesinnya sendiri, isinya praktis satu
-// entri — tapi tetap berbentuk daftar supaya bentuk responsnya tidak perlu
-// berubah kalau suatu saat ada lebih dari satu.
-type ServerStore interface {
-	List() ([]backend.Entry, error)
+	Reader backend.Reader
 }
 
 // Handler membangun mux HTTP agent.
@@ -57,77 +53,37 @@ func Handler(d Deps) http.Handler {
 		})
 	})
 
-	mux.Handle("GET /v1/status", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		list, err := d.Reader.ListServers()
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"version":       d.Version,
-			"uptimeSeconds": int64(time.Since(d.StartedAt).Seconds()),
-			"serverCount":   len(list),
-		})
-	})))
-
-	mux.Handle("GET /v1/servers", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		list, err := d.Servers.List()
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		if list == nil {
-			list = []backend.Entry{}
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"servers": list})
-	})))
-
-	// /v1/overview adalah endpoint yang dipanggil aplikasi mobile berulang
-	// kali. Server DAN metriknya digabung dalam satu respons supaya HP cukup
-	// satu permintaan untuk menggambar layarnya — bukan satu panggilan untuk
-	// daftar lalu satu lagi per server, yang di jaringan seluler berarti
-	// menunggu berkali-kali.
+	// /v1/server adalah SATU-SATUNYA endpoint data, dan inilah yang dipanggil
+	// aplikasi mobile berulang kali. Identitas mesin, metriknya, dan versi
+	// agent digabung dalam satu respons supaya HP cukup satu permintaan untuk
+	// menggambar layarnya — di jaringan seluler, dua permintaan berarti dua
+	// kali menunggu.
 	//
 	// Angkanya dibaca dari snapshot Collector, tanpa satu pun round-trip SSH,
 	// jadi endpoint ini murah untuk di-poll.
-	mux.Handle("GET /v1/overview", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		list, err := d.Reader.ListServers()
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
+	mux.Handle("GET /v1/server", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		info, ok := d.Reader.Self()
+		if !ok {
+			// Agent terpasang tanpa kunci pengelolaan-diri, atau kuncinya
+			// rusak. Dibedakan dari "metrik belum ada" karena perbaikannya
+			// berbeda: yang ini ditekan dari panel Mobile Control.
+			writeErr(w, http.StatusServiceUnavailable, "agent belum mengelola mesinnya sendiri")
 			return
 		}
-		out := make([]map[string]any, 0, len(list))
-		for _, s := range list {
-			entry := map[string]any{
-				"id":     s.ID,
-				"name":   s.Name,
-				"host":   s.Host,
-				"isSelf": s.IsSelf,
-			}
-			if st, ok := d.Reader.Status(s.ID); ok {
-				entry["status"] = statusJSON(st)
-			}
-			out = append(out, entry)
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
+		out := map[string]any{
 			"version":       d.Version,
 			"uptimeSeconds": int64(time.Since(d.StartedAt).Seconds()),
-			"servers":       out,
-		})
-	})))
-
-	mux.Handle("GET /v1/servers/{id}/status", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.PathValue("id")
-		if _, ok := d.Reader.Server(id); !ok {
-			writeErr(w, http.StatusNotFound, "server tidak ditemukan")
-			return
+			"id":            info.ID,
+			"name":          info.Name,
+			"host":          info.Host,
 		}
-		st, ok := d.Reader.Status(id)
-		if !ok {
-			writeErr(w, http.StatusServiceUnavailable, "metrik belum tersedia")
-			return
+		// Metrik DIHILANGKAN kalau belum pernah terkumpul, bukan dikirim
+		// sebagai nol — layar yang menampilkan CPU 0% dan disk 0 GB terlihat
+		// seperti server sehat yang menganggur.
+		if st, ok := d.Reader.Status(info.ID); ok {
+			out["status"] = statusJSON(st)
 		}
-		writeJSON(w, http.StatusOK, statusJSON(st))
+		writeJSON(w, http.StatusOK, out)
 	})))
 
 	return mux

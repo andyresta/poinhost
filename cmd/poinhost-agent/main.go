@@ -21,7 +21,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -87,7 +86,6 @@ func run(cfgPath string) error {
 			StartedAt: time.Now(),
 			APIToken:  acfg.APIToken,
 			Reader:    stack.backend,
-			Servers:   stack.store,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -115,7 +113,6 @@ func run(cfgPath string) error {
 // stack adalah seluruh dependensi poinhost yang dipakai agent.
 type stack struct {
 	backend   *backend.Backend
-	store     *backend.Store
 	collector *servers.Collector
 	closeDB   func() error
 }
@@ -173,7 +170,6 @@ func newStack(acfg *agentcfg.Config, cfgPath string) (*stack, error) {
 
 	return &stack{
 		backend:   backend.New(serversSvc, collector, acfg.SelfServerID),
-		store:     backend.NewStore(serversSvc, collector, knownHosts, filepath.Join(cfg.DataDir, "keys"), acfg.SelfServerID),
 		collector: collector,
 		closeDB:   db.Close,
 	}, nil

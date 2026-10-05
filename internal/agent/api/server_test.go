@@ -1,9 +1,7 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,33 +11,17 @@ import (
 )
 
 type fakeReader struct {
-	servers []backend.ServerInfo
-	status  map[string]backend.Status
+	self   backend.ServerInfo
+	ada    bool
+	status map[string]backend.Status
 }
 
-func (f fakeReader) ListServers() ([]backend.ServerInfo, error) { return f.servers, nil }
-
-func (f fakeReader) Server(id string) (backend.ServerInfo, bool) {
-	for _, s := range f.servers {
-		if s.ID == id {
-			return s, true
-		}
-	}
-	return backend.ServerInfo{}, false
-}
+func (f fakeReader) Self() (backend.ServerInfo, bool) { return f.self, f.ada }
 
 func (f fakeReader) Status(id string) (backend.Status, bool) {
 	st, ok := f.status[id]
 	return st, ok
 }
-
-func (f fakeReader) Refresh(context.Context, string) (backend.Status, error) {
-	return backend.Status{}, errors.New("tidak dipakai")
-}
-
-type fakeStore struct{ list []backend.Entry }
-
-func (f fakeStore) List() ([]backend.Entry, error) { return f.list, nil }
 
 func contoh() Deps {
 	return Deps{
@@ -47,16 +29,16 @@ func contoh() Deps {
 		StartedAt: time.Now().Add(-time.Minute),
 		APIToken:  "token-benar",
 		Reader: fakeReader{
-			servers: []backend.ServerInfo{{ID: "s1", Name: "web", Host: "10.0.0.1", IsSelf: true}},
-			status:  map[string]backend.Status{"s1": {Connection: "ok", CPUCores: 2}},
+			self:   backend.ServerInfo{ID: "s1", Name: "web", Host: "10.0.0.1"},
+			ada:    true,
+			status: map[string]backend.Status{"s1": {Connection: "ok", CPUCores: 2}},
 		},
-		Servers: fakeStore{list: []backend.Entry{{ID: "s1", Name: "web"}}},
 	}
 }
 
-func minta(t *testing.T, d Deps, metode, path, token string) *httptest.ResponseRecorder {
+func minta(t *testing.T, d Deps, path, token string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(metode, path, nil)
+	req := httptest.NewRequest(http.MethodGet, path, nil)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -65,25 +47,29 @@ func minta(t *testing.T, d Deps, metode, path, token string) *httptest.ResponseR
 	return rec
 }
 
-// Semua endpoint selain /healthz harus menolak tanpa token yang cocok.
-//
-// Ini satu-satunya yang berdiri di antara API dan siapa pun yang berhasil
-// menjangkau portnya, jadi diuji per endpoint — bukan sekali di satu
-// endpoint lalu dianggap berlaku untuk semuanya. Endpoint yang lupa
-// dibungkus auth() tidak akan kelihatan dengan cara lain.
+// Endpoint data harus menolak tanpa token yang cocok. Ini satu-satunya yang
+// berdiri di antara API dan siapa pun yang berhasil menjangkau portnya.
 func TestEndpointTerlindungMenolakTokenSalah(t *testing.T) {
 	d := contoh()
-	paths := []string{"/v1/status", "/v1/servers", "/v1/overview", "/v1/servers/s1/status"}
 
-	for _, p := range paths {
-		for nama, token := range map[string]string{"tanpa token": "", "token salah": "token-salah"} {
-			rec := minta(t, d, http.MethodGet, p, token)
-			if rec.Code != http.StatusUnauthorized {
-				t.Errorf("GET %s (%s) = %d, mau 401", p, nama, rec.Code)
-			}
+	for nama, token := range map[string]string{"tanpa token": "", "token salah": "token-salah"} {
+		if rec := minta(t, d, "/v1/server", token); rec.Code != http.StatusUnauthorized {
+			t.Errorf("GET /v1/server (%s) = %d, mau 401", nama, rec.Code)
 		}
-		if rec := minta(t, d, http.MethodGet, p, "token-benar"); rec.Code != http.StatusOK {
-			t.Errorf("GET %s dengan token benar = %d, mau 200 (%s)", p, rec.Code, rec.Body.String())
+	}
+	if rec := minta(t, d, "/v1/server", "token-benar"); rec.Code != http.StatusOK {
+		t.Errorf("token benar ditolak: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Rute yang sudah dibuang tidak boleh diam-diam hidup lagi. Bentuk jamaknya
+// menjanjikan banyak server, padahal satu agent hanya mengurus mesinnya
+// sendiri.
+func TestRuteJamakSudahTidakAda(t *testing.T) {
+	d := contoh()
+	for _, p := range []string{"/v1/servers", "/v1/servers/s1/status", "/v1/overview", "/v1/status"} {
+		if rec := minta(t, d, p, "token-benar"); rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, mau 404", p, rec.Code)
 		}
 	}
 }
@@ -92,7 +78,7 @@ func TestEndpointTerlindungMenolakTokenSalah(t *testing.T) {
 // "terpasang tapi mati" dari "jalan", termasuk saat tokennya belum diset.
 func TestHealthzTerbukaDanTidakMembocorkanApaPun(t *testing.T) {
 	for _, d := range []Deps{contoh(), {Version: "uji", StartedAt: time.Now()}} {
-		rec := minta(t, d, http.MethodGet, "/healthz", "")
+		rec := minta(t, d, "/healthz", "")
 		if rec.Code != http.StatusOK {
 			t.Fatalf("GET /healthz = %d, mau 200", rec.Code)
 		}
@@ -100,7 +86,7 @@ func TestHealthzTerbukaDanTidakMembocorkanApaPun(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatalf("respons bukan JSON: %v", err)
 		}
-		for _, k := range []string{"apiToken", "token", "servers"} {
+		for _, k := range []string{"apiToken", "token", "host", "status"} {
 			if _, ada := body[k]; ada {
 				t.Errorf("/healthz membocorkan %q: %v", k, body)
 			}
@@ -115,7 +101,7 @@ func TestTanpaAPITokenEndpointDitutupBukanDibuka(t *testing.T) {
 	d.APIToken = ""
 
 	for _, token := range []string{"", "apa saja"} {
-		rec := minta(t, d, http.MethodGet, "/v1/overview", token)
+		rec := minta(t, d, "/v1/server", token)
 		if rec.Code == http.StatusOK {
 			t.Fatalf("token kosong meloloskan permintaan: %s", rec.Body.String())
 		}
@@ -125,25 +111,56 @@ func TestTanpaAPITokenEndpointDitutupBukanDibuka(t *testing.T) {
 	}
 }
 
-// /v1/overview digabung justru supaya HP cukup satu permintaan; kalau
-// metriknya hilang dari sana, HP kembali memanggil per server.
-func TestOverviewMemuatServerSekaligusMetriknya(t *testing.T) {
-	rec := minta(t, contoh(), http.MethodGet, "/v1/overview", "token-benar")
+// Satu permintaan harus cukup untuk menggambar layar HP: identitas mesin,
+// metriknya, dan versi agent sekaligus.
+func TestServer_SatuResponsMemuatSemuanya(t *testing.T) {
+	rec := minta(t, contoh(), "/v1/server", "token-benar")
 
 	var body struct {
-		Servers []struct {
-			ID     string         `json:"id"`
-			Status map[string]any `json:"status"`
-		} `json:"servers"`
+		Version string         `json:"version"`
+		ID      string         `json:"id"`
+		Name    string         `json:"name"`
+		Host    string         `json:"host"`
+		Status  map[string]any `json:"status"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("respons bukan JSON: %v", err)
 	}
-	if len(body.Servers) != 1 || body.Servers[0].ID != "s1" {
-		t.Fatalf("servers = %+v", body.Servers)
+	if body.ID != "s1" || body.Name != "web" || body.Host != "10.0.0.1" || body.Version != "uji" {
+		t.Errorf("identitas = %+v", body)
 	}
-	if body.Servers[0].Status["connection"] != "ok" {
-		t.Errorf("metrik tidak ikut: %v", body.Servers[0].Status)
+	if body.Status["connection"] != "ok" {
+		t.Errorf("metrik tidak ikut: %v", body.Status)
+	}
+}
+
+// Metrik yang belum pernah terkumpul DIHILANGKAN, bukan dikirim sebagai nol:
+// layar dengan CPU 0% dan disk 0 GB terlihat seperti server sehat yang
+// menganggur.
+func TestServer_MetrikBelumAdaTidakDikirimSebagaiNol(t *testing.T) {
+	d := contoh()
+	d.Reader = fakeReader{self: backend.ServerInfo{ID: "s1", Name: "web"}, ada: true}
+
+	rec := minta(t, d, "/v1/server", "token-benar")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("= %d, mau 200", rec.Code)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if _, ada := body["status"]; ada {
+		t.Errorf("status nol ikut terkirim: %v", body["status"])
+	}
+}
+
+// Agent yang belum mengelola mesinnya sendiri tidak punya apa pun untuk
+// dilaporkan, dan itu dibedakan dari metrik yang belum terkumpul karena
+// perbaikannya berbeda.
+func TestServer_TanpaSelfMembalas503(t *testing.T) {
+	d := contoh()
+	d.Reader = fakeReader{}
+
+	if rec := minta(t, d, "/v1/server", "token-benar"); rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("= %d, mau 503", rec.Code)
 	}
 }
 

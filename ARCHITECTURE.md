@@ -99,7 +99,7 @@ poinhost/
 ├── internal/
 │   ├── agent/                  # milik poinhost-agent, bukan app desktop (§16)
 │   │   ├── agentcfg/           # config.json agent; listen WAJIB loopback
-│   │   ├── api/                # HTTP loopback: /healthz + REST baca-saja (Mobile Control)
+│   │   ├── api/                # HTTP loopback: /healthz + /v1/server, baca-saja (Mobile Control)
 │   │   ├── backend/            # adaptor API -> servers.Service/Collector
 │   │   └── dist/bin/           # binary agent ter-gzip yang di-embed ke desktop
 │   │

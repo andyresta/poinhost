@@ -35,24 +35,53 @@ daripada WebSocket karena arahnya memang satu.
 
 ## Endpoint
 
-Semuanya **baca**; tidak ada satu pun yang mengubah server.
+Dua, dan keduanya **baca**.
 
 | Endpoint | Auth | Isi |
 |----------|------|-----|
-| `GET /healthz` | tidak | `ok`, versi, uptime |
-| `GET /v1/status` | ya | versi, uptime, jumlah server |
-| `GET /v1/servers` | ya | daftar server yang dikenal agent |
-| `GET /v1/overview` | ya | server **beserta** metriknya, satu respons |
-| `GET /v1/servers/{id}/status` | ya | metrik satu server |
+| `GET /healthz` | tidak | `ok`, `version`, `uptimeSeconds` |
+| `GET /v1/server` | ya | identitas mesin + metriknya + versi agent |
 
-`/v1/overview` ada supaya HP cukup satu permintaan untuk menggambar layarnya,
-bukan satu panggilan untuk daftar lalu satu lagi per server — di jaringan
-seluler bedanya terasa. Angkanya dibaca dari snapshot Collector, tanpa
-round-trip SSH, jadi murah untuk di-poll.
+```json
+{
+  "version": "1.0.0",
+  "uptimeSeconds": 86400,
+  "id": "6f1c…", "name": "production", "host": "10.0.0.1",
+  "status": {
+    "connection": "online", "osName": "Ubuntu 24.04", "hostname": "prod",
+    "uptimeSeconds": 1209600, "cpuCores": 4, "cpuUsedPct": 12.5,
+    "memUsedMB": 2048, "memTotalMB": 8192,
+    "diskUsedGB": 31.4, "diskTotalGB": 160,
+    "stale": false, "checkedAt": "2026-10-05T04:00:00Z"
+  }
+}
+```
 
-Nama field respons dipetakan eksplisit di `statusJSON`, bukan lewat tag JSON di
-tipe internal: mengganti nama field internal tidak boleh diam-diam mengubah
-kontrak aplikasi yang sudah terpasang di HP orang.
+`connection` bernilai `online`, `offline`, atau `reconnecting` — kosong sebelum
+polling pertama. `checkedAt` dan `error` hanya muncul kalau terisi. `status`
+DIHILANGKAN selama metriknya belum pernah terkumpul, bukan dikirim sebagai
+nol: layar dengan CPU 0% dan disk 0 GB terlihat seperti server sehat yang
+menganggur.
+
+Galat selalu `{"error": "..."}` — `401` token salah atau tidak dikirim, `503`
+`apiToken` belum diset atau agent belum mengelola mesinnya sendiri.
+
+Semuanya digabung dalam satu respons supaya HP cukup satu permintaan untuk
+menggambar layarnya; di jaringan seluler, dua permintaan berarti dua kali
+menunggu. Angkanya dibaca dari snapshot Collector, tanpa round-trip SSH, jadi
+endpoint ini murah untuk di-poll.
+
+Nama field dipetakan eksplisit di `statusJSON`, bukan lewat tag JSON di tipe
+internal: mengganti nama field internal tidak boleh diam-diam mengubah kontrak
+aplikasi yang sudah terpasang di HP orang.
+
+**Tidak ada endpoint daftar server**, dan `Reader` di sisi Go pun hanya bisa
+menyebut `Self()`. Satu agent hanya mengurus mesinnya sendiri, jadi endpoint
+jamak hanya akan mengembalikan satu baris yang sama selamanya — bentuk yang
+menjanjikan sesuatu yang tidak pernah ada, dan membuat HP menulis loop untuk
+koleksi beranggota satu. Agent yang di-update dari versi lama bisa MASIH
+menyimpan server yang dulu ditautkan; interface yang tidak punya ListServers
+membuat server-server itu mustahil ikut terlapor.
 
 ## Autentikasi
 
