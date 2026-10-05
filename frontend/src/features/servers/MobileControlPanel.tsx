@@ -9,6 +9,8 @@ import {
   FileText,
   Globe,
   KeyRound,
+  Check,
+  Smartphone as Phone,
   Power,
   RotateCw,
   ServerCog,
@@ -29,6 +31,10 @@ import {
   MobileControlPublishStatus,
   MobileControlPublish,
   MobileControlUnpublish,
+  MobileControlDevices,
+  ApproveMobileControlDevice,
+  RevokeMobileControlDevice,
+  DeleteMobileControlDevice,
 } from '../../../wailsjs/go/main/App';
 import { agentctl } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
@@ -67,7 +73,11 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
 
   // Token tidak pernah disimpan di sisi desktop — ia dibaca dari config agent
   // saat user memintanya, dan dilupakan lagi begitu pindah server.
-  const [token, setToken] = useState<agentctl.AccessToken | null>(null);
+  const [token, setToken] = useState<agentctl.EnrollToken | null>(null);
+
+  // Perangkat yang mendaftar lewat token pendaftaran, menunggu disetujui.
+  const [devices, setDevices] = useState<agentctl.Device[] | null>(null);
+  const [deviceError, setDeviceError] = useState<string | null>(null);
 
   // Jalur dari HP ke agent: vhost nginx yang mem-proxy ke port loopback.
   const [publish, setPublish] = useState<agentctl.PublishInfo | null>(null);
@@ -105,10 +115,22 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
     }
   }, [serverId]);
 
+  const loadDevices = useCallback(async () => {
+    setDeviceError(null);
+    try {
+      setDevices(await MobileControlDevices(serverId));
+    } catch (e) {
+      setDevices(null);
+      setDeviceError(String(e));
+    }
+  }, [serverId]);
+
   useEffect(() => {
     setLoading(true);
     setLogs(null);
     setToken(null);
+    setDevices(null);
+    setDeviceError(null);
     setPublish(null);
     setPublishError(null);
     setPubDomain('');
@@ -117,8 +139,11 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
   }, [serverId, load]);
 
   useEffect(() => {
-    if (status?.state === 'running') void loadPublish();
-  }, [status?.state, loadPublish]);
+    if (status?.state === 'running') {
+      void loadPublish();
+      void loadDevices();
+    }
+  }, [status?.state, loadPublish, loadDevices]);
 
   // Kemajuan pemasangan/update datang per server, supaya tab lain yang sedang
   // menjalankan operasinya sendiri tidak saling menimpa.
@@ -187,6 +212,30 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
     });
     if (!ok) return;
     void act('unpublish', () => MobileControlUnpublish(serverId), (info) => setPublish(info));
+  }
+
+  async function handleRevokeDevice(dev: agentctl.Device) {
+    const ok = await confirm({
+      title: t('mobile.revoke'),
+      message: t('mobile.revokeConfirm', { name: dev.name }),
+      detail: t('mobile.revokeDetail'),
+      confirmLabel: t('mobile.revoke'),
+      danger: true,
+    });
+    if (!ok) return;
+    void act(`dev:${dev.id}`, () => RevokeMobileControlDevice(serverId, dev.id), (list) => setDevices(list));
+  }
+
+  async function handleRemoveDevice(dev: agentctl.Device) {
+    const ok = await confirm({
+      title: t('mobile.removeDevice'),
+      message: t('mobile.removeConfirm', { name: dev.name }),
+      detail: t('mobile.removeDetail'),
+      confirmLabel: t('mobile.removeDevice'),
+      danger: true,
+    });
+    if (!ok) return;
+    void act(`dev:${dev.id}`, () => DeleteMobileControlDevice(serverId, dev.id), (list) => setDevices(list));
   }
 
   if (loading) return <p className="workspace__placeholder">{t('common.loading')}</p>;
@@ -365,7 +414,81 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
             </button>
           </div>
 
-          <p className="agent-hint">{t('mobile.tokenHint')}</p>
+          <p className="agent-hint">{t('mobile.enrollHint')}</p>
+        </section>
+      )}
+
+      {/* ---- perangkat yang mendaftar ---- */}
+      {running && (
+        <section className="agent-section">
+          <h3>
+            <Phone size={14} /> {t('mobile.devices')}
+          </h3>
+
+          {deviceError && (
+            <>
+              <p className="fw-notice fw-notice--warn">
+                <TriangleAlert size={13} /> {deviceError}
+              </p>
+              <button className="btn" disabled={anyBusy} onClick={() => void loadDevices()}>
+                <RotateCw size={13} /> {t('common.retry')}
+              </button>
+            </>
+          )}
+
+          {devices !== null &&
+            (devices.length === 0 ? (
+              <p className="agent-hint">{t('mobile.noDevices')}</p>
+            ) : (
+              <ul className="agent-users">
+                {devices.map((dev) => (
+                  <li key={dev.id}>
+                    <span>
+                      <span className={`docker-badge ${deviceBadge(dev.status)}`}>
+                        {t(deviceStatusKey(dev.status))}
+                      </span>{' '}
+                      <strong>{dev.name}</strong>
+                      {dev.platform && <code>{dev.platform}</code>}{' '}
+                      <em title={dev.createdAt}>{shortDate(dev.createdAt)}</em>
+                    </span>
+                    <span className="agent-actions">
+                      {/* Yang menunggu dan yang dicabut sama-sama bisa
+                          disetujui: mencabut lalu memulihkan HP yang sama
+                          tidak perlu mendaftar ulang. */}
+                      {dev.status !== 'approved' && (
+                        <button
+                          className="btn btn--primary"
+                          disabled={anyBusy}
+                          onClick={() =>
+                            void act(
+                              `dev:${dev.id}`,
+                              () => ApproveMobileControlDevice(serverId, dev.id),
+                              (list) => setDevices(list),
+                            )
+                          }
+                        >
+                          {busy === `dev:${dev.id}` ? <span className="spinner" /> : <Check size={12} />}{' '}
+                          {t('mobile.approve')}
+                        </button>
+                      )}
+                      {dev.status === 'approved' && (
+                        <button className="btn" disabled={anyBusy} onClick={() => void handleRevokeDevice(dev)}>
+                          <CircleSlash size={12} /> {t('mobile.revoke')}
+                        </button>
+                      )}
+                      <button
+                        className="btn btn--ghost"
+                        disabled={anyBusy}
+                        onClick={() => void handleRemoveDevice(dev)}
+                        title={t('mobile.removeDevice')}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ))}
         </section>
       )}
 
@@ -609,4 +732,27 @@ function uptime(sec: number) {
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
+}
+
+function deviceStatusKey(status: string): MessageKey {
+  switch (status) {
+    case 'approved':
+      return 'mobile.deviceApproved';
+    case 'revoked':
+      return 'mobile.deviceRevoked';
+    default:
+      return 'mobile.devicePending';
+  }
+}
+
+function deviceBadge(status: string) {
+  return status === 'approved' ? 'docker-badge--running' : 'docker-badge--stopped';
+}
+
+// Tanggal pendaftaran dipendekkan ke tanggal saja: yang dicari user adalah
+// "mana yang baru saja saya daftarkan", bukan detiknya.
+function shortDate(iso: string) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }

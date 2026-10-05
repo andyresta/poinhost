@@ -37,9 +37,9 @@ type Status struct {
 	SelfManaged   bool  `json:"selfManaged"`
 	UptimeSeconds int64 `json:"uptimeSeconds,omitempty"`
 
-	// APIConfigured: config agent sudah punya apiToken, jadi API Mobile
-	// Control bisa dipakai. Tanpa token, seluruh endpoint selain /healthz
-	// menolak — kegagalan konfigurasi tidak pernah berubah jadi akses bebas.
+	// APIConfigured: config agent sudah punya token pendaftaran, jadi HP
+	// bisa mendaftar. Tanpa token, pendaftaran ditutup — kegagalan
+	// konfigurasi tidak pernah berubah jadi akses bebas.
 	APIConfigured bool `json:"apiConfigured"`
 
 	// Arch dan dukungannya menentukan apakah tombol Pasang boleh aktif.
@@ -117,7 +117,7 @@ func (s *Service) Detect(ctx context.Context, serverID string) (*Status, error) 
 	if acfg != nil {
 		st.Listen = acfg.Listen
 		st.SelfManaged = acfg.SelfServer.Enabled
-		st.APIConfigured = strings.TrimSpace(acfg.APIToken) != ""
+		st.APIConfigured = strings.TrimSpace(acfg.EnrollToken) != ""
 	}
 
 	switch {
@@ -192,10 +192,15 @@ func decodeConfig(b64 string) *agentcfg.Config {
 	if json.Unmarshal(raw, &cfg) != nil {
 		return nil
 	}
-	// Config lengkap dikembalikan, token API dan semuanya — tapi Status yang
-	// dibentuk Detect hanya membawa APIConfigured. Tokennya baru menyeberang
-	// ke UI kalau user memintanya lewat APIToken(), supaya ia tidak ikut
-	// terbawa di setiap refresh panel.
+	// Migrasi nama field lama diterapkan DI SINI juga, bukan hanya di
+	// agentcfg.Load: tanpa itu, agent yang config-nya masih memakai nama
+	// lama akan dilaporkan "belum punya token" di panel, padahal agent-nya
+	// sendiri memakainya dengan baik.
+	cfg.Normalize()
+	// Config lengkap dikembalikan, token pendaftaran dan semuanya — tapi
+	// Status yang dibentuk Detect hanya membawa APIConfigured. Tokennya baru
+	// menyeberang ke UI kalau user memintanya lewat EnrollToken(), supaya ia
+	// tidak ikut terbawa di setiap refresh panel.
 	return &cfg
 }
 

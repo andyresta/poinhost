@@ -33,20 +33,46 @@ putus-sambung saat jaringan seluler berpindah — persis logika yang tidak
 diinginkan ada di HP. Kalau nanti butuh dorongan dari server, SSE lebih cocok
 daripada WebSocket karena arahnya memang satu.
 
+## Alur mendaftarkan HP
+
+1. **Buat token pendaftaran** di panel Mobile Control.
+2. **Tempel di HP.** HP memanggil `POST /v1/devices` dan menerima token
+   miliknya sendiri. Perangkatnya langsung berstatus **menunggu**.
+3. **Setujui di poinhost.** Perangkat yang menunggu muncul di panel dengan nama
+   dan waktu pendaftarannya.
+4. **Setelah disetujui**, token perangkat itu baru membuka `/v1/server`.
+
+Yang membuat alur ini bernilai: **token pendaftaran bukan kredensial akses.**
+Satu-satunya yang bisa dilakukan dengannya adalah mengantre — dan antrean itu
+terlihat jelas di layar pemiliknya. Jadi ia boleh dikirim lewat chat atau
+diketik ulang tanpa taruhan besar, dan yang menentukan akses tetap satu
+tindakan manusia di depan app desktop.
+
+Token perangkat **satu per HP**, disimpan sebagai hash SHA-256 — berkasnya ikut
+tersalin ke backup mana pun yang menyentuh direktori data agent, jadi token apa
+adanya di sana berarti setiap salinan adalah kunci yang masih hidup.
+Konsekuensi yang dicari: mencabut satu HP yang hilang tidak memutus HP lain.
+
+Memutar token pendaftaran **tidak** memutus perangkat yang sudah disetujui.
+Yang hilang hanya kemampuan mendaftarkan HP baru dengan token lama.
+
 ## Endpoint
 
-Dua, dan keduanya **baca**.
+Permukaannya ada **dua, dan sengaja terpisah**.
+
+### Publik — yang diterbitkan nginx ke internet
 
 | Endpoint | Auth | Isi |
 |----------|------|-----|
 | `GET /healthz` | tidak | `ok`, `version`, `uptimeSeconds` |
-| `GET /v1/server` | ya | identitas mesin + metriknya + versi agent |
+| `POST /v1/devices` | token pendaftaran | menukar token pendaftaran dengan token perangkat; status `pending` |
+| `GET /v1/server` | token perangkat (disetujui) | identitas mesin + metriknya + versi agent |
 
 ```json
 {
   "version": "1.0.0",
   "uptimeSeconds": 86400,
-  "id": "6f1c…", "name": "production", "host": "10.0.0.1",
+  "id": "6f1c...", "name": "production", "host": "10.0.0.1",
   "status": {
     "connection": "online", "osName": "Ubuntu 24.04", "hostname": "prod",
     "uptimeSeconds": 1209600, "cpuCores": 4, "cpuUsedPct": 12.5,
@@ -63,40 +89,61 @@ DIHILANGKAN selama metriknya belum pernah terkumpul, bukan dikirim sebagai
 nol: layar dengan CPU 0% dan disk 0 GB terlihat seperti server sehat yang
 menganggur.
 
-Galat selalu `{"error": "..."}` — `401` token salah atau tidak dikirim, `503`
-`apiToken` belum diset atau agent belum mengelola mesinnya sendiri.
+Galat selalu `{"error": "..."}`, dan `/v1/server` menambahkan `status` saat
+perangkatnya dikenal:
 
-Semuanya digabung dalam satu respons supaya HP cukup satu permintaan untuk
-menggambar layarnya; di jaringan seluler, dua permintaan berarti dua kali
-menunggu. Angkanya dibaca dari snapshot Collector, tanpa round-trip SSH, jadi
-endpoint ini murah untuk di-poll.
+| Kode | Arti | Yang harus dilakukan HP |
+|------|------|--------------------------|
+| `401` | token tidak dikenal | daftar ulang |
+| `403` + `"status":"pending"` | belum disetujui | tampilkan layar menunggu, terus poll |
+| `403` + `"status":"revoked"` | akses dicabut | beri tahu pemilik |
+| `503` | pendaftaran belum dibuka, atau agent belum mengelola mesinnya sendiri | - |
+
+Tiga jawaban itu dibedakan justru supaya layar HP tidak cuma bisa bilang
+"gagal": masing-masing menuntut tindakan yang berbeda dari pemiliknya.
+
+Tokennya dikembalikan di langkah 2, bukan nanti setelah disetujui, supaya HP
+tidak perlu menyimpan token pendaftaran dan menukarnya lagi belakangan. HP
+cukup menyimpan satu token lalu memanggil `/v1/server` seperti biasa - selama
+masih 403, tampilkan layar menunggu. Tidak ada handshake yang perlu ditulis di
+sisi HP.
+
+### Admin — unix socket, tidak pernah di port TCP
+
+`/var/lib/poinhost-agent/admin.sock`, mode 0600 di dalam direktori bermode
+0700 milik root. App desktop memanggilnya lewat `curl --unix-socket` di dalam
+sesi SSH-nya.
+
+| Endpoint | Isi |
+|----------|-----|
+| `GET /admin/devices` | daftar perangkat, yang menunggu di atas |
+| `POST /admin/devices/{id}/approve` | setujui |
+| `POST /admin/devices/{id}/revoke` | cabut, token tetap dikenali |
+| `DELETE /admin/devices/{id}` | hapus, token jadi asing |
+
+Tidak ada token di permukaan ini, dan itu bukan kelalaian: siapa pun yang bisa
+membuka socket-nya sudah root, dan root bisa membaca seluruh config agent
+beserta kuncinya. Token tambahan hanya akan jadi rahasia lain yang harus
+disimpan dan diputar, tanpa menghalangi siapa pun yang belum terhalang izin
+berkas.
+
+Yang dihindari dengan memisahkannya dari port publik: vhost nginx yang
+menerbitkan agent meneruskan **seluruh path** ke port agent. Kalau persetujuan
+hidup di port yang sama, ia ikut terbit ke internet dan hanya dijaga satu
+string rahasia lagi. Di socket, tidak ada permintaan dari internet yang bisa
+sampai ke sana sama sekali. Interface `DeviceStore` yang dipakai permukaan
+publik juga tidak punya metode menyetujui, jadi handler publik yang menyetujui
+tidak bisa ditulis tanpa lebih dulu melebarkan kontraknya.
 
 Nama field dipetakan eksplisit di `statusJSON`, bukan lewat tag JSON di tipe
 internal: mengganti nama field internal tidak boleh diam-diam mengubah kontrak
 aplikasi yang sudah terpasang di HP orang.
 
 **Tidak ada endpoint daftar server**, dan `Reader` di sisi Go pun hanya bisa
-menyebut `Self()`. Satu agent hanya mengurus mesinnya sendiri, jadi endpoint
-jamak hanya akan mengembalikan satu baris yang sama selamanya — bentuk yang
-menjanjikan sesuatu yang tidak pernah ada, dan membuat HP menulis loop untuk
-koleksi beranggota satu. Agent yang di-update dari versi lama bisa MASIH
-menyimpan server yang dulu ditautkan; interface yang tidak punya ListServers
-membuat server-server itu mustahil ikut terlapor.
-
-## Autentikasi
-
-Bearer token, dibandingkan dengan `subtle.ConstantTimeCompare`. Token dibuat
-saat pemasangan dan bisa diganti dari panel Mobile Control di app desktop
-(**Ganti token**) — yang menulis config lalu me-restart agent, karena agent
-membaca config saat start.
-
-Config tanpa `apiToken` menutup seluruh endpoint selain `/healthz` dengan 503,
-**bukan** membukanya: kegagalan konfigurasi tidak boleh berubah jadi akses tanpa
-autentikasi.
-
-`/healthz` sengaja terbuka — app desktop memakainya untuk membedakan "terpasang
-tapi mati" dari "jalan", termasuk sebelum token ada, dan isinya tidak memuat
-apa pun yang rahasia.
+menyebut `Self()`. Satu agent hanya mengurus mesinnya sendiri. Agent yang
+di-update dari versi lama bisa MASIH menyimpan server yang dulu ditautkan;
+interface yang tidak punya ListServers membuat server-server itu mustahil ikut
+terlapor.
 
 ## Jalur jaringan
 

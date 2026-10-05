@@ -165,25 +165,38 @@ func TestParseKV(t *testing.T) {
 	}
 }
 
-// apiToken tidak boleh ikut dibawa ke frontend. Ia dibutuhkan agent, bukan
+// Token tidak boleh ikut dibawa ke frontend. Ia dibutuhkan agent, bukan
 // layar — dan rahasia yang tidak pernah menyeberang tidak bisa bocor lewat
 // log atau devtools. Status hanya melaporkan APAKAH tokennya sudah ada.
 func TestDetect_StatusTidakMembocorkanAPIToken(t *testing.T) {
-	cfgJSON := `{"listen":"127.0.0.1:7898","apiToken":"api-rahasia"}`
+	cfgJSON := `{"listen":"127.0.0.1:7898","enrollToken":"rahasia"}`
 	cfg := decodeConfig(b64(cfgJSON))
 	if cfg == nil {
 		t.Fatal("decodeConfig mengembalikan nil")
 	}
 
 	st := &Status{}
-	st.APIConfigured = cfg.APIToken != ""
+	st.APIConfigured = cfg.EnrollToken != ""
 	st.Listen = cfg.Listen
 
 	if !st.APIConfigured {
-		t.Error("status tidak menandai apiToken sudah terisi")
+		t.Error("status tidak menandai token sudah terisi")
 	}
-	if strings.Contains(renderStatus(st), "api-rahasia") {
-		t.Error("apiToken ikut masuk ke Status yang dikirim ke frontend")
+	if strings.Contains(renderStatus(st), "rahasia") {
+		t.Error("token ikut masuk ke Status yang dikirim ke frontend")
+	}
+}
+
+// Agent yang config-nya masih memakai nama field lama harus tetap terbaca
+// "sudah punya token". Tanpa ini panel menawarkan membuat token baru untuk
+// agent yang sebenarnya sudah siap, dan menekannya memutus HP yang terdaftar.
+func TestDecodeConfig_MemigrasiNamaTokenLama(t *testing.T) {
+	cfg := decodeConfig(b64(`{"listen":"127.0.0.1:7898","apiToken":"rahasia-lama"}`))
+	if cfg == nil {
+		t.Fatal("decodeConfig mengembalikan nil")
+	}
+	if cfg.EnrollToken != "rahasia-lama" {
+		t.Errorf("EnrollToken = %q, mau nilai apiToken lama", cfg.EnrollToken)
 	}
 }
 

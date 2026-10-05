@@ -1636,17 +1636,18 @@ func (a *App) AgentLogs(serverID string, lines int) (string, error) {
 	return a.agentSvc.Logs(ctx, serverID, lines)
 }
 
-// MobileControlToken membaca token API Mobile Control dari config agent,
-// untuk disalin user ke aplikasi mobile-nya.
-func (a *App) MobileControlToken(serverID string) (*agentctl.AccessToken, error) {
+// MobileControlToken membaca token PENDAFTARAN Mobile Control dari config
+// agent, untuk disalin user ke aplikasi mobile-nya. Token ini tidak membuka
+// data apa pun sampai perangkatnya disetujui.
+func (a *App) MobileControlToken(serverID string) (*agentctl.EnrollToken, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
 	return a.agentSvc.APIToken(ctx, serverID)
 }
 
-// RotateMobileControlToken mengganti token API dengan yang baru lalu
-// me-restart agent, sehingga token lama langsung tidak berlaku.
-func (a *App) RotateMobileControlToken(serverID string) (*agentctl.AccessToken, error) {
+// RotateMobileControlToken mengganti token pendaftaran lalu me-restart agent.
+// Perangkat yang sudah disetujui tidak ikut terputus — tokennya sendiri.
+func (a *App) RotateMobileControlToken(serverID string) (*agentctl.EnrollToken, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
 	defer cancel()
 	return a.agentSvc.RotateAPIToken(ctx, serverID)
@@ -1673,4 +1674,35 @@ func (a *App) MobileControlUnpublish(serverID string) (*agentctl.PublishInfo, er
 	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
 	defer cancel()
 	return a.agentSvc.Unpublish(ctx, serverID)
+}
+
+// MobileControlDevices membaca perangkat yang terdaftar di agent, beserta
+// mana yang masih menunggu persetujuan.
+func (a *App) MobileControlDevices(serverID string) ([]agentctl.Device, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.Devices(ctx, serverID)
+}
+
+// ApproveMobileControlDevice menyetujui satu perangkat, sehingga tokennya
+// mulai berlaku.
+func (a *App) ApproveMobileControlDevice(serverID, deviceID string) ([]agentctl.Device, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.ApproveDevice(ctx, serverID, deviceID)
+}
+
+// RevokeMobileControlDevice mencabut akses satu perangkat tanpa menghapusnya,
+// sehingga HP-nya tahu aksesnya diambil.
+func (a *App) RevokeMobileControlDevice(serverID, deviceID string) ([]agentctl.Device, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.RevokeDevice(ctx, serverID, deviceID)
+}
+
+// DeleteMobileControlDevice menghapus perangkat sepenuhnya.
+func (a *App) DeleteMobileControlDevice(serverID, deviceID string) ([]agentctl.Device, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.DeleteDevice(ctx, serverID, deviceID)
 }

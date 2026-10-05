@@ -75,15 +75,15 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*Status, err
 		return nil, err
 	}
 
-	apiToken, err := randomToken()
+	enrollToken, err := randomToken()
 	if err != nil {
 		return nil, err
 	}
 
 	acfg := &agentcfg.Config{
-		DataDir:  DataDir,
-		Listen:   listen,
-		APIToken: apiToken,
+		DataDir:     DataDir,
+		Listen:      listen,
+		EnrollToken: enrollToken,
 	}
 
 	var authorizedKey string

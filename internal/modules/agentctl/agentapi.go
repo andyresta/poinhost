@@ -2,41 +2,35 @@ package agentctl
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/andyresta/poinhost/internal/agent/agentcfg"
 )
 
-// callAgent memanggil HTTP lokal agent lewat SSH.
+// AdminSocket adalah unix socket permukaan admin agent.
+const AdminSocket = DataDir + "/admin.sock"
+
+// callAdmin memanggil permukaan admin agent lewat SSH.
 //
-// Port agent hanya bind 127.0.0.1, jadi satu-satunya yang bisa menjangkaunya
-// adalah proses di mesin itu sendiri — `curl` yang dijalankan lewat SSH.
-// Bearer token dibaca dari config agent, bukan disimpan di sisi desktop, supaya
-// tidak ada dua sumber kebenaran yang bisa berbeda.
-func (s *Service) callAgent(ctx context.Context, serverID, method, path string) (string, error) {
+// Lewat unix socket, bukan port TCP agent: socket itu ada di dalam direktori
+// data bermode 0700 milik root, sehingga vhost nginx yang menerbitkan agent ke
+// internet tidak punya jalan menyentuh persetujuan perangkat sama sekali.
+// Autentikasinya adalah izin berkas itu — app desktop sudah naik ke root di
+// sesi SSH-nya, dan tidak ada rahasia tambahan yang perlu disimpan di sini.
+func (s *Service) callAdmin(ctx context.Context, serverID, method, path string) (string, error) {
 	access, err := s.resolveAccess(serverID)
 	if err != nil {
 		return "", err
 	}
-	acfg, err := s.readConfig(ctx, access)
-	if err != nil {
-		return "", err
-	}
-	if strings.TrimSpace(acfg.APIToken) == "" {
-		return "", fmt.Errorf("config agent belum punya apiToken — pasang ulang agent")
-	}
-
-	script := "t=$(echo " + shellQuote(base64.StdEncoding.EncodeToString([]byte(acfg.APIToken))) + " | base64 -d)\n" +
-		`curl -fsS --max-time 10 -X ` + method +
-		` -H "Authorization: Bearer $t" http://127.0.0.1:` + strconv.Itoa(portOf(acfg.Listen)) + path + "\n"
+	script := "curl -fsS --max-time 10 -X " + method +
+		" --unix-socket " + shellQuote(AdminSocket) +
+		" http://localhost" + path + "\n"
 	res, err := s.run(ctx, access, script, 30*time.Second)
 	if err != nil {
-		return "", fmt.Errorf("agent tidak merespons — pastikan service-nya berjalan: %w", err)
+		return "", fmt.Errorf("agent tidak merespons — pastikan service-nya berjalan dan versinya sudah mendukung persetujuan perangkat: %w", err)
 	}
 	return strings.TrimSpace(res.Stdout), nil
 }

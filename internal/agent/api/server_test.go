@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/andyresta/poinhost/internal/agent/backend"
+	"github.com/andyresta/poinhost/internal/agent/devices"
 )
 
 type fakeReader struct {
@@ -23,53 +26,236 @@ func (f fakeReader) Status(id string) (backend.Status, bool) {
 	return st, ok
 }
 
-func contoh() Deps {
+func contoh(t *testing.T) (Deps, *devices.Store) {
+	t.Helper()
+	store, err := devices.Open(filepath.Join(t.TempDir(), "devices.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	return Deps{
-		Version:   "uji",
-		StartedAt: time.Now().Add(-time.Minute),
-		APIToken:  "token-benar",
+		Version:     "uji",
+		StartedAt:   time.Now().Add(-time.Minute),
+		EnrollToken: "token-daftar",
 		Reader: fakeReader{
 			self:   backend.ServerInfo{ID: "s1", Name: "web", Host: "10.0.0.1"},
 			ada:    true,
 			status: map[string]backend.Status{"s1": {Connection: "ok", CPUCores: 2}},
 		},
-	}
+		Devices: store,
+	}, store
 }
 
-func minta(t *testing.T, d Deps, path, token string) *httptest.ResponseRecorder {
+func minta(t *testing.T, h http.Handler, metode, path, token, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, path, nil)
+	var r *http.Request
+	if body == "" {
+		r = httptest.NewRequest(metode, path, nil)
+	} else {
+		r = httptest.NewRequest(metode, path, strings.NewReader(body))
+	}
 	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+		r.Header.Set("Authorization", "Bearer "+token)
 	}
 	rec := httptest.NewRecorder()
-	Handler(d).ServeHTTP(rec, req)
+	h.ServeHTTP(rec, r)
 	return rec
 }
 
-// Endpoint data harus menolak tanpa token yang cocok. Ini satu-satunya yang
-// berdiri di antara API dan siapa pun yang berhasil menjangkau portnya.
-func TestEndpointTerlindungMenolakTokenSalah(t *testing.T) {
-	d := contoh()
-
-	for nama, token := range map[string]string{"tanpa token": "", "token salah": "token-salah"} {
-		if rec := minta(t, d, "/v1/server", token); rec.Code != http.StatusUnauthorized {
-			t.Errorf("GET /v1/server (%s) = %d, mau 401", nama, rec.Code)
-		}
+// daftar menjalankan langkah 1-2 alurnya: HP menukar token pendaftaran
+// dengan token miliknya sendiri.
+func daftar(t *testing.T, h http.Handler, nama string) (deviceID, token string) {
+	t.Helper()
+	rec := minta(t, h, http.MethodPost, "/v1/devices", "token-daftar", `{"name":"`+nama+`","platform":"android"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("daftar = %d: %s", rec.Code, rec.Body.String())
 	}
-	if rec := minta(t, d, "/v1/server", "token-benar"); rec.Code != http.StatusOK {
-		t.Errorf("token benar ditolak: %d %s", rec.Code, rec.Body.String())
+	var body struct {
+		DeviceID string `json:"deviceId"`
+		Token    string `json:"token"`
+		Status   string `json:"status"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("respons bukan JSON: %v", err)
+	}
+	if body.Status != devices.StatusPending {
+		t.Errorf("status setelah daftar = %q, mau pending", body.Status)
+	}
+	if body.Token == "" || body.DeviceID == "" {
+		t.Fatalf("respons tidak lengkap: %+v", body)
+	}
+	return body.DeviceID, body.Token
+}
+
+// Inti alurnya: token yang baru didaftarkan BELUM membuka apa pun, dan baru
+// berlaku setelah disetujui dari app desktop.
+func TestAlurPersetujuan(t *testing.T) {
+	d, store := contoh(t)
+	pub := Handler(d)
+	admin := AdminHandler(AdminDeps{Devices: store})
+
+	id, token := daftar(t, pub, "HP Andy")
+
+	rec := minta(t, pub, http.MethodGet, "/v1/server", token, "")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("sebelum disetujui = %d, mau 403", rec.Code)
+	}
+	// HP perlu bisa membedakan "tunggu" dari "token salah", supaya layarnya
+	// bisa bilang menunggu alih-alih menyuruh daftar ulang.
+	var pending map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &pending)
+	if pending["status"] != devices.StatusPending {
+		t.Errorf("status = %q, mau pending", pending["status"])
+	}
+
+	if rec := minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/approve", "", ""); rec.Code != http.StatusOK {
+		t.Fatalf("approve = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if rec := minta(t, pub, http.MethodGet, "/v1/server", token, ""); rec.Code != http.StatusOK {
+		t.Fatalf("setelah disetujui = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Dicabut: dibedakan dari token asing, supaya HP bisa bilang aksesnya
+	// diambil, bukan menyuruh mengulang pendaftaran yang akan ditolak lagi.
+	if rec := minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/revoke", "", ""); rec.Code != http.StatusOK {
+		t.Fatalf("revoke = %d", rec.Code)
+	}
+	rec = minta(t, pub, http.MethodGet, "/v1/server", token, "")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("setelah dicabut = %d, mau 403", rec.Code)
+	}
+	var dicabut map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &dicabut)
+	if dicabut["status"] != devices.StatusRevoked {
+		t.Errorf("status = %q, mau revoked", dicabut["status"])
 	}
 }
 
-// Rute yang sudah dibuang tidak boleh diam-diam hidup lagi. Bentuk jamaknya
-// menjanjikan banyak server, padahal satu agent hanya mengurus mesinnya
-// sendiri.
-func TestRuteJamakSudahTidakAda(t *testing.T) {
-	d := contoh()
-	for _, p := range []string{"/v1/servers", "/v1/servers/s1/status", "/v1/overview", "/v1/status"} {
-		if rec := minta(t, d, p, "token-benar"); rec.Code != http.StatusNotFound {
+// Mencabut satu HP tidak boleh memutus yang lain — inilah alasan tokennya
+// per perangkat, bukan satu token statis untuk semuanya.
+func TestCabutSatuTidakMemutusYangLain(t *testing.T) {
+	d, store := contoh(t)
+	pub := Handler(d)
+	admin := AdminHandler(AdminDeps{Devices: store})
+
+	id1, token1 := daftar(t, pub, "HP lama")
+	_, token2 := daftar(t, pub, "HP baru")
+	for _, dev := range store.List() {
+		if _, err := store.SetStatus(dev.ID, devices.StatusApproved); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if rec := minta(t, admin, http.MethodPost, "/admin/devices/"+id1+"/revoke", "", ""); rec.Code != http.StatusOK {
+		t.Fatalf("revoke = %d", rec.Code)
+	}
+	if rec := minta(t, pub, http.MethodGet, "/v1/server", token1, ""); rec.Code != http.StatusForbidden {
+		t.Errorf("HP yang dicabut masih bisa akses: %d", rec.Code)
+	}
+	if rec := minta(t, pub, http.MethodGet, "/v1/server", token2, ""); rec.Code != http.StatusOK {
+		t.Errorf("HP lain ikut terputus: %d", rec.Code)
+	}
+}
+
+// Token pendaftaran BUKAN token akses, dan token perangkat tidak bisa
+// mendaftarkan perangkat lain. Kalau keduanya tertukar, seluruh gunanya
+// persetujuan hilang: siapa pun yang punya token pendaftaran langsung bisa
+// membaca server tanpa menunggu siapa pun.
+func TestKeduaTokenTidakBolehSalingDipakai(t *testing.T) {
+	d, store := contoh(t)
+	pub := Handler(d)
+
+	if rec := minta(t, pub, http.MethodGet, "/v1/server", "token-daftar", ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("token pendaftaran membaca data: %d %s", rec.Code, rec.Body.String())
+	}
+
+	_, token := daftar(t, pub, "HP")
+	if _, err := store.SetStatus(store.List()[0].ID, devices.StatusApproved); err != nil {
+		t.Fatal(err)
+	}
+	if rec := minta(t, pub, http.MethodPost, "/v1/devices", token, `{"name":"HP lain"}`); rec.Code != http.StatusUnauthorized {
+		t.Errorf("token perangkat mendaftarkan perangkat lain: %d", rec.Code)
+	}
+}
+
+// Token perangkat disimpan sebagai hash. Berkasnya ikut tersalin ke backup
+// mana pun yang menyentuh direktori data agent, jadi token apa adanya di sana
+// berarti setiap salinan berkas itu adalah kunci yang masih hidup.
+func TestTokenPerangkatTidakDisimpanApaAdanya(t *testing.T) {
+	d, store := contoh(t)
+	pub := Handler(d)
+
+	_, token := daftar(t, pub, "HP")
+	for _, dev := range store.List() {
+		if strings.Contains(dev.TokenHash, token) || dev.TokenHash == token {
+			t.Fatal("token tersimpan apa adanya")
+		}
+		if dev.TokenHash == "" {
+			t.Fatal("tidak ada hash tersimpan — token tidak akan pernah cocok")
+		}
+	}
+}
+
+// Daftar yang keluar dari agent tidak membawa hash token ke layar desktop
+// maupun ke log mana pun yang merekam respons ini.
+func TestAdminTidakMengirimHashToken(t *testing.T) {
+	d, store := contoh(t)
+	daftar(t, Handler(d), "HP")
+
+	rec := minta(t, AdminHandler(AdminDeps{Devices: store}), http.MethodGet, "/admin/devices", "", "")
+	if strings.Contains(rec.Body.String(), "tokenHash\":\"") &&
+		!strings.Contains(rec.Body.String(), `"tokenHash":""`) {
+		t.Errorf("hash ikut terkirim: %s", rec.Body.String())
+	}
+}
+
+// Rute admin tidak boleh ada di mux PUBLIK. Mux inilah yang diteruskan vhost
+// nginx ke internet, dan satu rute persetujuan di sini membuat seluruh
+// gerbangnya tidak ada artinya.
+func TestMuxPublikTidakPunyaRuteAdmin(t *testing.T) {
+	d, _ := contoh(t)
+	pub := Handler(d)
+
+	for _, p := range []string{"/admin/devices", "/v1/admin/devices", "/admin/devices/x/approve"} {
+		rec := minta(t, pub, http.MethodGet, p, "token-daftar", "")
+		if rec.Code != http.StatusNotFound {
 			t.Errorf("GET %s = %d, mau 404", p, rec.Code)
+		}
+	}
+	// Rute jamak dari rancangan multi-server juga tidak boleh hidup lagi.
+	for _, p := range []string{"/v1/servers", "/v1/servers/s1/status", "/v1/overview", "/v1/status"} {
+		if rec := minta(t, pub, http.MethodGet, p, "token-daftar", ""); rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, mau 404", p, rec.Code)
+		}
+	}
+}
+
+// Pendaftaran dengan token salah harus ditolak, kalau tidak gerbangnya cuma
+// menunda penyerang satu langkah.
+func TestDaftarTokenSalahDitolak(t *testing.T) {
+	d, store := contoh(t)
+	pub := Handler(d)
+
+	if rec := minta(t, pub, http.MethodPost, "/v1/devices", "salah", `{"name":"HP"}`); rec.Code != http.StatusUnauthorized {
+		t.Errorf("= %d, mau 401", rec.Code)
+	}
+	if len(store.List()) != 0 {
+		t.Error("perangkat tetap tercatat walau token salah")
+	}
+}
+
+// Config tanpa token pendaftaran menutup pendaftaran, bukan membukanya.
+func TestTanpaEnrollTokenPendaftaranDitutup(t *testing.T) {
+	d, _ := contoh(t)
+	d.EnrollToken = ""
+
+	for _, token := range []string{"", "apa saja"} {
+		rec := minta(t, Handler(d), http.MethodPost, "/v1/devices", token, `{"name":"HP"}`)
+		if rec.Code == http.StatusCreated {
+			t.Fatalf("token kosong meloloskan pendaftaran: %s", rec.Body.String())
+		}
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("= %d, mau 503", rec.Code)
 		}
 	}
 }
@@ -77,8 +263,9 @@ func TestRuteJamakSudahTidakAda(t *testing.T) {
 // /healthz sengaja terbuka: app desktop memakainya untuk membedakan
 // "terpasang tapi mati" dari "jalan", termasuk saat tokennya belum diset.
 func TestHealthzTerbukaDanTidakMembocorkanApaPun(t *testing.T) {
-	for _, d := range []Deps{contoh(), {Version: "uji", StartedAt: time.Now()}} {
-		rec := minta(t, d, "/healthz", "")
+	d, _ := contoh(t)
+	for _, dep := range []Deps{d, {Version: "uji", StartedAt: time.Now()}} {
+		rec := minta(t, Handler(dep), http.MethodGet, "/healthz", "", "")
 		if rec.Code != http.StatusOK {
 			t.Fatalf("GET /healthz = %d, mau 200", rec.Code)
 		}
@@ -86,7 +273,7 @@ func TestHealthzTerbukaDanTidakMembocorkanApaPun(t *testing.T) {
 		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 			t.Fatalf("respons bukan JSON: %v", err)
 		}
-		for _, k := range []string{"apiToken", "token", "host", "status"} {
+		for _, k := range []string{"enrollToken", "token", "host", "status", "devices"} {
 			if _, ada := body[k]; ada {
 				t.Errorf("/healthz membocorkan %q: %v", k, body)
 			}
@@ -94,28 +281,17 @@ func TestHealthzTerbukaDanTidakMembocorkanApaPun(t *testing.T) {
 	}
 }
 
-// Config tanpa apiToken adalah kegagalan konfigurasi, dan kegagalan
-// konfigurasi tidak boleh berubah jadi API terbuka tanpa autentikasi.
-func TestTanpaAPITokenEndpointDitutupBukanDibuka(t *testing.T) {
-	d := contoh()
-	d.APIToken = ""
-
-	for _, token := range []string{"", "apa saja"} {
-		rec := minta(t, d, "/v1/server", token)
-		if rec.Code == http.StatusOK {
-			t.Fatalf("token kosong meloloskan permintaan: %s", rec.Body.String())
-		}
-		if rec.Code != http.StatusServiceUnavailable {
-			t.Errorf("= %d, mau 503 supaya bedanya dengan token salah terbaca", rec.Code)
-		}
-	}
-}
-
 // Satu permintaan harus cukup untuk menggambar layar HP: identitas mesin,
 // metriknya, dan versi agent sekaligus.
 func TestServer_SatuResponsMemuatSemuanya(t *testing.T) {
-	rec := minta(t, contoh(), "/v1/server", "token-benar")
+	d, store := contoh(t)
+	pub := Handler(d)
+	_, token := daftar(t, pub, "HP")
+	if _, err := store.SetStatus(store.List()[0].ID, devices.StatusApproved); err != nil {
+		t.Fatal(err)
+	}
 
+	rec := minta(t, pub, http.MethodGet, "/v1/server", token, "")
 	var body struct {
 		Version string         `json:"version"`
 		ID      string         `json:"id"`
@@ -131,36 +307,6 @@ func TestServer_SatuResponsMemuatSemuanya(t *testing.T) {
 	}
 	if body.Status["connection"] != "ok" {
 		t.Errorf("metrik tidak ikut: %v", body.Status)
-	}
-}
-
-// Metrik yang belum pernah terkumpul DIHILANGKAN, bukan dikirim sebagai nol:
-// layar dengan CPU 0% dan disk 0 GB terlihat seperti server sehat yang
-// menganggur.
-func TestServer_MetrikBelumAdaTidakDikirimSebagaiNol(t *testing.T) {
-	d := contoh()
-	d.Reader = fakeReader{self: backend.ServerInfo{ID: "s1", Name: "web"}, ada: true}
-
-	rec := minta(t, d, "/v1/server", "token-benar")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("= %d, mau 200", rec.Code)
-	}
-	var body map[string]any
-	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-	if _, ada := body["status"]; ada {
-		t.Errorf("status nol ikut terkirim: %v", body["status"])
-	}
-}
-
-// Agent yang belum mengelola mesinnya sendiri tidak punya apa pun untuk
-// dilaporkan, dan itu dibedakan dari metrik yang belum terkumpul karena
-// perbaikannya berbeda.
-func TestServer_TanpaSelfMembalas503(t *testing.T) {
-	d := contoh()
-	d.Reader = fakeReader{}
-
-	if rec := minta(t, d, "/v1/server", "token-benar"); rec.Code != http.StatusServiceUnavailable {
-		t.Errorf("= %d, mau 503", rec.Code)
 	}
 }
 

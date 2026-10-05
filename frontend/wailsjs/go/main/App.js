@@ -22,6 +22,10 @@ export function ApplyComposeConfig(arg1, arg2) {
   return window['go']['main']['App']['ApplyComposeConfig'](arg1, arg2);
 }
 
+export function ApproveMobileControlDevice(arg1, arg2) {
+  return window['go']['main']['App']['ApproveMobileControlDevice'](arg1, arg2);
+}
+
 export function ChmodFile(arg1) {
   return window['go']['main']['App']['ChmodFile'](arg1);
 }
@@ -100,6 +104,10 @@ export function DeleteFiles(arg1) {
 
 export function DeleteFirewallRule(arg1, arg2, arg3) {
   return window['go']['main']['App']['DeleteFirewallRule'](arg1, arg2, arg3);
+}
+
+export function DeleteMobileControlDevice(arg1, arg2) {
+  return window['go']['main']['App']['DeleteMobileControlDevice'](arg1, arg2);
 }
 
 export function DeleteServer(arg1) {
@@ -366,6 +374,10 @@ export function ListWebsites(arg1) {
   return window['go']['main']['App']['ListWebsites'](arg1);
 }
 
+export function MobileControlDevices(arg1) {
+  return window['go']['main']['App']['MobileControlDevices'](arg1);
+}
+
 export function MobileControlPublish(arg1) {
   return window['go']['main']['App']['MobileControlPublish'](arg1);
 }
@@ -512,6 +524,10 @@ export function ResizeTerminal(arg1, arg2, arg3) {
 
 export function RestartDockerContainer(arg1, arg2) {
   return window['go']['main']['App']['RestartDockerContainer'](arg1, arg2);
+}
+
+export function RevokeMobileControlDevice(arg1, arg2) {
+  return window['go']['main']['App']['RevokeMobileControlDevice'](arg1, arg2);
 }
 
 export function RevokeWebsiteDatabaseUser(arg1) {

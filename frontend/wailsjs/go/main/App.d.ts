@@ -24,6 +24,8 @@ export function AllowDockerDatabaseAccess(arg1:string,arg2:string):Promise<firew
 
 export function ApplyComposeConfig(arg1:string,arg2:string):Promise<docker.ComposeInfo>;
 
+export function ApproveMobileControlDevice(arg1:string,arg2:string):Promise<Array<agentctl.Device>>;
+
 export function ChmodFile(arg1:files.ChmodRequest):Promise<void>;
 
 export function CloseServerTab(arg1:string):Promise<void>;
@@ -63,6 +65,8 @@ export function DbXferStatus(arg1:string):Promise<dbxfer.Progress>;
 export function DeleteFiles(arg1:files.DeleteRequest):Promise<void>;
 
 export function DeleteFirewallRule(arg1:string,arg2:string,arg3:string):Promise<firewall.ListResponse>;
+
+export function DeleteMobileControlDevice(arg1:string,arg2:string):Promise<Array<agentctl.Device>>;
 
 export function DeleteServer(arg1:string):Promise<void>;
 
@@ -196,11 +200,13 @@ export function ListWebsiteServerDatabaseDomains(arg1:string,arg2:string):Promis
 
 export function ListWebsites(arg1:string):Promise<website.ListResponse>;
 
+export function MobileControlDevices(arg1:string):Promise<Array<agentctl.Device>>;
+
 export function MobileControlPublish(arg1:agentctl.PublishRequest):Promise<agentctl.PublishInfo>;
 
 export function MobileControlPublishStatus(arg1:string):Promise<agentctl.PublishInfo>;
 
-export function MobileControlToken(arg1:string):Promise<agentctl.AccessToken>;
+export function MobileControlToken(arg1:string):Promise<agentctl.EnrollToken>;
 
 export function MobileControlUnpublish(arg1:string):Promise<agentctl.PublishInfo>;
 
@@ -270,9 +276,11 @@ export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void
 
 export function RestartDockerContainer(arg1:string,arg2:string):Promise<void>;
 
+export function RevokeMobileControlDevice(arg1:string,arg2:string):Promise<Array<agentctl.Device>>;
+
 export function RevokeWebsiteDatabaseUser(arg1:website.DBDatabaseUserRequest):Promise<void>;
 
-export function RotateMobileControlToken(arg1:string):Promise<agentctl.AccessToken>;
+export function RotateMobileControlToken(arg1:string):Promise<agentctl.EnrollToken>;
 
 export function SaveServer(arg1:servers.SaveServerRequest):Promise<servers.Server>;
 

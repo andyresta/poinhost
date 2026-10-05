@@ -1,11 +1,53 @@
 export namespace agentctl {
 	
-	export class AccessToken {
+	export class Device {
+	    id: string;
+	    name: string;
+	    platform?: string;
+	    status: string;
+	    // Go type: time
+	    createdAt: any;
+	    // Go type: time
+	    approvedAt?: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Device(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.platform = source["platform"];
+	        this.status = source["status"];
+	        this.createdAt = this.convertValues(source["createdAt"], null);
+	        this.approvedAt = this.convertValues(source["approvedAt"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class EnrollToken {
 	    token: string;
 	    port: number;
 	
 	    static createFrom(source: any = {}) {
-	        return new AccessToken(source);
+	        return new EnrollToken(source);
 	    }
 	
 	    constructor(source: any = {}) {
@@ -116,7 +158,6 @@ export namespace agentctl {
 	    listen?: string;
 	    selfManaged: boolean;
 	    uptimeSeconds?: number;
-	    serverCount?: number;
 	    apiConfigured: boolean;
 	    arch?: string;
 	    archSupported: boolean;
@@ -142,7 +183,6 @@ export namespace agentctl {
 	        this.listen = source["listen"];
 	        this.selfManaged = source["selfManaged"];
 	        this.uptimeSeconds = source["uptimeSeconds"];
-	        this.serverCount = source["serverCount"];
 	        this.apiConfigured = source["apiConfigured"];
 	        this.arch = source["arch"];
 	        this.archSupported = source["archSupported"];

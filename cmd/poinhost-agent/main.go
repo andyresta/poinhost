@@ -18,9 +18,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -28,6 +30,7 @@ import (
 	"github.com/andyresta/poinhost/internal/agent/agentcfg"
 	"github.com/andyresta/poinhost/internal/agent/api"
 	"github.com/andyresta/poinhost/internal/agent/backend"
+	"github.com/andyresta/poinhost/internal/agent/devices"
 	"github.com/andyresta/poinhost/internal/core/config"
 	"github.com/andyresta/poinhost/internal/core/database"
 	"github.com/andyresta/poinhost/internal/core/secrets"
@@ -75,6 +78,11 @@ func run(cfgPath string) error {
 	}
 	defer stack.Close()
 
+	devStore, err := devices.Open(filepath.Join(acfg.DataDir, "devices.json"))
+	if err != nil {
+		return err
+	}
+
 	log.Printf("poinhost-agent %s — data %s, listen %s", Version, acfg.DataDir, acfg.Listen)
 
 	var wg sync.WaitGroup
@@ -82,10 +90,11 @@ func run(cfgPath string) error {
 	srv := &http.Server{
 		Addr: acfg.Listen,
 		Handler: api.Handler(api.Deps{
-			Version:   Version,
-			StartedAt: time.Now(),
-			APIToken:  acfg.APIToken,
-			Reader:    stack.backend,
+			Version:     Version,
+			StartedAt:   time.Now(),
+			EnrollToken: acfg.EnrollToken,
+			Reader:      stack.backend,
+			Devices:     devStore,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
@@ -99,15 +108,66 @@ func run(cfgPath string) error {
 		}
 	}()
 
+	// Permukaan admin TIDAK ikut di listener TCP di atas — lihat
+	// api.AdminHandler. Ia hanya dilayani lewat socket di direktori data
+	// (mode 0700, milik root), sehingga vhost nginx yang menerbitkan agent
+	// tidak punya jalan menyentuhnya.
+	adminSrv := &http.Server{
+		Handler:           api.AdminHandler(api.AdminDeps{Devices: devStore}),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	adminPath := filepath.Join(acfg.DataDir, "admin.sock")
+	adminLn, err := listenAdmin(adminPath)
+	if err != nil {
+		// Tidak fatal: tanpa socket admin, API publik tetap melayani
+		// perangkat yang sudah disetujui. Yang hilang hanya kemampuan
+		// menyetujui yang baru, dan itu lebih baik daripada agent yang
+		// menolak start sehingga HP yang sudah jalan ikut mati.
+		log.Printf("socket admin %s: %v — persetujuan perangkat tidak tersedia", adminPath, err)
+	} else {
+		defer os.Remove(adminPath)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := adminSrv.Serve(adminLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("admin: %v", err)
+			}
+		}()
+	}
+
 	<-ctx.Done()
 	log.Print("poinhost-agent: shutdown…")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdownCtx)
+	_ = adminSrv.Shutdown(shutdownCtx)
 
 	wg.Wait()
 	return nil
+}
+
+// listenAdmin membuka unix socket untuk permukaan admin.
+//
+// Socket sisa proses sebelumnya dihapus dulu: systemd me-restart agent setelah
+// crash, dan bind ke path yang masih ada selalu gagal — tanpa ini, satu kali
+// mati tidak bersih berarti persetujuan perangkat tidak pernah hidup lagi
+// sampai seseorang menghapus berkasnya dengan tangan.
+func listenAdmin(path string) (net.Listener, error) {
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	// Izin berkas ADALAH autentikasinya, jadi disetel eksplisit dan tidak
+	// diserahkan ke umask proses.
+	if err := os.Chmod(path, 0o600); err != nil {
+		_ = ln.Close()
+		return nil, err
+	}
+	return ln, nil
 }
 
 // stack adalah seluruh dependensi poinhost yang dipakai agent.

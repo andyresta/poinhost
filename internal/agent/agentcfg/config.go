@@ -50,12 +50,21 @@ type Config struct {
 	// sebagai server SSH biasa ke 127.0.0.1.
 	SelfServer SelfServer `json:"selfServer"`
 
-	// APIToken melindungi seluruh endpoint HTTP kecuali /healthz. Meski
-	// sekarang hanya bisa dijangkau dari mesin itu sendiri, token ini ada
-	// sejak awal supaya saat nanti endpoint-nya dipublikasikan lewat nginx
-	// tidak ada momen "sempat terbuka tanpa autentikasi".
-	APIToken string `json:"apiToken"`
+	// EnrollToken adalah token PENDAFTARAN, bukan token akses: satu-satunya
+	// yang bisa dilakukan dengannya adalah mendaftarkan perangkat baru, yang
+	// lalu menunggu persetujuan dari app desktop. Membacanya data server
+	// butuh token milik perangkat itu sendiri, yang hanya berlaku setelah
+	// disetujui.
+	//
+	// Pemisahan ini yang membuat token boleh ditempel ke HP tanpa taruhan
+	// besar: yang bocor hanya kemampuan mengantre, bukan kemampuan membaca.
+	EnrollToken string `json:"enrollToken"`
 
+	// LegacyAPIToken adalah nama lama EnrollToken, dari versi saat satu token
+	// statis dipakai langsung sebagai kredensial akses. Dibaca HANYA untuk
+	// migrasi (lihat Load) supaya agent yang binary-nya di-update tidak
+	// mendadak menolak semua permintaan; tidak pernah ditulis kembali.
+	LegacyAPIToken string `json:"apiToken,omitempty"`
 }
 
 // SelfServer mendeskripsikan koneksi SSH agent ke mesinnya sendiri.
@@ -77,7 +86,6 @@ type SelfServer struct {
 	UseSudo  bool   `json:"useSudo"`
 }
 
-
 // Load membaca dan memvalidasi konfigurasi dari path.
 func Load(path string) (*Config, error) {
 	b, err := os.ReadFile(path)
@@ -88,7 +96,7 @@ func Load(path string) (*Config, error) {
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return nil, fmt.Errorf("parse konfigurasi %s: %w", path, err)
 	}
-	cfg.applyDefaults()
+	cfg.Normalize()
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("konfigurasi %s: %w", path, err)
 	}
@@ -165,6 +173,23 @@ func mergeKeepingUnknown(prev, next map[string]any) map[string]any {
 		}
 	}
 	return out
+}
+
+// Normalize mengisi nilai default dan memigrasi nama field lama.
+//
+// Diekspor karena config agent dibaca di DUA tempat: agent sendiri lewat
+// Load, dan app desktop yang mengunduh berkasnya lewat SSH lalu
+// mem-parse-nya langsung. Sebelum ini migrasinya hanya ada di Load, sehingga
+// desktop melaporkan agent lama "belum punya token" padahal agent-nya
+// memakai token itu dengan baik.
+func (c *Config) Normalize() {
+	c.applyDefaults()
+	// Config lama hanya punya apiToken. Nilainya rahasia yang sudah dipegang
+	// user, jadi dipakai sebagai token pendaftaran — bukan dibuang, yang akan
+	// membuat Mobile Control mati diam-diam setelah agent di-update.
+	if strings.TrimSpace(c.EnrollToken) == "" && strings.TrimSpace(c.LegacyAPIToken) != "" {
+		c.EnrollToken = c.LegacyAPIToken
+	}
 }
 
 func (c *Config) applyDefaults() {
