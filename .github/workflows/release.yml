@@ -144,7 +144,7 @@ jobs:
           body: |
             Desktop builds of poinhost. Nothing is installed on your server
             unless you choose to — the app connects over SSH only, and the
-            optional Agent Control feature installs poinhost-agent from a
+            optional Mobile Control feature installs poinhost-agent from a
             binary bundled inside the app (no downloads on your server).
 
             | Platform | Download |
