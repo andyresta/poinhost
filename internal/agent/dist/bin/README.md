@@ -2,7 +2,7 @@
 
 Folder ini menampung binary `poinhost-agent` terkompresi yang ikut dibundel ke
 dalam app desktop, lalu dikirim ke server lewat SFTP saat user menekan
-**Pasang** di menu Agent Control. Instalasi karena itu tidak pernah mengunduh
+**Pasang** di menu Mobile Control. Instalasi karena itu tidak pernah mengunduh
 apa pun dari internet — penting karena server target sering berada di balik
 proxy atau firewall keluar yang ketat.
 
@@ -28,5 +28,5 @@ atau manual:
     gzip -9 -c /tmp/poinhost-agent > internal/agent/dist/poinhost-agent-linux-amd64.gz
 
 Tanpa file-file itu app desktop tetap dibangun dan berjalan normal; hanya
-tombol Pasang di Agent Control yang nonaktif, dengan keterangan bahwa build ini
+tombol Pasang di Mobile Control yang nonaktif, dengan keterangan bahwa build ini
 tidak membawa binary agent.

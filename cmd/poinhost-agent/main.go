@@ -1,11 +1,11 @@
 // Command poinhost-agent adalah service yang dipasang di satu server dari
-// menu Agent Control poinhost.
+// menu Mobile Control poinhost.
 //
 // Yang dilakukannya:
 //   - memakai ULANG internal/modules/* yang sama dengan app desktop, jadi
 //     tidak ada logika pengelolaan server yang ditulis dua kali;
-//   - menyajikan HTTP di loopback saja (healthz + kontrol lokal);
-//   - menjalankan bot Telegram lewat long-polling, tanpa port masuk.
+//   - menyajikan HTTP BACA-saja di loopback, yang dijangkau aplikasi mobile
+//     lewat reverse proxy nginx + TLS di server yang sama.
 //
 // Server tempat agent berjalan diperlakukan seperti server terdaftar lain:
 // koneksi SSH ke 127.0.0.1. Itu membuat SELURUH modul poinhost langsung
@@ -29,8 +29,6 @@ import (
 	"github.com/andyresta/poinhost/internal/agent/agentcfg"
 	"github.com/andyresta/poinhost/internal/agent/api"
 	"github.com/andyresta/poinhost/internal/agent/backend"
-	"github.com/andyresta/poinhost/internal/agent/bot"
-	"github.com/andyresta/poinhost/internal/agent/telegram"
 	"github.com/andyresta/poinhost/internal/core/config"
 	"github.com/andyresta/poinhost/internal/core/database"
 	"github.com/andyresta/poinhost/internal/core/secrets"
@@ -80,10 +78,6 @@ func run(cfgPath string) error {
 
 	log.Printf("poinhost-agent %s — data %s, listen %s", Version, acfg.DataDir, acfg.Listen)
 
-	pairing := bot.NewPairing()
-	allow := backend.NewAllowlist(cfgPath, acfg)
-	tstate := &telegramState{enabled: acfg.Telegram.Enabled}
-
 	var wg sync.WaitGroup
 
 	srv := &http.Server{
@@ -92,11 +86,7 @@ func run(cfgPath string) error {
 			Version:   Version,
 			StartedAt: time.Now(),
 			APIToken:  acfg.APIToken,
-			DataDir:   acfg.DataDir,
-			Pairing:   pairing,
-			Allowlist: allow,
-			Telegram:  tstate,
-			Backend:   stack.backend,
+			Reader:    stack.backend,
 			Servers:   stack.store,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -110,29 +100,6 @@ func run(cfgPath string) error {
 			stop()
 		}
 	}()
-
-	if acfg.Telegram.Enabled {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			client := telegram.New(acfg.Telegram.Token)
-			b := bot.New(client, stack.backend, allow, pairing)
-
-			if me, err := client.GetMe(ctx); err == nil {
-				tstate.set(me.DisplayName(), "")
-			}
-			if err := b.Run(ctx); err != nil && ctx.Err() == nil {
-				// Bot berhenti sendiri hanya untuk kegagalan yang tidak bisa
-				// diperbaiki dengan mencoba lagi (token ditolak). Agent TIDAK
-				// ikut mati: /healthz harus tetap menjawab supaya Agent
-				// Control bisa menampilkan sebabnya, bukan sekadar "mati".
-				log.Printf("telegram: konektor berhenti: %v", err)
-				tstate.set("", err.Error())
-			}
-		}()
-	} else {
-		log.Print("telegram: konektor nonaktif (belum dikonfigurasi)")
-	}
 
 	<-ctx.Done()
 	log.Print("poinhost-agent: shutdown…")
@@ -215,39 +182,6 @@ func newStack(acfg *agentcfg.Config, cfgPath string) (*stack, error) {
 func (s *stack) Close() {
 	s.collector.Stop()
 	_ = s.closeDB()
-}
-
-// telegramState menyimpan kondisi konektor untuk dilaporkan /healthz dan
-// /v1/status, sehingga Agent Control bisa menampilkan "token ditolak" alih-alih
-// hanya "bot tidak membalas".
-type telegramState struct {
-	mu       sync.RWMutex
-	enabled  bool
-	username string
-	lastErr  string
-}
-
-func (t *telegramState) set(username, errMsg string) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if username != "" {
-		t.username = username
-	}
-	t.lastErr = errMsg
-}
-
-func (t *telegramState) Enabled() bool { return t.enabled }
-
-func (t *telegramState) BotUsername() string {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.username
-}
-
-func (t *telegramState) LastError() string {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-	return t.lastErr
 }
 
 // selfServerTag menandai entri server yang mewakili mesin tempat agent

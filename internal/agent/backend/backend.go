@@ -9,11 +9,10 @@ package backend
 import (
 	"context"
 
-	"github.com/andyresta/poinhost/internal/agent/bot"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 )
 
-// Backend mengimplementasikan bot.Backend.
+// Backend mengimplementasikan Reader.
 type Backend struct {
 	svc       *servers.Service
 	collector *servers.Collector
@@ -30,12 +29,12 @@ func New(svc *servers.Service, collector *servers.Collector, selfServerID string
 }
 
 // ListServers mengembalikan server aktif, diurutkan seperti yang disimpan.
-func (b *Backend) ListServers() ([]bot.ServerInfo, error) {
+func (b *Backend) ListServers() ([]ServerInfo, error) {
 	list, err := b.svc.List()
 	if err != nil {
 		return nil, err
 	}
-	out := make([]bot.ServerInfo, 0, len(list))
+	out := make([]ServerInfo, 0, len(list))
 	for _, s := range list {
 		if !s.IsActive {
 			continue
@@ -46,10 +45,10 @@ func (b *Backend) ListServers() ([]bot.ServerInfo, error) {
 }
 
 // Server mencari satu server berdasarkan ID.
-func (b *Backend) Server(id string) (bot.ServerInfo, bool) {
+func (b *Backend) Server(id string) (ServerInfo, bool) {
 	s, err := b.svc.Get(id)
 	if err != nil || s == nil {
-		return bot.ServerInfo{}, false
+		return ServerInfo{}, false
 	}
 	return b.toInfo(s), true
 }
@@ -58,26 +57,26 @@ func (b *Backend) Server(id string) (bot.ServerInfo, bool) {
 // karena Collector sudah menjadwalkan metrik untuk SEMUA server aktif
 // (lihat collector.enqueueDue). Inilah yang membuat /servers dan /status
 // membalas seketika.
-func (b *Backend) Status(id string) (bot.Status, bool) {
+func (b *Backend) Status(id string) (Status, bool) {
 	for _, st := range b.collector.Snapshot() {
 		if st.ID == id {
 			return toStatus(st), true
 		}
 	}
-	return bot.Status{}, false
+	return Status{}, false
 }
 
 // Refresh memaksa pengambilan metrik baru untuk satu server (tombol Refresh).
-func (b *Backend) Refresh(ctx context.Context, id string) (bot.Status, error) {
+func (b *Backend) Refresh(ctx context.Context, id string) (Status, error) {
 	st, err := b.collector.RefreshNow(ctx, id)
 	if err != nil {
-		return bot.Status{}, err
+		return Status{}, err
 	}
 	return toStatus(st), nil
 }
 
-func (b *Backend) toInfo(s *servers.Server) bot.ServerInfo {
-	return bot.ServerInfo{
+func (b *Backend) toInfo(s *servers.Server) ServerInfo {
+	return ServerInfo{
 		ID:     s.ID,
 		Name:   s.Name,
 		Host:   s.Host,
@@ -85,8 +84,8 @@ func (b *Backend) toInfo(s *servers.Server) bot.ServerInfo {
 	}
 }
 
-func toStatus(st servers.ServerStatus) bot.Status {
-	return bot.Status{
+func toStatus(st servers.ServerStatus) Status {
+	return Status{
 		Connection:    st.Connection,
 		OSName:        st.OSName,
 		Hostname:      st.Hostname,

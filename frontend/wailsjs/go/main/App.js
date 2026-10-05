@@ -38,16 +38,8 @@ export function CompressFiles(arg1) {
   return window['go']['main']['App']['CompressFiles'](arg1);
 }
 
-export function ConfigureAgentTelegram(arg1) {
-  return window['go']['main']['App']['ConfigureAgentTelegram'](arg1);
-}
-
 export function CopyFiles(arg1) {
   return window['go']['main']['App']['CopyFiles'](arg1);
-}
-
-export function CreateAgentPairingCode(arg1) {
-  return window['go']['main']['App']['CreateAgentPairingCode'](arg1);
 }
 
 export function CreateDockerNetwork(arg1) {
@@ -302,16 +294,8 @@ export function IssueWebsiteSSL(arg1) {
   return window['go']['main']['App']['IssueWebsiteSSL'](arg1);
 }
 
-export function LinkServersToAgent(arg1) {
-  return window['go']['main']['App']['LinkServersToAgent'](arg1);
-}
-
 export function LinkWebsiteDomainDatabase(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['LinkWebsiteDomainDatabase'](arg1, arg2, arg3, arg4);
-}
-
-export function ListAgentLinkedServers(arg1) {
-  return window['go']['main']['App']['ListAgentLinkedServers'](arg1);
 }
 
 export function ListDockerContainers(arg1) {
@@ -380,6 +364,10 @@ export function ListWebsiteServerDatabaseDomains(arg1, arg2) {
 
 export function ListWebsites(arg1) {
   return window['go']['main']['App']['ListWebsites'](arg1);
+}
+
+export function MobileControlToken(arg1) {
+  return window['go']['main']['App']['MobileControlToken'](arg1);
 }
 
 export function MySQLExploreDeleteRow(arg1) {
@@ -514,12 +502,12 @@ export function RestartDockerContainer(arg1, arg2) {
   return window['go']['main']['App']['RestartDockerContainer'](arg1, arg2);
 }
 
-export function RevokeAgentTelegramUser(arg1, arg2) {
-  return window['go']['main']['App']['RevokeAgentTelegramUser'](arg1, arg2);
-}
-
 export function RevokeWebsiteDatabaseUser(arg1) {
   return window['go']['main']['App']['RevokeWebsiteDatabaseUser'](arg1);
+}
+
+export function RotateMobileControlToken(arg1) {
+  return window['go']['main']['App']['RotateMobileControlToken'](arg1);
 }
 
 export function SaveServer(arg1) {
@@ -638,10 +626,6 @@ export function SystemServiceAction(arg1, arg2, arg3) {
   return window['go']['main']['App']['SystemServiceAction'](arg1, arg2, arg3);
 }
 
-export function TestAgentTelegramToken(arg1, arg2) {
-  return window['go']['main']['App']['TestAgentTelegramToken'](arg1, arg2);
-}
-
 export function TestServerConnection(arg1) {
   return window['go']['main']['App']['TestServerConnection'](arg1);
 }
@@ -656,10 +640,6 @@ export function TrustServerHostKey(arg1, arg2) {
 
 export function UninstallAgent(arg1) {
   return window['go']['main']['App']['UninstallAgent'](arg1);
-}
-
-export function UnlinkServerFromAgent(arg1, arg2) {
-  return window['go']['main']['App']['UnlinkServerFromAgent'](arg1, arg2);
 }
 
 export function UnlinkWebsiteDomainDatabase(arg1, arg2, arg3, arg4) {

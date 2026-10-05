@@ -32,11 +32,7 @@ export function CloseTerminal(arg1:string):Promise<void>;
 
 export function CompressFiles(arg1:files.CompressRequest):Promise<void>;
 
-export function ConfigureAgentTelegram(arg1:agentctl.TelegramRequest):Promise<agentctl.Status>;
-
 export function CopyFiles(arg1:files.CopyRequest):Promise<void>;
-
-export function CreateAgentPairingCode(arg1:string):Promise<agentctl.PairingCode>;
 
 export function CreateDockerNetwork(arg1:docker.NetworkCreateRequest):Promise<docker.NetworkInfo>;
 
@@ -164,11 +160,7 @@ export function InstallAgent(arg1:agentctl.InstallRequest):Promise<agentctl.Stat
 
 export function IssueWebsiteSSL(arg1:website.SSLIssueRequest):Promise<website.SSLStatus>;
 
-export function LinkServersToAgent(arg1:agentctl.LinkRequest):Promise<Array<agentctl.LinkedServer>>;
-
 export function LinkWebsiteDomainDatabase(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
-
-export function ListAgentLinkedServers(arg1:string):Promise<Array<agentctl.LinkedServer>>;
 
 export function ListDockerContainers(arg1:string):Promise<docker.ListResponse>;
 
@@ -203,6 +195,8 @@ export function ListWebsiteSFTPAccounts(arg1:string,arg2:string):Promise<website
 export function ListWebsiteServerDatabaseDomains(arg1:string,arg2:string):Promise<Array<website.DomainDatabaseLink>>;
 
 export function ListWebsites(arg1:string):Promise<website.ListResponse>;
+
+export function MobileControlToken(arg1:string):Promise<agentctl.AccessToken>;
 
 export function MySQLExploreDeleteRow(arg1:website.MySQLRowMutateRequest):Promise<void>;
 
@@ -270,9 +264,9 @@ export function ResizeTerminal(arg1:string,arg2:number,arg3:number):Promise<void
 
 export function RestartDockerContainer(arg1:string,arg2:string):Promise<void>;
 
-export function RevokeAgentTelegramUser(arg1:string,arg2:number):Promise<agentctl.Status>;
-
 export function RevokeWebsiteDatabaseUser(arg1:website.DBDatabaseUserRequest):Promise<void>;
+
+export function RotateMobileControlToken(arg1:string):Promise<agentctl.AccessToken>;
 
 export function SaveServer(arg1:servers.SaveServerRequest):Promise<servers.Server>;
 
@@ -332,8 +326,6 @@ export function StreamWebsiteLog(arg1:website.LogReadRequest):Promise<string>;
 
 export function SystemServiceAction(arg1:string,arg2:string,arg3:string):Promise<services.ServiceInfo>;
 
-export function TestAgentTelegramToken(arg1:string,arg2:string):Promise<agentctl.TelegramTestResult>;
-
 export function TestServerConnection(arg1:servers.SaveServerRequest):Promise<servers.ConnectionTestResult>;
 
 export function ToggleWebsiteCronJob(arg1:website.CronToggleRequest):Promise<void>;
@@ -341,8 +333,6 @@ export function ToggleWebsiteCronJob(arg1:website.CronToggleRequest):Promise<voi
 export function TrustServerHostKey(arg1:servers.SaveServerRequest,arg2:string):Promise<void>;
 
 export function UninstallAgent(arg1:string):Promise<agentctl.Status>;
-
-export function UnlinkServerFromAgent(arg1:string,arg2:string):Promise<Array<agentctl.LinkedServer>>;
 
 export function UnlinkWebsiteDomainDatabase(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 

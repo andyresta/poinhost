@@ -33,7 +33,7 @@ const (
 	authKeyLabel = "poinhost-agent"
 )
 
-// Service mengorkestrasi operasi Agent Control.
+// Service mengorkestrasi operasi Mobile Control.
 type Service struct {
 	servers  *servers.Service
 	executor *sshpool.Executor
@@ -133,7 +133,7 @@ func mapAgentError(err error, res *sshpool.ExecResult) error {
 		strings.Contains(msg, "incorrect password attempt"):
 		return fmt.Errorf("sudo membutuhkan password — pakai auth password SSH atau atur NOPASSWD di sudoers")
 	case strings.Contains(msg, "permission denied"), strings.Contains(msg, "access denied"):
-		return fmt.Errorf("tidak punya izin — Agent Control butuh root atau sudo di server ini")
+		return fmt.Errorf("tidak punya izin — Mobile Control butuh root atau sudo di server ini")
 	case strings.Contains(msg, "deadline exceeded"), strings.Contains(msg, "timeout"):
 		return fmt.Errorf("timeout menjalankan perintah di server — cek koneksi atau beban server")
 	}

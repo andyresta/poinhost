@@ -99,10 +99,8 @@ poinhost/
 ├── internal/
 │   ├── agent/                  # milik poinhost-agent, bukan app desktop (§16)
 │   │   ├── agentcfg/           # config.json agent; listen WAJIB loopback
-│   │   ├── api/                # HTTP loopback: /healthz + kontrol lokal
-│   │   ├── backend/            # adaptor bot -> servers.Service/Collector
-│   │   ├── bot/                # konektor Telegram: perintah + kode pairing
-│   │   ├── telegram/           # klien Bot API seperlunya (long-polling)
+│   │   ├── api/                # HTTP loopback: /healthz + REST baca-saja (Mobile Control)
+│   │   ├── backend/            # adaptor API -> servers.Service/Collector
 │   │   └── dist/bin/           # binary agent ter-gzip yang di-embed ke desktop
 │   │
 │   ├── core/                   # infra lintas-modul (setara internal/shared/ homepoin)

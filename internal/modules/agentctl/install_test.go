@@ -165,27 +165,22 @@ func TestParseKV(t *testing.T) {
 	}
 }
 
-// Token bot tidak boleh ikut dibawa ke frontend. Ia dibutuhkan agent, bukan
-// layar — dan rahasia yang tidak pernah menyeberang tidak bisa bocor lewat log
-// atau devtools.
-func TestDetect_StatusTidakMembocorkanTokenBot(t *testing.T) {
-	cfgJSON := `{"listen":"127.0.0.1:7898","apiToken":"api-rahasia","telegram":{"enabled":true,"token":"123:SANGAT-RAHASIA","allowedUserIds":[7]}}`
+// apiToken tidak boleh ikut dibawa ke frontend. Ia dibutuhkan agent, bukan
+// layar — dan rahasia yang tidak pernah menyeberang tidak bisa bocor lewat
+// log atau devtools. Status hanya melaporkan APAKAH tokennya sudah ada.
+func TestDetect_StatusTidakMembocorkanAPIToken(t *testing.T) {
+	cfgJSON := `{"listen":"127.0.0.1:7898","apiToken":"api-rahasia"}`
 	cfg := decodeConfig(b64(cfgJSON))
 	if cfg == nil {
 		t.Fatal("decodeConfig mengembalikan nil")
 	}
 
 	st := &Status{}
-	st.Telegram.Configured = cfg.Telegram.Token != ""
-	st.Telegram.Enabled = cfg.Telegram.Enabled
-	st.Telegram.AllowedUsers = cfg.Telegram.AllowedUserIDs
+	st.APIConfigured = cfg.APIToken != ""
 	st.Listen = cfg.Listen
 
-	if !st.Telegram.Configured {
-		t.Error("status tidak menandai token sudah terisi")
-	}
-	if strings.Contains(renderStatus(st), "SANGAT-RAHASIA") {
-		t.Error("token bot ikut masuk ke Status yang dikirim ke frontend")
+	if !st.APIConfigured {
+		t.Error("status tidak menandai apiToken sudah terisi")
 	}
 	if strings.Contains(renderStatus(st), "api-rahasia") {
 		t.Error("apiToken ikut masuk ke Status yang dikirim ke frontend")

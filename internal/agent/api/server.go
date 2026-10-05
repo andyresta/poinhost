@@ -1,29 +1,25 @@
-// Package api menyajikan HTTP lokal poinhost-agent.
+// Package api menyajikan HTTP poinhost-agent untuk Mobile Control.
 //
-// Seluruhnya di loopback (lihat agentcfg.ValidateListen). Ini jalur yang
-// dipakai app desktop lewat SSH — `curl` di server target — untuk memeriksa
-// kesehatan agent, membuat kode pairing, dan mengelola allowlist tanpa perlu
-// mengedit config.json dengan tangan.
+// Agent tetap bind di loopback saja (lihat agentcfg.ValidateListen). Yang
+// menjangkaunya dari luar adalah reverse proxy nginx + TLS certbot di server
+// yang sama — komponen yang memang dibuat untuk terminasi TLS, rate limit,
+// dan firewall, dan yang sudah dikelola poinhost. Agent tidak perlu tahu apa
+// pun soal itu.
 //
-// Kelak endpoint yang sama menjadi dasar REST API untuk aplikasi mobile,
-// dipublikasikan lewat nginx + certbot; karena itu autentikasi bearer token
-// sudah dipasang SEKARANG, bukan nanti — supaya tidak pernah ada versi yang
-// sempat terbuka tanpa autentikasi.
+// Seluruh endpoint di sini BACA saja. Tidak ada satu pun yang mengubah
+// server, sesuai tahap pertama Mobile Control — aksi baru dipertimbangkan
+// setelah model autentikasinya terbukti di pemakaian nyata.
 package api
 
 import (
-	"crypto/subtle"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
+	"crypto/subtle"
+
 	"github.com/andyresta/poinhost/internal/agent/backend"
-	"github.com/andyresta/poinhost/internal/agent/bot"
-	"github.com/andyresta/poinhost/internal/agent/transfer"
 )
 
 // Deps adalah yang dibutuhkan handler.
@@ -32,41 +28,17 @@ type Deps struct {
 	StartedAt time.Time
 	APIToken  string
 
-	// DataDir membatasi berkas mana yang boleh dibaca endpoint impor.
-	DataDir string
-
-	Pairing   Pairing
-	Allowlist Allowlist
-	Telegram  TelegramState
-	Backend   bot.Backend
-	Servers   ServerStore
+	Reader  backend.Reader
+	Servers ServerStore
 }
 
-// ServerStore adalah penautan server dari app desktop.
+// ServerStore adalah daftar server yang dikenal agent.
+//
+// Sejak satu agent hanya mengurus mesinnya sendiri, isinya praktis satu
+// entri — tapi tetap berbentuk daftar supaya bentuk responsnya tidak perlu
+// berubah kalau suatu saat ada lebih dari satu.
 type ServerStore interface {
 	List() ([]backend.Entry, error)
-	Import(b *transfer.Bundle) (int, error)
-	Remove(id string) error
-}
-
-// Pairing adalah bagian bot.Pairing yang dipakai API.
-type Pairing interface {
-	Issue() (string, time.Time, error)
-	Pending() int
-}
-
-// Allowlist adalah bagian allowlist yang dipakai API.
-type Allowlist interface {
-	IDs() []int64
-	Revoke(userID int64) error
-	Count() int
-}
-
-// TelegramState melaporkan kondisi konektor Telegram.
-type TelegramState interface {
-	Enabled() bool
-	BotUsername() string
-	LastError() string
 }
 
 // Handler membangun mux HTTP agent.
@@ -74,22 +46,19 @@ func Handler(d Deps) http.Handler {
 	mux := http.NewServeMux()
 
 	// /healthz sengaja TANPA autentikasi: inilah yang dipanggil app desktop
-	// untuk membedakan "terpasang tapi mati" dari "jalan", dan nilainya justru
-	// pada kesederhanaannya. Isinya tidak memuat apa pun yang rahasia.
+	// untuk membedakan "terpasang tapi mati" dari "jalan", dan nilainya
+	// justru pada kesederhanaannya. Isinya tidak memuat apa pun yang
+	// rahasia.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
-			"status":         "ok",
-			"version":        d.Version,
-			"uptimeSeconds":  int64(time.Since(d.StartedAt).Seconds()),
-			"telegram":       d.Telegram.Enabled(),
-			"telegramBot":    d.Telegram.BotUsername(),
-			"allowedUsers":   d.Allowlist.Count(),
-			"pendingPairing": d.Pairing.Pending(),
+			"ok":            true,
+			"version":       d.Version,
+			"uptimeSeconds": int64(time.Since(d.StartedAt).Seconds()),
 		})
 	})
 
 	mux.Handle("GET /v1/status", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		servers, err := d.Backend.ListServers()
+		list, err := d.Reader.ListServers()
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
@@ -97,30 +66,7 @@ func Handler(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"version":       d.Version,
 			"uptimeSeconds": int64(time.Since(d.StartedAt).Seconds()),
-			"serverCount":   len(servers),
-			"telegram": map[string]any{
-				"enabled":      d.Telegram.Enabled(),
-				"botUsername":  d.Telegram.BotUsername(),
-				"lastError":    d.Telegram.LastError(),
-				"allowedUsers": d.Allowlist.IDs(),
-			},
-		})
-	})))
-
-	mux.Handle("POST /v1/pairing", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !d.Telegram.Enabled() {
-			writeErr(w, http.StatusConflict, "konektor telegram belum aktif")
-			return
-		}
-		code, exp, err := d.Pairing.Issue()
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"code":      bot.FormatCode(code),
-			"expiresAt": exp.UTC().Format(time.RFC3339),
-			"ttlSecond": int(time.Until(exp).Seconds()),
+			"serverCount":   len(list),
 		})
 	})))
 
@@ -136,76 +82,83 @@ func Handler(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"servers": list})
 	})))
 
-	// Paket server dikirim lewat SFTP sebagai berkas terenkripsi, dan hanya
-	// passphrase-nya yang lewat endpoint ini. Kredensial karena itu tidak
-	// pernah ada dalam bentuk terbuka di disk server, dan tidak pernah jadi
-	// bagian dari command line yang terlihat di `ps`.
-	mux.Handle("POST /v1/servers/import", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var req struct {
-			Path       string `json:"path"`
-			Passphrase string `json:"passphrase"`
-		}
-		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req) != nil {
-			writeErr(w, http.StatusBadRequest, "permintaan tidak bisa dibaca")
-			return
-		}
-		if req.Path == "" || req.Passphrase == "" {
-			writeErr(w, http.StatusBadRequest, "path dan passphrase wajib diisi")
-			return
-		}
-		// Tanpa batas ini, endpoint yang seharusnya mengimpor server berubah
-		// jadi alat membaca berkas mana pun di server — cukup arahkan ke berkas
-		// lain dan baca pesan errornya. Impor hanya boleh menyentuh berkas di
-		// dalam direktori data agent.
-		if !withinDir(d.DataDir, req.Path) {
-			writeErr(w, http.StatusBadRequest, "paket server harus berada di direktori data agent")
-			return
-		}
-
-		data, err := os.ReadFile(req.Path)
-		// Berkas dihapus apa pun hasilnya: ia memuat kredensial terenkripsi dan
-		// tidak ada alasan membiarkannya tertinggal di /tmp.
-		defer func() { _ = os.Remove(req.Path) }()
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, "paket server tidak ditemukan")
-			return
-		}
-
-		bundle, err := transfer.Open(data, req.Passphrase)
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		n, err := d.Servers.Import(bundle)
+	// /v1/overview adalah endpoint yang dipanggil aplikasi mobile berulang
+	// kali. Server DAN metriknya digabung dalam satu respons supaya HP cukup
+	// satu permintaan untuk menggambar layarnya — bukan satu panggilan untuk
+	// daftar lalu satu lagi per server, yang di jaringan seluler berarti
+	// menunggu berkali-kali.
+	//
+	// Angkanya dibaca dari snapshot Collector, tanpa satu pun round-trip SSH,
+	// jadi endpoint ini murah untuk di-poll.
+	mux.Handle("GET /v1/overview", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		list, err := d.Reader.ListServers()
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"imported": n})
+		out := make([]map[string]any, 0, len(list))
+		for _, s := range list {
+			entry := map[string]any{
+				"id":     s.ID,
+				"name":   s.Name,
+				"host":   s.Host,
+				"isSelf": s.IsSelf,
+			}
+			if st, ok := d.Reader.Status(s.ID); ok {
+				entry["status"] = statusJSON(st)
+			}
+			out = append(out, entry)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"version":       d.Version,
+			"uptimeSeconds": int64(time.Since(d.StartedAt).Seconds()),
+			"servers":       out,
+		})
 	})))
 
-	mux.Handle("DELETE /v1/servers/{id}", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := d.Servers.Remove(r.PathValue("id")); err != nil {
-			writeErr(w, http.StatusBadRequest, err.Error())
+	mux.Handle("GET /v1/servers/{id}/status", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if _, ok := d.Reader.Server(id); !ok {
+			writeErr(w, http.StatusNotFound, "server tidak ditemukan")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"removed": true})
-	})))
-
-	mux.Handle("DELETE /v1/allowed/{id}", d.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-		if err != nil {
-			writeErr(w, http.StatusBadRequest, "user id tidak valid")
+		st, ok := d.Reader.Status(id)
+		if !ok {
+			writeErr(w, http.StatusServiceUnavailable, "metrik belum tersedia")
 			return
 		}
-		if err := d.Allowlist.Revoke(id); err != nil {
-			writeErr(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"allowedUsers": d.Allowlist.IDs()})
+		writeJSON(w, http.StatusOK, statusJSON(st))
 	})))
 
 	return mux
+}
+
+// statusJSON memetakan status internal ke bentuk respons.
+//
+// Dipetakan eksplisit, bukan dengan tag JSON di tipe internalnya, supaya
+// mengganti nama field internal tidak diam-diam mengubah kontrak yang sudah
+// dipakai aplikasi mobile yang terpasang di HP orang.
+func statusJSON(st backend.Status) map[string]any {
+	out := map[string]any{
+		"connection":    st.Connection,
+		"osName":        st.OSName,
+		"hostname":      st.Hostname,
+		"uptimeSeconds": st.UptimeSeconds,
+		"cpuCores":      st.CPUCores,
+		"cpuUsedPct":    st.CPUUsedPct,
+		"memUsedMB":     st.MemUsedMB,
+		"memTotalMB":    st.MemTotalMB,
+		"diskUsedGB":    st.DiskUsedGB,
+		"diskTotalGB":   st.DiskTotalGB,
+		"stale":         st.Stale,
+	}
+	if !st.CheckedAt.IsZero() {
+		out["checkedAt"] = st.CheckedAt.UTC().Format(time.RFC3339)
+	}
+	if st.Error != "" {
+		out["error"] = st.Error
+	}
+	return out
 }
 
 // auth menuntut bearer token pada semua endpoint selain /healthz.
@@ -219,34 +172,13 @@ func (d Deps) auth(next http.Handler) http.Handler {
 			return
 		}
 		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		// Perbandingan waktu-tetap: token ini kelak dipakai lewat jaringan.
+		// Perbandingan waktu-tetap: token ini dipakai lewat jaringan.
 		if subtle.ConstantTimeCompare([]byte(got), []byte(d.APIToken)) != 1 {
 			writeErr(w, http.StatusUnauthorized, "token tidak cocok")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// withinDir melaporkan apakah path berada di dalam dir, setelah kedua sisi
-// dibersihkan — supaya "..\/..\/etc/shadow" tidak lolos.
-func withinDir(dir, path string) bool {
-	if dir == "" {
-		return false
-	}
-	absDir, err := filepath.Abs(filepath.Clean(dir))
-	if err != nil {
-		return false
-	}
-	absPath, err := filepath.Abs(filepath.Clean(path))
-	if err != nil {
-		return false
-	}
-	rel, err := filepath.Rel(absDir, absPath)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

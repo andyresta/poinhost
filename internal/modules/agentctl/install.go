@@ -84,7 +84,6 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*Status, err
 		DataDir:  DataDir,
 		Listen:   listen,
 		APIToken: apiToken,
-		Telegram: agentcfg.Telegram{AllowedUserIDs: []int64{}},
 	}
 
 	var authorizedKey string

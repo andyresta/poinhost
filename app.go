@@ -1577,7 +1577,7 @@ func (a *App) SiteXferRepairDBUsers(req sitexfer.StartRequest) (*sitexfer.Repair
 }
 
 // ---------------------------------------------------------------------
-// Bindings: Agent Control (lihat internal/modules/agentctl)
+// Bindings: Mobile Control (lihat internal/modules/agentctl)
 // ---------------------------------------------------------------------
 
 // DetectAgent memeriksa keadaan poinhost-agent di satu server: belum
@@ -1603,29 +1603,6 @@ func (a *App) UpdateAgent(serverID string) (*agentctl.Status, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
 	defer cancel()
 	return a.agentSvc.Update(ctx, serverID)
-}
-
-// ListAgentLinkedServers membaca daftar server yang benar-benar terdaftar di
-// agent — dibaca dari agent, bukan dari catatan sisi desktop.
-func (a *App) ListAgentLinkedServers(serverID string) ([]agentctl.LinkedServer, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
-	defer cancel()
-	return a.agentSvc.LinkedServers(ctx, serverID)
-}
-
-// LinkServersToAgent menautkan server pilihan user ke agent beserta
-// kredensial dan host key-nya, dikirim dalam bentuk terenkripsi.
-func (a *App) LinkServersToAgent(req agentctl.LinkRequest) ([]agentctl.LinkedServer, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 3*time.Minute)
-	defer cancel()
-	return a.agentSvc.LinkServers(ctx, req)
-}
-
-// UnlinkServerFromAgent mencabut satu server dari agent.
-func (a *App) UnlinkServerFromAgent(serverID, targetID string) ([]agentctl.LinkedServer, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
-	defer cancel()
-	return a.agentSvc.UnlinkServer(ctx, serverID, targetID)
 }
 
 // EnableAgentSelfManagement memasang kunci SSH khusus agent lalu menyalakan
@@ -1659,34 +1636,18 @@ func (a *App) AgentLogs(serverID string, lines int) (string, error) {
 	return a.agentSvc.Logs(ctx, serverID, lines)
 }
 
-// TestAgentTelegramToken memverifikasi token bot DARI SERVER, sehingga
-// sekaligus membuktikan server itu bisa menjangkau api.telegram.org.
-func (a *App) TestAgentTelegramToken(serverID, token string) (*agentctl.TelegramTestResult, error) {
+// MobileControlToken membaca token API Mobile Control dari config agent,
+// untuk disalin user ke aplikasi mobile-nya.
+func (a *App) MobileControlToken(serverID string) (*agentctl.AccessToken, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
-	return a.agentSvc.TestTelegramToken(ctx, serverID, token)
+	return a.agentSvc.APIToken(ctx, serverID)
 }
 
-// ConfigureAgentTelegram menyimpan konfigurasi bot lalu me-restart agent.
-// Token kosong berarti "jangan ubah" — layar tidak pernah menampilkan token
-// yang tersimpan.
-func (a *App) ConfigureAgentTelegram(req agentctl.TelegramRequest) (*agentctl.Status, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 3*time.Minute)
+// RotateMobileControlToken mengganti token API dengan yang baru lalu
+// me-restart agent, sehingga token lama langsung tidak berlaku.
+func (a *App) RotateMobileControlToken(serverID string) (*agentctl.AccessToken, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
 	defer cancel()
-	return a.agentSvc.ConfigureTelegram(ctx, req)
-}
-
-// CreateAgentPairingCode membuat kode sekali-pakai supaya user bisa
-// mendaftarkan akun Telegram-nya lewat perintah /pair di bot.
-func (a *App) CreateAgentPairingCode(serverID string) (*agentctl.PairingCode, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
-	defer cancel()
-	return a.agentSvc.CreatePairingCode(ctx, serverID)
-}
-
-// RevokeAgentTelegramUser mencabut akses satu user Telegram.
-func (a *App) RevokeAgentTelegramUser(serverID string, userID int64) (*agentctl.Status, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
-	defer cancel()
-	return a.agentSvc.RevokeTelegramUser(ctx, serverID, userID)
+	return a.agentSvc.RotateAPIToken(ctx, serverID)
 }

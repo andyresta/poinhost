@@ -22,7 +22,7 @@ const (
 	StateRunning      = "running"
 )
 
-// Status adalah laporan lengkap Agent Control untuk satu server.
+// Status adalah laporan lengkap Mobile Control untuk satu server.
 type Status struct {
 	State string `json:"state"`
 
@@ -38,7 +38,10 @@ type Status struct {
 	UptimeSeconds int64 `json:"uptimeSeconds,omitempty"`
 	ServerCount   int   `json:"serverCount,omitempty"`
 
-	Telegram TelegramStatus `json:"telegram"`
+	// APIConfigured: config agent sudah punya apiToken, jadi API Mobile
+	// Control bisa dipakai. Tanpa token, seluruh endpoint selain /healthz
+	// menolak — kegagalan konfigurasi tidak pernah berubah jadi akses bebas.
+	APIConfigured bool `json:"apiConfigured"`
 
 	// Arch dan dukungannya menentukan apakah tombol Pasang boleh aktif.
 	Arch          string `json:"arch,omitempty"`
@@ -61,14 +64,6 @@ type Status struct {
 	Problem string `json:"problem,omitempty"`
 }
 
-// TelegramStatus adalah kondisi konektor bot seperti dilaporkan agent.
-type TelegramStatus struct {
-	Configured   bool    `json:"configured"`
-	Enabled      bool    `json:"enabled"`
-	BotUsername  string  `json:"botUsername,omitempty"`
-	LastError    string  `json:"lastError,omitempty"`
-	AllowedUsers []int64 `json:"allowedUsers"`
-}
 
 // detectScript mengumpulkan SEMUA fakta dalam satu round-trip SSH: keadaan
 // yang dilaporkan harus menggambarkan satu momen, bukan lima momen berbeda.
@@ -123,12 +118,7 @@ func (s *Service) Detect(ctx context.Context, serverID string) (*Status, error) 
 	if acfg != nil {
 		st.Listen = acfg.Listen
 		st.SelfManaged = acfg.SelfServer.Enabled
-		st.Telegram.Configured = strings.TrimSpace(acfg.Telegram.Token) != ""
-		st.Telegram.Enabled = acfg.Telegram.Enabled
-		st.Telegram.AllowedUsers = acfg.Telegram.AllowedUserIDs
-	}
-	if st.Telegram.AllowedUsers == nil {
-		st.Telegram.AllowedUsers = []int64{}
+		st.APIConfigured = strings.TrimSpace(acfg.APIToken) != ""
 	}
 
 	switch {
@@ -147,8 +137,6 @@ func (s *Service) Detect(ctx context.Context, serverID string) (*Status, error) 
 		if h := s.health(ctx, access, acfg.Listen); h != nil {
 			st.Healthy = true
 			st.UptimeSeconds = h.UptimeSeconds
-			st.Telegram.Enabled = h.Telegram
-			st.Telegram.BotUsername = h.TelegramBot
 		}
 	}
 
@@ -160,12 +148,15 @@ func (s *Service) Detect(ctx context.Context, serverID string) (*Status, error) 
 }
 
 type healthResponse struct {
+	// Agent Mobile Control menjawab {"ok":true}. Field status dipertahankan
+	// karena agent versi lama — yang masih terpasang di server sampai
+	// seseorang menekan Update — menjawab {"status":"ok"}, dan app desktop
+	// yang baru harus tetap bisa membedakan agent lama yang SEHAT dari agent
+	// yang benar-benar mati.
+	OK            bool   `json:"ok"`
 	Status        string `json:"status"`
 	Version       string `json:"version"`
 	UptimeSeconds int64  `json:"uptimeSeconds"`
-	Telegram      bool   `json:"telegram"`
-	TelegramBot   string `json:"telegramBot"`
-	AllowedUsers  int    `json:"allowedUsers"`
 }
 
 func (s *Service) health(ctx context.Context, access *agentAccess, listen string) *healthResponse {
@@ -175,8 +166,16 @@ func (s *Service) health(ctx context.Context, access *agentAccess, listen string
 	if err != nil || res == nil {
 		return nil
 	}
+	return parseHealth(res.Stdout)
+}
+
+// parseHealth memutuskan apakah jawaban /healthz berarti agent SEHAT.
+func parseHealth(raw string) *healthResponse {
 	var h healthResponse
-	if json.Unmarshal([]byte(strings.TrimSpace(res.Stdout)), &h) != nil || h.Status != "ok" {
+	if json.Unmarshal([]byte(strings.TrimSpace(raw)), &h) != nil {
+		return nil
+	}
+	if !h.OK && h.Status != "ok" {
 		return nil
 	}
 	return &h
@@ -194,10 +193,10 @@ func decodeConfig(b64 string) *agentcfg.Config {
 	if json.Unmarshal(raw, &cfg) != nil {
 		return nil
 	}
-	// Token bot SENGAJA dibuang di sini. Nilainya dibutuhkan agent, bukan UI;
-	// yang perlu diketahui layar hanyalah "sudah diisi atau belum", dan
-	// rahasia yang tidak pernah dibawa ke frontend adalah rahasia yang tidak
-	// bisa bocor lewat log atau devtools.
+	// Config lengkap dikembalikan, token API dan semuanya — tapi Status yang
+	// dibentuk Detect hanya membawa APIConfigured. Tokennya baru menyeberang
+	// ke UI kalau user memintanya lewat APIToken(), supaya ia tidak ikut
+	// terbawa di setiap refresh panel.
 	return &cfg
 }
 

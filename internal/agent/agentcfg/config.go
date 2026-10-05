@@ -56,7 +56,6 @@ type Config struct {
 	// tidak ada momen "sempat terbuka tanpa autentikasi".
 	APIToken string `json:"apiToken"`
 
-	Telegram Telegram `json:"telegram"`
 }
 
 // SelfServer mendeskripsikan koneksi SSH agent ke mesinnya sendiri.
@@ -78,17 +77,6 @@ type SelfServer struct {
 	UseSudo  bool   `json:"useSudo"`
 }
 
-// Telegram menyimpan konfigurasi konektor bot.
-type Telegram struct {
-	Enabled bool   `json:"enabled"`
-	Token   string `json:"token"`
-
-	// AllowedUserIDs berisi user_id Telegram, BUKAN chat_id. Perbedaannya
-	// penting: di grup, chat_id adalah grupnya, sehingga siapa pun yang
-	// ditambahkan ke grup itu ikut bisa menjalankan perintah tanpa pernah
-	// disetujui. Agent juga hanya melayani chat privat (lihat bot.go).
-	AllowedUserIDs []int64 `json:"allowedUserIds"`
-}
 
 // Load membaca dan memvalidasi konfigurasi dari path.
 func Load(path string) (*Config, error) {
@@ -204,9 +192,6 @@ func (c *Config) Validate() error {
 	if err := ValidateListen(c.Listen); err != nil {
 		return err
 	}
-	if c.Telegram.Enabled && strings.TrimSpace(c.Telegram.Token) == "" {
-		return errors.New("telegram diaktifkan tapi token kosong")
-	}
 	return nil
 }
 
@@ -239,14 +224,4 @@ func ValidateListen(addr string) error {
 		return fmt.Errorf("%w: %q bisa dijangkau dari jaringan — pakai 127.0.0.1 dan publikasikan lewat reverse proxy kalau perlu diakses dari luar", ErrListenNotLoopback, host)
 	}
 	return nil
-}
-
-// IsAllowed melaporkan apakah user Telegram boleh memakai bot.
-func (t Telegram) IsAllowed(userID int64) bool {
-	for _, id := range t.AllowedUserIDs {
-		if id == userID {
-			return true
-		}
-	}
-	return false
 }

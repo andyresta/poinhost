@@ -76,23 +76,15 @@ func TestLoad_MengisiDefault(t *testing.T) {
 	}
 }
 
-// Telegram yang diaktifkan tanpa token adalah kesalahan konfigurasi yang harus
-// terlihat saat start, bukan berupa bot yang diam tanpa penjelasan.
-func TestValidate_TelegramAktifTanpaToken(t *testing.T) {
-	cfg := &Config{Listen: DefaultListen, Telegram: Telegram{Enabled: true}}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate berhasil padahal token kosong")
-	}
-}
 
-// Hasil pairing harus bertahan melewati restart agent — tanpa itu user harus
-// pairing ulang setiap kali agent di-restart, termasuk setelah update.
-func TestSaveLoad_MempertahankanAllowlist(t *testing.T) {
+// Konfigurasi harus bertahan melewati restart agent — terutama apiToken,
+// karena tanpa itu seluruh API Mobile Control menolak melayani sampai agent
+// dipasang ulang.
+func TestSaveLoad_MempertahankanAPIToken(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
 	in := &Config{
 		Listen:   DefaultListen,
 		APIToken: "rahasia",
-		Telegram: Telegram{Enabled: true, Token: "123:ABC", AllowedUserIDs: []int64{11, 22}},
 	}
 	if err := Save(p, in); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -102,8 +94,8 @@ func TestSaveLoad_MempertahankanAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Config memuat token bot dan token API; mode file adalah satu-satunya
-	// yang memisahkannya dari user lain di server itu.
+	// Config memuat token API; mode file adalah satu-satunya yang
+	// memisahkannya dari user lain di server itu.
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		t.Errorf("mode config = %o, mau 600", perm)
 	}
@@ -112,26 +104,11 @@ func TestSaveLoad_MempertahankanAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if len(out.Telegram.AllowedUserIDs) != 2 || out.Telegram.AllowedUserIDs[0] != 11 {
-		t.Errorf("AllowedUserIDs = %v, mau [11 22]", out.Telegram.AllowedUserIDs)
-	}
 	if out.APIToken != "rahasia" {
 		t.Errorf("APIToken = %q", out.APIToken)
 	}
 }
 
-func TestTelegram_IsAllowed(t *testing.T) {
-	tg := Telegram{AllowedUserIDs: []int64{5, 9}}
-	if !tg.IsAllowed(9) {
-		t.Error("user yang terdaftar ditolak")
-	}
-	if tg.IsAllowed(7) {
-		t.Error("user yang tidak terdaftar diterima")
-	}
-	if (Telegram{}).IsAllowed(0) {
-		t.Error("allowlist kosong menerima user id 0")
-	}
-}
 
 // Regresi dari bug nyata: agent versi lama menyimpan allowlist dengan menulis
 // ulang seluruh config dari struct-nya, sehingga blok `selfServer` yang baru
@@ -147,10 +124,9 @@ func TestSave_MempertahankanFieldYangTidakDikenal(t *testing.T) {
 	// struct agent versi ini.
 	awal := `{
   "listen": "127.0.0.1:7898",
-  "apiToken": "rahasia",
-  "selfServer": {"enabled": true, "host": "127.0.0.1", "port": 22, "username": "root"},
-  "fiturMasaDepan": {"aktif": true, "nilai": 42},
-  "telegram": {"enabled": true, "token": "123:ABC", "allowedUserIds": [], "opsiBaru": "x"}
+  "apiToken": "lama",
+  "selfServer": {"enabled": true, "host": "127.0.0.1", "port": 22, "username": "root", "opsiBaru": "x"},
+  "fiturMasaDepan": {"aktif": true, "nilai": 42}
 }`
 	if err := os.WriteFile(p, []byte(awal), 0o600); err != nil {
 		t.Fatal(err)
@@ -160,8 +136,8 @@ func TestSave_MempertahankanFieldYangTidakDikenal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	// Meniru pairing: agent menambahkan satu user lalu menyimpan.
-	cfg.Telegram.AllowedUserIDs = append(cfg.Telegram.AllowedUserIDs, 6394436882)
+	// Meniru desktop memutar token API lalu menyimpan.
+	cfg.APIToken = "rahasia"
 	if err := Save(p, cfg); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -180,14 +156,13 @@ func TestSave_MempertahankanFieldYangTidakDikenal(t *testing.T) {
 		t.Error("blok tak dikenal di level atas terhapus")
 	}
 	// Kunci tak dikenal DI DALAM objek yang dikenal juga harus utuh.
-	tg, _ := got["telegram"].(map[string]any)
-	if tg == nil || tg["opsiBaru"] != "x" {
-		t.Errorf("kunci tak dikenal di dalam telegram terhapus: %v", got["telegram"])
+	self, _ := got["selfServer"].(map[string]any)
+	if self == nil || self["opsiBaru"] != "x" {
+		t.Errorf("kunci tak dikenal di dalam selfServer terhapus: %v", got["selfServer"])
 	}
 	// Yang memang diubah pemanggil harus tertulis.
-	ids, _ := tg["allowedUserIds"].([]any)
-	if len(ids) != 1 {
-		t.Errorf("allowedUserIds = %v, mau berisi satu user", tg["allowedUserIds"])
+	if got["apiToken"] != "rahasia" {
+		t.Errorf("apiToken = %v, mau yang baru", got["apiToken"])
 	}
 
 	// Dan yang paling penting: config tetap bisa dimuat ulang dengan benar.
@@ -196,9 +171,9 @@ func TestSave_MempertahankanFieldYangTidakDikenal(t *testing.T) {
 		t.Fatalf("Load setelah Save: %v", err)
 	}
 	if !ulang.SelfServer.Enabled {
-		t.Error("selfServer.enabled hilang setelah agent menyimpan allowlist")
+		t.Error("selfServer.enabled hilang setelah disimpan ulang")
 	}
-	if len(ulang.Telegram.AllowedUserIDs) != 1 {
-		t.Errorf("AllowedUserIDs = %v", ulang.Telegram.AllowedUserIDs)
+	if ulang.APIToken != "rahasia" {
+		t.Errorf("APIToken = %q, mau %q", ulang.APIToken, "rahasia")
 	}
 }
