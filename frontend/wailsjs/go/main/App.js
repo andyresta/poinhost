@@ -366,8 +366,20 @@ export function ListWebsites(arg1) {
   return window['go']['main']['App']['ListWebsites'](arg1);
 }
 
+export function MobileControlPublish(arg1) {
+  return window['go']['main']['App']['MobileControlPublish'](arg1);
+}
+
+export function MobileControlPublishStatus(arg1) {
+  return window['go']['main']['App']['MobileControlPublishStatus'](arg1);
+}
+
 export function MobileControlToken(arg1) {
   return window['go']['main']['App']['MobileControlToken'](arg1);
+}
+
+export function MobileControlUnpublish(arg1) {
+  return window['go']['main']['App']['MobileControlUnpublish'](arg1);
 }
 
 export function MySQLExploreDeleteRow(arg1) {

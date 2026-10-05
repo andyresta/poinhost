@@ -214,6 +214,23 @@ export const en = {
   'mobile.replaceDetail':
     'The agent restarts and the old token stops working immediately. Every phone still using it has to be given the new one.',
   'mobile.tokenHint': 'Paste into the poinhost app on your phone. Read-only: the app can view, not change.',
+  'mobile.publish': 'Publish',
+  'mobile.publishSection': 'Reachable from your phone',
+  'mobile.notPublished': 'Not reachable from outside yet.',
+  'mobile.publishHint': 'nginx proxies this domain to the agent; the agent itself stays on 127.0.0.1.',
+  'mobile.domain': 'Domain',
+  'mobile.domainPlaceholder': 'agent.example.com',
+  'mobile.domainTaken': 'Used by another website — pick another one.',
+  'mobile.email': 'Email for Let’s Encrypt',
+  'mobile.emailHint': 'Leave empty to publish over HTTP first, then re-issue once DNS has propagated.',
+  'mobile.reissue': 'Re-issue certificate',
+  'mobile.unpublish': 'Stop publishing',
+  'mobile.unpublishConfirm': 'Stop publishing the agent at {domain}?',
+  'mobile.unpublishDetail':
+    'Only the proxy is removed; the vhost and its certificate stay. The phone app loses access until you publish again.',
+  'mobile.needNginx': 'Nginx is not installed — install it from the Website module first.',
+  'mobile.needCertbot': 'Certbot is not installed — publishing will be HTTP only.',
+  'mobile.noTLS': 'HTTP only',
   'mobile.endpoint': 'Endpoint',
 
   // Database — umum
@@ -850,6 +867,23 @@ export const id: Partial<Record<MessageKey, string>> = {
   'mobile.replaceDetail':
     'Agent di-restart dan token lama langsung tidak berlaku. Setiap HP yang masih memakainya harus diberi token baru.',
   'mobile.tokenHint': 'Tempel ke aplikasi poinhost di HP. Baca-saja: aplikasi bisa melihat, tidak mengubah.',
+  'mobile.publish': 'Terbitkan',
+  'mobile.publishSection': 'Bisa dijangkau dari HP',
+  'mobile.notPublished': 'Belum bisa dijangkau dari luar.',
+  'mobile.publishHint': 'nginx mem-proxy domain ini ke agent; agent-nya sendiri tetap di 127.0.0.1.',
+  'mobile.domain': 'Domain',
+  'mobile.domainPlaceholder': 'agent.example.com',
+  'mobile.domainTaken': 'Dipakai website lain — pilih yang lain.',
+  'mobile.email': 'Email untuk Let’s Encrypt',
+  'mobile.emailHint': 'Kosongkan untuk terbit lewat HTTP dulu, lalu terbitkan ulang setelah DNS menyebar.',
+  'mobile.reissue': 'Terbitkan ulang sertifikat',
+  'mobile.unpublish': 'Berhenti terbitkan',
+  'mobile.unpublishConfirm': 'Berhenti menerbitkan agent di {domain}?',
+  'mobile.unpublishDetail':
+    'Yang dilepas hanya proxy-nya; vhost dan sertifikatnya tetap ada. Aplikasi di HP kehilangan akses sampai diterbitkan lagi.',
+  'mobile.needNginx': 'Nginx belum terpasang — pasang dulu dari modul Website.',
+  'mobile.needCertbot': 'Certbot belum terpasang — penerbitan hanya lewat HTTP.',
+  'mobile.noTLS': 'HTTP saja',
   'mobile.endpoint': 'Endpoint',
 
   'db.tab.access': 'Users & Akses',

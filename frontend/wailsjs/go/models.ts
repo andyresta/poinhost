@@ -30,6 +30,82 @@ export namespace agentctl {
 	        this.manageSelf = source["manageSelf"];
 	    }
 	}
+	export class PublishCandidate {
+	    domain: string;
+	    taken: boolean;
+	    agent: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PublishCandidate(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.taken = source["taken"];
+	        this.agent = source["agent"];
+	    }
+	}
+	export class PublishInfo {
+	    port: number;
+	    nginxInstalled: boolean;
+	    certbotInstalled: boolean;
+	    candidates: PublishCandidate[];
+	    domain?: string;
+	    sslEnabled: boolean;
+	    url?: string;
+	    problem?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PublishInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.port = source["port"];
+	        this.nginxInstalled = source["nginxInstalled"];
+	        this.certbotInstalled = source["certbotInstalled"];
+	        this.candidates = this.convertValues(source["candidates"], PublishCandidate);
+	        this.domain = source["domain"];
+	        this.sslEnabled = source["sslEnabled"];
+	        this.url = source["url"];
+	        this.problem = source["problem"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class PublishRequest {
+	    serverId: string;
+	    domain: string;
+	    email: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PublishRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.domain = source["domain"];
+	        this.email = source["email"];
+	    }
+	}
 	export class Status {
 	    state: string;
 	    installed: boolean;

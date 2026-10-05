@@ -73,12 +73,31 @@ apa pun yang rahasia.
 
 Agent **selalu** bind di `127.0.0.1` saja (dipaksa `agentcfg.ValidateListen`).
 Yang menjangkaunya dari luar adalah reverse proxy nginx + certbot di server yang
-sama, lewat modul Website — komponen yang memang dibuat untuk terminasi TLS,
-rate limit, dan firewall, dan yang sudah dikelola poinhost. Agent tidak perlu
-tahu apa pun soal itu.
+sama, dan panel Mobile Control menerbitkannya sendiri: pilih domain atau
+subdomain, lalu **Terbitkan**.
 
-App desktop sendiri tidak lewat jalur itu: ia memanggil agent dengan `curl` di
-dalam sesi SSH-nya.
+Langkahnya merangkai yang sudah ada di modul Website, bukan menulis config
+nginx atau perintah certbot baru:
+
+1. vhost dibuat kalau belum ada — sebagai **subdomain** kalau induknya memang
+   dikelola di server ini, karena vhost domain biasa ikut memasang
+   `www.<nama>` di server_name dan `www.agent.example.com` adalah nama yang
+   tidak pernah ada;
+2. seluruh domain di-proxy ke `http://127.0.0.1:<port agent>`, dengan port
+   dibaca dari config agent, bukan diasumsikan 7898;
+3. sertifikat diterbitkan lalu **langsung dipasang**. Tab SSL di modul Website
+   sengaja memisahkan keduanya supaya situs production tidak berubah ke HTTPS
+   sebelum diverifikasi; di sini tidak ada yang bisa rusak, dan yang dicari
+   user adalah satu URL https yang tinggal ditempel ke HP.
+
+Domain yang sudah melayani website lain **ditolak** — mengarahkannya ke agent
+akan mematikan situs itu. Berhenti menerbitkan hanya melepas proxy-nya; vhost
+dan sertifikatnya ditinggalkan, karena menghapus keduanya diam-diam adalah
+kejutan yang tidak bisa dibatalkan.
+
+Validasi certbot tetap jalan walau seluruh domain di-proxy: blok
+`location ^~ /.well-known/acme-challenge/` ada di kedua varian vhost, jadi
+permintaan validasi tidak ikut diteruskan ke agent (yang akan menjawab 404).
 
 ## Yang dibuang
 

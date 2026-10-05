@@ -16,6 +16,7 @@ import (
 
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/andyresta/poinhost/internal/modules/servers"
+	"github.com/andyresta/poinhost/internal/modules/website"
 )
 
 // Letak berkas agent di server. Tetap, supaya deteksi dan pencopotan tidak
@@ -43,13 +44,18 @@ type Service struct {
 	// agent — agent tidak punya manusia yang bisa menyetujui dialog fingerprint.
 	knownHosts *sshpool.KnownHostsStore
 
+	// web dipakai HANYA untuk menerbitkan agent lewat nginx + certbot
+	// (lihat publish.go). Tidak ada config nginx atau perintah certbot yang
+	// ditulis di modul ini.
+	web *website.Service
+
 	emitMu sync.RWMutex
 	emit   func(Progress)
 }
 
 // NewService membuat service modul agentctl.
-func NewService(serversSvc *servers.Service, executor *sshpool.Executor, sftp *sshpool.SFTPClient, knownHosts *sshpool.KnownHostsStore) *Service {
-	return &Service{servers: serversSvc, executor: executor, sftp: sftp, knownHosts: knownHosts}
+func NewService(serversSvc *servers.Service, websiteSvc *website.Service, executor *sshpool.Executor, sftp *sshpool.SFTPClient, knownHosts *sshpool.KnownHostsStore) *Service {
+	return &Service{servers: serversSvc, web: websiteSvc, executor: executor, sftp: sftp, knownHosts: knownHosts}
 }
 
 // agentAccess adalah konteks eksekusi di satu server. Polanya sama dengan

@@ -196,7 +196,13 @@ export function ListWebsiteServerDatabaseDomains(arg1:string,arg2:string):Promis
 
 export function ListWebsites(arg1:string):Promise<website.ListResponse>;
 
+export function MobileControlPublish(arg1:agentctl.PublishRequest):Promise<agentctl.PublishInfo>;
+
+export function MobileControlPublishStatus(arg1:string):Promise<agentctl.PublishInfo>;
+
 export function MobileControlToken(arg1:string):Promise<agentctl.AccessToken>;
+
+export function MobileControlUnpublish(arg1:string):Promise<agentctl.PublishInfo>;
 
 export function MySQLExploreDeleteRow(arg1:website.MySQLRowMutateRequest):Promise<void>;
 
