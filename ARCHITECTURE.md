@@ -96,6 +96,8 @@ poinhost/
 ├── cmd/
 │   └── poinhost-agent/         # service opsional yang dipasang DI server (§16)
 │
+├── mobile/                     # app Flutter untuk Mobile Control (klien agent)
+│
 ├── internal/
 │   ├── agent/                  # milik poinhost-agent, bukan app desktop (§16)
 │   │   ├── agentcfg/           # config.json agent; listen WAJIB loopback
