@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/agent_exception.dart';
 import '../session.dart';
+import '../widgets/labeled_field.dart';
 
 /// Menambahkan satu server: tempel alamat agent dan token pendaftarannya.
 ///
@@ -70,81 +71,82 @@ class _AddServerScreenState extends State<AddServerScreen> {
       body: SafeArea(
         child: Form(
           key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              Text(
-                'Token pendaftaran ada di panel Mobile Control, di poinhost '
-                'desktop. Server baru muncul di grid setelah kamu menyetujui '
-                'perangkat ini dari sana.',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 24),
-              TextFormField(
-                controller: _urlController,
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Alamat agent',
-                  hintText: 'agent.example.com',
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Isi alamat agent' : null,
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _tokenController,
-                autocorrect: false,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Token pendaftaran',
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Isi token' : null,
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _labelController,
-                textInputAction: TextInputAction.done,
-                onFieldSubmitted: (_) => _busy ? null : _submit(),
-                decoration: const InputDecoration(
-                  labelText: 'Nama perangkat ini',
-                  helperText: 'Supaya kamu mengenalinya saat menyetujui',
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Isi nama' : null,
-              ),
-              const SizedBox(height: 28),
-              FilledButton(
-                onPressed: _busy ? null : _submit,
-                child: _busy
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Daftar'),
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 18),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    _error!,
+          // Lebarnya dibatasi, bukan dibiarkan mengikuti layar: isian yang
+          // membentang penuh di tablet atau layar lebar jadi jauh lebih
+          // panjang daripada isinya, dan matanya harus melompat dari label
+          // di kiri ke kursor di kanan.
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
+                children: [
+                  Text(
+                    'Token pendaftaran ada di panel Mobile Control, di '
+                    'poinhost desktop. Server baru muncul di grid setelah '
+                    'kamu menyetujui perangkat ini dari sana.',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onErrorContainer,
+                      color: theme.colorScheme.onSurfaceVariant,
+                      height: 1.45,
                     ),
                   ),
-                ),
-              ],
-            ],
+                  const SizedBox(height: 20),
+                  LabeledField(
+                    label: 'Alamat agent',
+                    controller: _urlController,
+                    hint: 'agent.example.com',
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.next,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Isi alamat agent'
+                        : null,
+                  ),
+                  LabeledField(
+                    label: 'Token pendaftaran',
+                    controller: _tokenController,
+                    textInputAction: TextInputAction.next,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Isi token' : null,
+                  ),
+                  LabeledField(
+                    label: 'Nama perangkat ini',
+                    controller: _labelController,
+                    helper: 'Supaya kamu mengenalinya saat menyetujui',
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _busy ? null : _submit(),
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Isi nama' : null,
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton(
+                    onPressed: _busy ? null : _submit,
+                    child: _busy
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Daftar'),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(11),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.errorContainer,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        _error!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onErrorContainer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       ),

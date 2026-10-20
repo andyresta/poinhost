@@ -42,16 +42,28 @@ ThemeData buildTheme(Brightness brightness) {
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+      isDense: true,
+      // Label mengambang DIMATIKAN, dan labelnya ditulis sebagai teks
+      // tersendiri di atas kotaknya (lihat LabeledField).
+      //
+      // Dengan OutlineInputBorder tanpa garis, label yang mengambang naik ke
+      // tempat garis itu seharusnya ada — dan karena garisnya tidak digambar,
+      // yang terlihat adalah label menabrak tepi atas kotak. Mengatur
+      // posisinya tidak menyelesaikan apa pun: masalahnya label itu memang
+      // milik rancangan yang punya garis.
+      floatingLabelBehavior: FloatingLabelBehavior.never,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide.none,
       ),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+      hintStyle: TextStyle(color: scheme.onSurfaceVariant),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        minimumSize: const Size.fromHeight(44),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
     ),
     dividerTheme: DividerThemeData(

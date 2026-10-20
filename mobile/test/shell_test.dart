@@ -175,6 +175,43 @@ void main() {
     expect(lagi.mode, ThemeMode.light);
   });
 
+  // Label isian harus TETAP terbaca saat sedang diketik. Label mengambang
+  // bawaan Material naik ke tempat garis tepi — yang di kotak terisi tanpa
+  // garis berarti menabrak tepi atasnya — lalu menghilang begitu ada isinya,
+  // sehingga form yang sudah diisi tidak bisa dibaca lagi maksud tiap
+  // kotaknya.
+  testWidgets('label form tetap ada saat diketik', (tester) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final w = await _workspace(const [], (_) async => _snapshot('x'));
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Tambah server'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Alamat agent'), findsOneWidget);
+    // Sengaja BUKAN teks petunjuknya: petunjuk tetap ada di pohon widget,
+    // jadi mengetik ulang kalimat yang sama membuat test cocok dua kali dan
+    // tidak membuktikan apa pun.
+    await tester.enterText(find.byType(TextFormField).first, 'prod.contoh.id');
+    await tester.pumpAndSettle();
+
+    // Label masih ada DI SAMPING isinya, bukan tergantikan olehnya.
+    expect(find.text('Alamat agent'), findsOneWidget);
+    expect(find.text('prod.contoh.id'), findsOneWidget);
+
+    // Keterangan panjang tidak dipotong satu baris: `helperText` bawaan
+    // memotongnya dengan elipsis.
+    expect(
+      find.text('Supaya kamu mengenalinya saat menyetujui'),
+      findsOneWidget,
+    );
+    w.dispose();
+  });
+
   // Tiap server yang terhubung harus jadi SATU panel. Inilah bentuk layar
   // utamanya; kalau dua server menghasilkan satu kartu, gridnya tidak ada
   // gunanya.
