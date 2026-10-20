@@ -157,3 +157,17 @@ jobs:
             will warn on first run.
 
             On Linux, make it executable first: `chmod +x poinhost-linux-amd64`
+
+            **Linux also needs WebKit2GTK**, which poinhost renders its
+            interface with and which most desktops do not ship by default.
+            Without it the app does not start at all — it fails with
+            `libwebkit2gtk-4.1.so.0: cannot open shared object file`.
+
+            - Debian / Ubuntu: `sudo apt install libwebkit2gtk-4.1-0`
+            - Fedora: `sudo dnf install webkit2gtk4.1`
+            - Arch: `sudo pacman -S webkit2gtk-4.1`
+
+            Windows and macOS need nothing extra. macOS renders with WKWebView,
+            which is part of the system. Windows uses WebView2, preinstalled on
+            Windows 11 and shipped with Edge updates on Windows 10; on the rare
+            machine without it, poinhost offers to install it on first run.
