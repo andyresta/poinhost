@@ -13,6 +13,13 @@ import (
 // AdminSocket adalah unix socket permukaan admin agent.
 const AdminSocket = DataDir + "/admin.sock"
 
+// errAgentTooOld adalah pesan untuk agent yang belum punya socket admin.
+//
+// Dipakai sebagai penanda di stderr sekaligus sebagai pesan ke user, supaya
+// yang dibaca layar persis yang dimaksud — bukan terjemahan curl atas
+// keadaan yang tidak dipahaminya.
+const errAgentTooOld = "Agent di server ini belum mendukung persetujuan perangkat — tekan Update agent dulu."
+
 // callAdmin memanggil permukaan admin agent lewat SSH.
 //
 // Lewat unix socket, bukan port TCP agent: socket itu ada di dalam direktori

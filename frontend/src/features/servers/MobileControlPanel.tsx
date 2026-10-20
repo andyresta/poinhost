@@ -28,9 +28,7 @@ import {
   AgentLogs,
   MobileControlToken,
   RotateMobileControlToken,
-  MobileControlPublishStatus,
-  MobileControlPublish,
-  MobileControlUnpublish,
+  MobileControlReachability,
   MobileControlDevices,
   ApproveMobileControlDevice,
   RevokeMobileControlDevice,
@@ -80,10 +78,12 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
   const [deviceError, setDeviceError] = useState<string | null>(null);
 
   // Jalur dari HP ke agent: vhost nginx yang mem-proxy ke port loopback.
-  const [publish, setPublish] = useState<agentctl.PublishInfo | null>(null);
-  const [publishError, setPublishError] = useState<string | null>(null);
-  const [pubDomain, setPubDomain] = useState('');
-  const [pubEmail, setPubEmail] = useState('');
+  //
+  // Hanya DIBACA di sini. Membuat vhost dan menerbitkan sertifikatnya ada di
+  // modul Website, tempat seluruh pekerjaan itu memang hidup; panel ini
+  // cukup mengenali hasilnya dan menunjukkan URL yang dipakai HP.
+  const [reach, setReach] = useState<agentctl.Reachability | null>(null);
+  const [reachError, setReachError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -99,19 +99,15 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
   // Keadaan terbit dibaca dari SERVER (vhost nginx yang ada sekarang), bukan
   // disimpan di sisi desktop — kalau seseorang mengubah vhost-nya langsung,
   // panel ini harus ikut benar.
-  const loadPublish = useCallback(async () => {
-    setPublishError(null);
+  const loadReach = useCallback(async () => {
+    setReachError(null);
     try {
-      const info = await MobileControlPublishStatus(serverId);
-      setPublish(info);
-      // Domain yang sudah terbit diisikan ke form, supaya "terbitkan ulang"
-      // tidak menuntut user mengetik ulang nama yang sudah dipakai.
-      if (info.domain) setPubDomain(info.domain);
+      setReach(await MobileControlReachability(serverId));
     } catch (e) {
       // Kegagalan DITAMPILKAN, bukan disembunyikan: bagian yang hilang saat
       // gagal membuat fiturnya seolah tidak ada.
-      setPublish(null);
-      setPublishError(String(e));
+      setReach(null);
+      setReachError(String(e));
     }
   }, [serverId]);
 
@@ -131,19 +127,17 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
     setToken(null);
     setDevices(null);
     setDeviceError(null);
-    setPublish(null);
-    setPublishError(null);
-    setPubDomain('');
-    setPubEmail('');
+    setReach(null);
+    setReachError(null);
     void load();
   }, [serverId, load]);
 
   useEffect(() => {
     if (status?.state === 'running') {
-      void loadPublish();
+      void loadReach();
       void loadDevices();
     }
-  }, [status?.state, loadPublish, loadDevices]);
+  }, [status?.state, loadReach, loadDevices]);
 
   // Kemajuan pemasangan/update datang per server, supaya tab lain yang sedang
   // menjalankan operasinya sendiri tidak saling menimpa.
@@ -202,18 +196,6 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
     });
   }
 
-  async function handleUnpublish() {
-    const ok = await confirm({
-      title: t('mobile.unpublish'),
-      message: t('mobile.unpublishConfirm', { domain: publish?.domain ?? '' }),
-      detail: t('mobile.unpublishDetail'),
-      confirmLabel: t('mobile.unpublish'),
-      danger: true,
-    });
-    if (!ok) return;
-    void act('unpublish', () => MobileControlUnpublish(serverId), (info) => setPublish(info));
-  }
-
   async function handleRevokeDevice(dev: agentctl.Device) {
     const ok = await confirm({
       title: t('mobile.revoke'),
@@ -256,9 +238,6 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
   const installed = status.installed;
   const anyBusy = busy !== null;
 
-  const wantDomain = pubDomain.trim().toLowerCase();
-  const domainTaken = (publish?.candidates ?? []).some((c) => c.domain === wantDomain && c.taken);
-  const isReissue = publish?.domain !== '' && publish?.domain === wantDomain;
 
   return (
     <div className="files-panel">
@@ -389,7 +368,7 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
                 <EyeOff size={13} /> {t('mobile.hideToken')}
               </button>
               <span className="agent-hint">
-                {t('mobile.endpoint')}: <code>{publish?.url || `127.0.0.1:${token.port}`}</code>
+                {t('mobile.endpoint')}: <code>{reach?.url || `127.0.0.1:${token.port}`}</code>
               </span>
             </div>
           )}
@@ -492,133 +471,62 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
         </section>
       )}
 
-      {/* ---- jalur dari HP: vhost nginx + certbot ---- */}
+      {/* ---- jalur dari HP, hanya dibaca ---- */}
       {running && (
         <section className="agent-section">
           <h3>
-            <Globe size={14} /> {t('mobile.publishSection')}
+            <Globe size={14} /> {t('mobile.reachSection')}
           </h3>
 
-          {publishError && (
+          {reachError && (
             <>
               <p className="fw-notice fw-notice--warn">
-                <TriangleAlert size={13} /> {publishError}
+                <TriangleAlert size={13} /> {reachError}
               </p>
-              <button className="btn" disabled={anyBusy} onClick={() => void loadPublish()}>
+              <button className="btn" disabled={anyBusy} onClick={() => void loadReach()}>
                 <RotateCw size={13} /> {t('common.retry')}
               </button>
             </>
           )}
 
-          {publish && (
-            <>
-              {publish.domain ? (
-                <div className="agent-pairing">
-                  <code className="agent-pairing__code">{publish.url}</code>
-                  <button
-                    className="btn btn--ghost"
-                    onClick={() => void navigator.clipboard?.writeText(publish.url ?? '')}
-                    title={t('common.copy')}
-                  >
-                    <Copy size={13} />
-                  </button>
-                  {!publish.sslEnabled && (
-                    <span className="docker-badge docker-badge--stopped">{t('mobile.noTLS')}</span>
-                  )}
-                </div>
-              ) : (
-                <p className="fw-notice">
-                  <CircleSlash size={13} /> {t('mobile.notPublished')}
-                </p>
-              )}
-
-              {/* Problem datang dari backend: sertifikat gagal terbit, atau
-                  terbit tapi belum terpasang. Proxy-nya sendiri sudah jalan,
-                  jadi ini peringatan, bukan kegagalan seluruh operasi. */}
-              {publish.problem && (
-                <p className="fw-notice fw-notice--warn">
-                  <TriangleAlert size={13} /> {publish.problem}
-                </p>
-              )}
-              {!publish.nginxInstalled && (
-                <p className="fw-notice fw-notice--warn">
-                  <TriangleAlert size={13} /> {t('mobile.needNginx')}
-                </p>
-              )}
-              {publish.nginxInstalled && !publish.certbotInstalled && (
-                <p className="fw-notice">
-                  <TriangleAlert size={13} /> {t('mobile.needCertbot')}
-                </p>
-              )}
-
-              {/* Daftar domain server ini ditawarkan lewat datalist, bukan
-                  <select>: domain yang belum ada di server pun harus bisa
-                  diketik, karena subdomain untuk agent biasanya memang baru. */}
-              <label className="agent-field">
-                <span>{t('mobile.domain')}</span>
-                <input
-                  type="text"
-                  list={`mobile-domains-${serverId}`}
-                  value={pubDomain}
-                  placeholder={t('mobile.domainPlaceholder')}
-                  onChange={(e) => setPubDomain(e.target.value)}
-                />
-              </label>
-              <datalist id={`mobile-domains-${serverId}`}>
-                {publish.candidates
-                  .filter((c) => !c.taken)
-                  .map((c) => (
-                    <option key={c.domain} value={c.domain} />
-                  ))}
-              </datalist>
-              {domainTaken && (
-                <p className="fw-notice fw-notice--warn">
-                  <TriangleAlert size={13} /> {t('mobile.domainTaken')}
-                </p>
-              )}
-
-              <label className="agent-field">
-                <span>{t('mobile.email')}</span>
-                <input
-                  type="email"
-                  value={pubEmail}
-                  placeholder="you@example.com"
-                  onChange={(e) => setPubEmail(e.target.value)}
-                />
-              </label>
-              <p className="agent-hint">{t('mobile.emailHint')}</p>
-
-              <div className="agent-actions">
+          {reach &&
+            (reach.domain ? (
+              <div className="agent-pairing">
+                <code className="agent-pairing__code">{reach.url}</code>
                 <button
-                  className="btn btn--primary"
-                  disabled={anyBusy || !wantDomain || domainTaken || !publish.nginxInstalled}
-                  onClick={() =>
-                    void act(
-                      'publish',
-                      () =>
-                        MobileControlPublish({
-                          serverId,
-                          domain: wantDomain,
-                          email: pubEmail.trim(),
-                        } as agentctl.PublishRequest),
-                      (info) => setPublish(info),
-                    )
-                  }
+                  className="btn btn--ghost"
+                  onClick={() => void navigator.clipboard?.writeText(reach.url ?? '')}
+                  title={t('common.copy')}
                 >
-                  {busy === 'publish' ? <span className="spinner" /> : <Globe size={13} />}{' '}
-                  {isReissue ? t('mobile.reissue') : t('mobile.publish')}
+                  <Copy size={13} />
                 </button>
-
-                {publish.domain && (
-                  <button className="btn btn--danger" disabled={anyBusy} onClick={() => void handleUnpublish()}>
-                    <Trash2 size={13} /> {t('mobile.unpublish')}
-                  </button>
+                {!reach.sslEnabled && (
+                  <span className="docker-badge docker-badge--stopped">{t('mobile.noTLS')}</span>
                 )}
               </div>
-
-              <p className="agent-hint">{t('mobile.publishHint')}</p>
-            </>
-          )}
+            ) : (
+              <>
+                <p className="fw-notice">
+                  <CircleSlash size={13} /> {t('mobile.notReachable')}
+                </p>
+                {/* Jalurnya dibuat di modul Website, bukan di sini — satu
+                    tempat yang membuat vhost, bukan dua. Yang ditampilkan
+                    cukup alamat yang harus dituju proxy-nya. */}
+                <p className="agent-hint">
+                  {t('mobile.reachHint')} <code>http://127.0.0.1:{reach.port}</code>
+                </p>
+                {!reach.nginxInstalled && (
+                  <p className="fw-notice fw-notice--warn">
+                    <TriangleAlert size={13} /> {t('mobile.needNginx')}
+                  </p>
+                )}
+                {reach.nginxInstalled && !reach.certbotInstalled && (
+                  <p className="fw-notice">
+                    <TriangleAlert size={13} /> {t('mobile.needCertbot')}
+                  </p>
+                )}
+              </>
+            ))}
         </section>
       )}
 

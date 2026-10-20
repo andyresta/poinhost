@@ -1653,27 +1653,14 @@ func (a *App) RotateMobileControlToken(serverID string) (*agentctl.EnrollToken, 
 	return a.agentSvc.RotateAPIToken(ctx, serverID)
 }
 
-// MobileControlPublishStatus melaporkan apakah agent sudah punya jalur dari
-// luar: domain mana yang mem-proxy ke port loopback-nya, dan apakah ber-TLS.
-func (a *App) MobileControlPublishStatus(serverID string) (*agentctl.PublishInfo, error) {
+// MobileControlReachability melaporkan apakah agent punya jalur dari luar:
+// domain mana yang kebetulan sudah mem-proxy ke port loopback-nya, dan
+// apakah ber-TLS. Membuat jalur itu dilakukan dari modul Website, bukan dari
+// sini — lihat agentctl/reachability.go.
+func (a *App) MobileControlReachability(serverID string) (*agentctl.Reachability, error) {
 	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
 	defer cancel()
-	return a.agentSvc.PublishStatus(ctx, serverID)
-}
-
-// MobileControlPublish membuat vhost nginx yang mem-proxy satu domain ke
-// agent, lalu menerbitkan dan memasang sertifikatnya lewat certbot.
-func (a *App) MobileControlPublish(req agentctl.PublishRequest) (*agentctl.PublishInfo, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 5*time.Minute)
-	defer cancel()
-	return a.agentSvc.Publish(ctx, req)
-}
-
-// MobileControlUnpublish melepas proxy ke agent. Vhost-nya tidak dihapus.
-func (a *App) MobileControlUnpublish(serverID string) (*agentctl.PublishInfo, error) {
-	ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
-	defer cancel()
-	return a.agentSvc.Unpublish(ctx, serverID)
+	return a.agentSvc.Reachability(ctx, serverID)
 }
 
 // MobileControlDevices membaca perangkat yang terdaftar di agent, beserta

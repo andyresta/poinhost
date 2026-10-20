@@ -148,32 +148,26 @@ terlapor.
 ## Jalur jaringan
 
 Agent **selalu** bind di `127.0.0.1` saja (dipaksa `agentcfg.ValidateListen`).
-Yang menjangkaunya dari luar adalah reverse proxy nginx + certbot di server yang
-sama, dan panel Mobile Control menerbitkannya sendiri: pilih domain atau
-subdomain, lalu **Terbitkan**.
+Yang menjangkaunya dari HP adalah vhost nginx + certbot di server yang sama.
 
-Langkahnya merangkai yang sudah ada di modul Website, bukan menulis config
-nginx atau perintah certbot baru:
+**Vhost itu dibuat dari modul Website, bukan dari panel Mobile Control.**
+Buat domain atau subdomain di sana, arahkan reverse proxy-nya ke
+`http://127.0.0.1:<port agent>`, lalu terbitkan sertifikatnya dari tab SSL —
+semuanya pekerjaan yang memang sudah hidup di modul itu. Menduplikasinya di
+Mobile Control berarti ada dua tempat yang membuat vhost, dengan dua
+perangkat aturan yang lama-lama berbeda.
 
-1. vhost dibuat kalau belum ada — sebagai **subdomain** kalau induknya memang
-   dikelola di server ini, karena vhost domain biasa ikut memasang
-   `www.<nama>` di server_name dan `www.agent.example.com` adalah nama yang
-   tidak pernah ada;
-2. seluruh domain di-proxy ke `http://127.0.0.1:<port agent>`, dengan port
-   dibaca dari config agent, bukan diasumsikan 7898;
-3. sertifikat diterbitkan lalu **langsung dipasang**. Tab SSL di modul Website
-   sengaja memisahkan keduanya supaya situs production tidak berubah ke HTTPS
-   sebelum diverifikasi; di sini tidak ada yang bisa rusak, dan yang dicari
-   user adalah satu URL https yang tinggal ditempel ke HP.
-
-Domain yang sudah melayani website lain **ditolak** — mengarahkannya ke agent
-akan mematikan situs itu. Berhenti menerbitkan hanya melepas proxy-nya; vhost
-dan sertifikatnya ditinggalkan, karena menghapus keduanya diam-diam adalah
-kejutan yang tidak bisa dibatalkan.
+Panel Mobile Control **hanya mengenali hasilnya**: ia mencari domain yang
+target proxy-nya persis sama dengan port agent, lalu menampilkan URL itu
+sebagai endpoint yang dipakai HP. Kalau belum ada, ia menyebutkan alamat yang
+harus dituju proxy-nya dan tidak lebih.
 
 Validasi certbot tetap jalan walau seluruh domain di-proxy: blok
 `location ^~ /.well-known/acme-challenge/` ada di kedua varian vhost, jadi
 permintaan validasi tidak ikut diteruskan ke agent (yang akan menjawab 404).
+
+App desktop sendiri tidak lewat jalur itu: ia memanggil agent dengan `curl` di
+dalam sesi SSH-nya — port loopback untuk `/healthz`, unix socket untuk admin.
 
 ## Yang dibuang
 

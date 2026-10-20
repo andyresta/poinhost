@@ -202,13 +202,9 @@ export function ListWebsites(arg1:string):Promise<website.ListResponse>;
 
 export function MobileControlDevices(arg1:string):Promise<Array<agentctl.Device>>;
 
-export function MobileControlPublish(arg1:agentctl.PublishRequest):Promise<agentctl.PublishInfo>;
-
-export function MobileControlPublishStatus(arg1:string):Promise<agentctl.PublishInfo>;
+export function MobileControlReachability(arg1:string):Promise<agentctl.Reachability>;
 
 export function MobileControlToken(arg1:string):Promise<agentctl.EnrollToken>;
-
-export function MobileControlUnpublish(arg1:string):Promise<agentctl.PublishInfo>;
 
 export function MySQLExploreDeleteRow(arg1:website.MySQLRowMutateRequest):Promise<void>;
 
