@@ -205,7 +205,7 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
       danger: true,
     });
     if (!ok) return;
-    void act(`dev:${dev.id}`, () => RevokeMobileControlDevice(serverId, dev.id), (list) => setDevices(list));
+    void act(`revoke:${dev.id}`, () => RevokeMobileControlDevice(serverId, dev.id), (list) => setDevices(list));
   }
 
   async function handleRemoveDevice(dev: agentctl.Device) {
@@ -217,7 +217,7 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
       danger: true,
     });
     if (!ok) return;
-    void act(`dev:${dev.id}`, () => DeleteMobileControlDevice(serverId, dev.id), (list) => setDevices(list));
+    void act(`remove:${dev.id}`, () => DeleteMobileControlDevice(serverId, dev.id), (list) => setDevices(list));
   }
 
   if (loading) return <p className="workspace__placeholder">{t('common.loading')}</p>;
@@ -440,19 +440,24 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
                           disabled={anyBusy}
                           onClick={() =>
                             void act(
-                              `dev:${dev.id}`,
+                              `approve:${dev.id}`,
                               () => ApproveMobileControlDevice(serverId, dev.id),
                               (list) => setDevices(list),
                             )
                           }
                         >
-                          {busy === `dev:${dev.id}` ? <span className="spinner" /> : <Check size={12} />}{' '}
+                          {busy === `approve:${dev.id}` ? <span className="spinner" /> : <Check size={12} />}{' '}
                           {t('mobile.approve')}
                         </button>
                       )}
                       {dev.status === 'approved' && (
                         <button className="btn" disabled={anyBusy} onClick={() => void handleRevokeDevice(dev)}>
-                          <CircleSlash size={12} /> {t('mobile.revoke')}
+                          {busy === `revoke:${dev.id}` ? (
+                            <span className="spinner" />
+                          ) : (
+                            <CircleSlash size={12} />
+                          )}{' '}
+                          {t('mobile.revoke')}
                         </button>
                       )}
                       <button
@@ -461,7 +466,7 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
                         onClick={() => void handleRemoveDevice(dev)}
                         title={t('mobile.removeDevice')}
                       >
-                        <Trash2 size={12} />
+                        {busy === `remove:${dev.id}` ? <span className="spinner" /> : <Trash2 size={12} />}
                       </button>
                     </span>
                   </li>
@@ -540,7 +545,7 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
                   {busy === 'restart' ? <span className="spinner" /> : <RotateCw size={13} />} {t('mobile.restart')}
                 </button>
                 <button className="btn" disabled={anyBusy} onClick={() => void act('stop', () => AgentLifecycle(serverId, 'stop'))}>
-                  <Power size={13} /> {t('mobile.stop')}
+                  {busy === 'stop' ? <span className="spinner" /> : <Power size={13} />} {t('mobile.stop')}
                 </button>
               </>
             ) : (
@@ -567,7 +572,8 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
             )}
 
             <button className="btn btn--danger" disabled={anyBusy} onClick={() => void handleUninstall()}>
-              <Trash2 size={13} /> {t('mobile.uninstall')}
+              {busy === 'uninstall' ? <span className="spinner" /> : <Trash2 size={13} />}{' '}
+              {t('mobile.uninstall')}
             </button>
           </div>
 
