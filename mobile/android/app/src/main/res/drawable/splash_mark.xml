@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Lambang poinhost: tumpukan rak server.
+
+  Vector, bukan PNG, supaya satu berkas ini tajam di semua kerapatan layar
+  dan tidak perlu lima salinan mipmap yang gampang jadi tidak sinkron.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="96dp"
+    android:height="96dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+
+    <path
+        android:fillColor="@color/splash_mark"
+        android:pathData="M20,0 L76,0 A20,20 0 0 1 96,20 L96,76 A20,20 0 0 1 76,96 L20,96 A20,20 0 0 1 0,76 L0,20 A20,20 0 0 1 20,0 Z" />
+
+    <path
+        android:fillColor="@color/splash_mark_on"
+        android:pathData="M26,24 L70,24 A4,4 0 0 1 74,28 L74,38 A4,4 0 0 1 70,42 L26,42 A4,4 0 0 1 22,38 L22,28 A4,4 0 0 1 26,24 Z" />
+    <path
+        android:fillColor="@color/splash_mark"
+        android:pathData="M62,30 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+
+    <path
+        android:fillColor="@color/splash_mark_on"
+        android:pathData="M26,54 L70,54 A4,4 0 0 1 74,58 L74,68 A4,4 0 0 1 70,72 L26,72 A4,4 0 0 1 22,68 L22,58 A4,4 0 0 1 26,54 Z" />
+    <path
+        android:fillColor="@color/splash_mark"
+        android:pathData="M62,60 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+</vector>

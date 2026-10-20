@@ -3,25 +3,25 @@ import 'package:flutter/material.dart';
 import '../api/agent_exception.dart';
 import '../session.dart';
 
-/// Langkah 2 alurnya: tempel URL agent dan token pendaftaran.
+/// Menambahkan satu server: tempel alamat agent dan token pendaftarannya.
 ///
 /// Token yang diketik di sini BUKAN kredensial akses — menukarnya hanya
 /// menghasilkan perangkat yang menunggu di antrean yang terlihat di layar
 /// pemilik server. Itu sebabnya layar ini boleh sesederhana ini.
-class EnrollScreen extends StatefulWidget {
-  const EnrollScreen({super.key, required this.session});
+class AddServerScreen extends StatefulWidget {
+  const AddServerScreen({super.key, required this.workspace});
 
-  final Session session;
+  final Workspace workspace;
 
   @override
-  State<EnrollScreen> createState() => _EnrollScreenState();
+  State<AddServerScreen> createState() => _AddServerScreenState();
 }
 
-class _EnrollScreenState extends State<EnrollScreen> {
+class _AddServerScreenState extends State<AddServerScreen> {
   final _formKey = GlobalKey<FormState>();
   final _urlController = TextEditingController();
   final _tokenController = TextEditingController();
-  final _nameController = TextEditingController();
+  final _labelController = TextEditingController();
 
   bool _busy = false;
   String? _error;
@@ -30,7 +30,7 @@ class _EnrollScreenState extends State<EnrollScreen> {
   void dispose() {
     _urlController.dispose();
     _tokenController.dispose();
-    _nameController.dispose();
+    _labelController.dispose();
     super.dispose();
   }
 
@@ -41,17 +41,21 @@ class _EnrollScreenState extends State<EnrollScreen> {
       _error = null;
     });
     try {
-      await widget.session.enroll(
-        baseUrl: _normalizeUrl(_urlController.text),
+      await widget.workspace.add(
+        baseUrl: normalizeAgentUrl(_urlController.text),
         enrollToken: _tokenController.text.trim(),
-        deviceName: _nameController.text.trim(),
+        label: _labelController.text.trim(),
       );
+      if (mounted) Navigator.of(context).pop();
     } on AgentException catch (e) {
       // pendingApproval BUKAN galat di sini: itu hasil yang diharapkan dari
-      // pendaftaran, dan Session sudah memindahkan layarnya ke ruang tunggu.
-      if (e.failure != AgentFailure.pendingApproval) {
-        setState(() => _error = e.message);
+      // pendaftaran. Tapi ia hanya bisa muncul dari refresh SETELAH
+      // pendaftaran berhasil, dan saat itu servernya sudah masuk grid.
+      if (e.failure == AgentFailure.pendingApproval) {
+        if (mounted) Navigator.of(context).pop();
+        return;
       }
+      setState(() => _error = e.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -59,48 +63,61 @@ class _EnrollScreenState extends State<EnrollScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Hubungkan server')),
+      appBar: AppBar(title: const Text('Tambah server')),
       body: SafeArea(
         child: Form(
           key: _formKey,
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              Text(
+                'Token pendaftaran ada di panel Mobile Control, di poinhost '
+                'desktop. Server baru muncul di grid setelah kamu menyetujui '
+                'perangkat ini dari sana.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 24),
               TextFormField(
                 controller: _urlController,
                 keyboardType: TextInputType.url,
                 autocorrect: false,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Alamat agent',
                   hintText: 'agent.example.com',
                 ),
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? 'Isi alamat agent'
-                    : null,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Isi alamat agent' : null,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               TextFormField(
                 controller: _tokenController,
                 autocorrect: false,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Token pendaftaran',
-                  helperText: 'Dari panel Mobile Control di poinhost',
                 ),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Isi token' : null,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               TextFormField(
-                controller: _nameController,
+                controller: _labelController,
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _busy ? null : _submit(),
                 decoration: const InputDecoration(
-                  labelText: 'Nama perangkat',
+                  labelText: 'Nama perangkat ini',
                   helperText: 'Supaya kamu mengenalinya saat menyetujui',
                 ),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Isi nama' : null,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
               FilledButton(
                 onPressed: _busy ? null : _submit,
                 child: _busy
@@ -112,10 +129,19 @@ class _EnrollScreenState extends State<EnrollScreen> {
                     : const Text('Daftar'),
               ),
               if (_error != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.errorContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
                 ),
               ],
             ],
@@ -131,13 +157,14 @@ class _EnrollScreenState extends State<EnrollScreen> {
 /// https, bukan http: agent diterbitkan dengan certbot, dan menebak http
 /// akan mengirim token pendaftaran melewati jaringan seluler tanpa enkripsi.
 /// Yang mengetik `agent.example.com` hampir pasti memaksudkan yang aman.
-Uri _normalizeUrl(String raw) {
+Uri normalizeAgentUrl(String raw) {
   final text = raw.trim();
-  final withScheme =
-      text.startsWith('http://') || text.startsWith('https://')
-          ? text
-          : 'https://$text';
-  return Uri.parse(withScheme.endsWith('/')
-      ? withScheme.substring(0, withScheme.length - 1)
-      : withScheme);
+  final withScheme = text.startsWith('http://') || text.startsWith('https://')
+      ? text
+      : 'https://$text';
+  return Uri.parse(
+    withScheme.endsWith('/')
+        ? withScheme.substring(0, withScheme.length - 1)
+        : withScheme,
+  );
 }

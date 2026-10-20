@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Warna jendela native saat proses baru start, SEBELUM Flutter menggambar
+  frame pertamanya.
+
+  Nilainya harus sama persis dengan latar SplashScreen di Dart. Bawaan
+  `flutter create` adalah putih, dan di app bertema gelap itu terlihat
+  sebagai kedipan putih terang setiap kali app dibuka — bagian yang paling
+  sering disangka "app-nya lambat", padahal cuma salah warna.
+-->
+<resources>
+    <color name="splash_background">#0D1424</color>
+    <color name="splash_mark">#2F6FED</color>
+    <color name="splash_mark_on">#FFFFFF</color>
+</resources>

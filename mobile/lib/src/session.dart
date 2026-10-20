@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -8,153 +9,209 @@ import 'api/agent_exception.dart';
 import 'api/models.dart';
 import 'storage/credential_store.dart';
 
-/// Di mana app berada dalam alur pendaftaran.
-enum SessionPhase {
-  /// Membaca kredensial tersimpan.
+/// Keadaan satu server di grid.
+enum ServerPhase {
+  /// Belum pernah dibaca sejak app dibuka.
   loading,
 
-  /// Belum pernah mendaftar, atau tokennya ditolak.
-  needsEnrollment,
-
-  /// Sudah mendaftar, menunggu disetujui dari app desktop poinhost.
+  /// Terdaftar, menunggu disetujui dari app desktop poinhost.
   awaitingApproval,
 
-  /// Perangkat ini dicabut.
+  /// Perangkat ini dicabut di server itu.
   revoked,
 
-  /// Disetujui; [Session.snapshot] berisi keadaan server.
+  /// Token tidak dikenal lagi — perangkatnya dihapus dari daftar di sana.
+  rejected,
+
+  /// Tidak sampai ke agent: jaringan, DNS, TLS, atau agent mati.
+  unreachable,
+
+  /// Terbaca; [ServerConnection.snapshot] berisi keadaannya.
   ready,
 }
 
-/// Seluruh keadaan app.
+/// Satu agent yang dipegang app ini.
 ///
-/// Satu ChangeNotifier, bukan state management berlapis: app ini punya tiga
-/// layar dan satu sumber data. Menambahkan lapisan di atasnya hanya
-/// menyembunyikan betapa sedikit yang sebenarnya terjadi di sini.
-class Session extends ChangeNotifier {
-  Session({required CredentialStore store, AgentClient Function(Uri)? clientFor})
-      : _store = store,
+/// Satu agent mengurus satu server — itu batasan di sisi server, dan tidak
+/// berubah. Yang menampung banyak di sini adalah HP-nya: tiap server yang
+/// dipasangi agent jadi satu [ServerConnection], dan satu kartu di grid.
+class ServerConnection extends ChangeNotifier {
+  ServerConnection({
+    required this.credentials,
+    required AgentClient client,
+  }) : _client = client;
+
+  final Credentials credentials;
+  final AgentClient _client;
+
+  String get id => credentials.id;
+
+  ServerPhase phase = ServerPhase.loading;
+  ServerSnapshot? snapshot;
+
+  /// Pesan terakhir yang layak ditampilkan, kalau ada.
+  String? message;
+
+  /// Nama yang ditampilkan di kartu.
+  ///
+  /// Nama dari agent menang kalau sudah ada — itu nama server yang
+  /// sebenarnya. Sebelum itu, label yang diketik user saat menambahkan;
+  /// kartu tanpa nama sama sekali membuat grid berisi beberapa server
+  /// mustahil dibaca.
+  String get displayName {
+    final fromAgent = snapshot?.name.trim() ?? '';
+    if (fromAgent.isNotEmpty) return fromAgent;
+    if (credentials.label.trim().isNotEmpty) return credentials.label.trim();
+    return credentials.baseUrl.host;
+  }
+
+  String get host => snapshot?.host.trim().isNotEmpty == true
+      ? snapshot!.host
+      : credentials.baseUrl.host;
+
+  bool get isBusy => _inFlight;
+  bool _inFlight = false;
+
+  Future<void> refresh() async {
+    // Satu permintaan pada satu waktu per server. Tanpa ini, tarik-segarkan
+    // saat polling sedang jalan membuat dua jawaban berlomba dan yang lebih
+    // tua bisa menang.
+    if (_inFlight) return;
+    _inFlight = true;
+    notifyListeners();
+
+    try {
+      snapshot = await _client.server(deviceToken: credentials.deviceToken);
+      message = null;
+      phase = ServerPhase.ready;
+    } on AgentException catch (e) {
+      message = e.message;
+      phase = switch (e.failure) {
+        AgentFailure.pendingApproval => ServerPhase.awaitingApproval,
+        AgentFailure.accessRevoked => ServerPhase.revoked,
+        AgentFailure.tokenRejected => ServerPhase.rejected,
+        AgentFailure.agentNotReady ||
+        AgentFailure.unreachable ||
+        AgentFailure.unexpected =>
+          ServerPhase.unreachable,
+      };
+    } finally {
+      _inFlight = false;
+      notifyListeners();
+    }
+  }
+
+  void close() => _client.close();
+}
+
+/// Seluruh server yang dipegang app ini.
+class Workspace extends ChangeNotifier {
+  Workspace({
+    required CredentialStore store,
+    AgentClient Function(Uri)? clientFor,
+  })  : _store = store,
         _clientFor = clientFor ?? ((url) => AgentClient(baseUrl: url));
 
   final CredentialStore _store;
   final AgentClient Function(Uri) _clientFor;
 
-  /// Seberapa sering layar utama menyegarkan dirinya.
+  /// Seberapa sering grid menyegarkan dirinya.
   ///
   /// Agent membaca metrik dari snapshot yang sudah hangat, tanpa round-trip
   /// SSH, jadi polling murah di sisi server. Yang membatasi bukan server
   /// melainkan baterai dan kuota di sisi HP.
   static const refreshInterval = Duration(seconds: 20);
 
-  SessionPhase phase = SessionPhase.loading;
-  ServerSnapshot? snapshot;
+  final List<ServerConnection> _connections = [];
+  List<ServerConnection> get connections => List.unmodifiable(_connections);
 
-  /// Pesan galat terakhir yang layak ditampilkan, kalau ada.
-  String? message;
+  bool get isEmpty => _connections.isEmpty;
 
-  Credentials? _credentials;
-  AgentClient? _client;
+  /// Selesai memuat kredensial tersimpan.
+  bool restored = false;
+
   Timer? _timer;
 
-  Uri? get baseUrl => _credentials?.baseUrl;
-
-  /// Dipanggil sekali saat app start.
   Future<void> restore() async {
-    _credentials = await _store.read();
-    if (_credentials == null) {
-      _set(SessionPhase.needsEnrollment);
-      return;
+    for (final c in await _store.readAll()) {
+      _connections.add(_build(c));
     }
-    _client = _clientFor(_credentials!.baseUrl);
-    await refresh();
+    restored = true;
+    notifyListeners();
+
+    // Dijalankan serentak: menunggu satu server yang mati berarti server
+    // lain yang sehat ikut kosong sampai permintaan itu timeout.
+    await Future.wait(_connections.map((c) => c.refresh()));
+    _startPolling();
   }
 
-  /// Langkah 1-2 alurnya: tukar token pendaftaran dengan token perangkat.
+  /// Menukar token pendaftaran dengan token milik perangkat ini, lalu
+  /// menambahkan servernya ke grid.
   ///
-  /// Setelah ini perangkatnya MENUNGGU — tokennya belum membuka apa pun
-  /// sampai seseorang menyetujuinya dari app desktop.
-  Future<void> enroll({
+  /// Hasilnya selalu MENUNGGU — tokennya belum membuka apa pun sampai
+  /// seseorang menyetujuinya dari app desktop poinhost.
+  Future<ServerConnection> add({
     required Uri baseUrl,
     required String enrollToken,
-    required String deviceName,
+    required String label,
   }) async {
     final client = _clientFor(baseUrl);
     final enrollment = await client.register(
       enrollToken: enrollToken,
-      deviceName: deviceName,
+      deviceName: _deviceName(label),
       platform: _platformName(),
     );
 
-    _credentials = Credentials(
+    final creds = Credentials(
+      id: _newId(),
       baseUrl: baseUrl,
       deviceToken: enrollment.token,
+      label: label,
     );
     // Disimpan SEBELUM permintaan berikutnya. Token ini dikembalikan agent
     // satu kali saja — agent cuma menyimpan hash-nya — jadi kehilangan ia
     // di sini berarti perangkat yang menggantung: terdaftar di server,
     // menunggu persetujuan, tapi HP-nya tidak punya tokennya lagi.
-    await _store.write(_credentials!);
+    final conn = ServerConnection(credentials: creds, client: client);
+    _connections.add(conn);
+    await _store.writeAll(_connections.map((c) => c.credentials).toList());
+    notifyListeners();
 
-    _client?.close();
-    _client = client;
-    await refresh();
+    await conn.refresh();
+    _startPolling();
+    return conn;
   }
 
-  /// Mengambil keadaan server sekali.
-  Future<void> refresh() async {
-    final client = _client;
-    if (client == null) {
-      _set(SessionPhase.needsEnrollment);
-      return;
-    }
-
-    try {
-      snapshot = await client.server(deviceToken: _credentials!.deviceToken);
-      message = null;
-      _set(SessionPhase.ready);
-      _startPolling();
-    } on AgentException catch (e) {
-      message = e.message;
-      switch (e.failure) {
-        case AgentFailure.pendingApproval:
-          _set(SessionPhase.awaitingApproval);
-          // Terus memeriksa: persetujuan datang dari layar LAIN, dan tidak
-          // ada yang memberi tahu HP saat itu terjadi.
-          _startPolling();
-        case AgentFailure.accessRevoked:
-          _stopPolling();
-          _set(SessionPhase.revoked);
-        case AgentFailure.tokenRejected:
-          // Token tidak dikenal lagi — perangkatnya dihapus dari daftar.
-          // Kredensial dibuang supaya app tidak terjebak memanggil dengan
-          // token yang tidak akan pernah diterima.
-          await forget();
-        case AgentFailure.agentNotReady:
-        case AgentFailure.unreachable:
-        case AgentFailure.unexpected:
-          // Keadaan sementara: jangan buang kredensial, jangan pindah
-          // layar. Yang sudah tergambar tetap tergambar, dengan pesannya.
-          notifyListeners();
-      }
-    }
-  }
-
-  /// Melupakan perangkat ini di sisi HP, dan kembali ke layar pendaftaran.
+  /// Melupakan satu server di sisi HP.
   ///
   /// Tidak menyentuh daftar perangkat di agent: pencabutan adalah hak
-  /// pemilik server, bukan hak HP yang dicabut.
-  Future<void> forget() async {
-    _stopPolling();
-    await _store.clear();
-    _credentials = null;
-    _client?.close();
-    _client = null;
-    snapshot = null;
-    _set(SessionPhase.needsEnrollment);
+  /// pemilik server, bukan hak HP yang dicabut. Perangkatnya tetap terlihat
+  /// di panel Mobile Control sampai dihapus dari sana.
+  Future<void> remove(String id) async {
+    final i = _connections.indexWhere((c) => c.id == id);
+    if (i < 0) return;
+    _connections.removeAt(i).close();
+    await _store.writeAll(_connections.map((c) => c.credentials).toList());
+    if (_connections.isEmpty) _stopPolling();
+    notifyListeners();
   }
 
+  ServerConnection? byId(String id) {
+    for (final c in _connections) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  Future<void> refreshAll() =>
+      Future.wait(_connections.map((c) => c.refresh()));
+
+  ServerConnection _build(Credentials c) =>
+      ServerConnection(credentials: c, client: _clientFor(c.baseUrl));
+
   void _startPolling() {
-    _timer ??= Timer.periodic(refreshInterval, (_) => refresh());
+    if (_connections.isEmpty) return;
+    _timer ??= Timer.periodic(refreshInterval, (_) => refreshAll());
   }
 
   void _stopPolling() {
@@ -162,17 +219,28 @@ class Session extends ChangeNotifier {
     _timer = null;
   }
 
-  void _set(SessionPhase next) {
-    phase = next;
-    notifyListeners();
-  }
-
   @override
   void dispose() {
     _stopPolling();
-    _client?.close();
+    for (final c in _connections) {
+      c.close();
+    }
     super.dispose();
   }
+}
+
+String _newId() {
+  final r = Random.secure();
+  return List.generate(8, (_) => r.nextInt(256).toRadixString(16).padLeft(2, '0'))
+      .join();
+}
+
+/// Nama yang dikirim ke agent, yang akan dibaca pemilik server saat
+/// menyetujui. Label dari user ikut, karena "Android" saja tidak cukup
+/// untuk membedakan dua HP di daftar yang sama.
+String _deviceName(String label) {
+  final l = label.trim();
+  return l.isEmpty ? _platformName() : l;
 }
 
 String _platformName() {

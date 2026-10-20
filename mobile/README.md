@@ -22,31 +22,55 @@ pun sampai seseorang menyetujuinya dari app desktop poinhost.
 ## Alur
 
 ```
-EnrollScreen ──POST /v1/devices──► WaitingScreen ──disetujui──► ServerScreen
-  URL + token                       poll /v1/server             poll /v1/server
-  pendaftaran                       403 pending                 200
+Splash ──► Shell ──┬── Server  : grid panel, satu panel satu server
+                   └── About
+                        ▲
+   Tambah server ───────┘   POST /v1/devices → panel muncul "Menunggu
+                            persetujuan" → disetujui dari poinhost desktop
+                            → panel menampilkan metriknya
 ```
 
-Layarnya dipilih dari `SessionPhase`, bukan dari navigator stack: yang
-memindahkannya adalah jawaban agent — termasuk persetujuan yang datang saat
-layar tunggu sedang terbuka, yang tidak diberitahukan ke HP oleh siapa pun.
+Satu agent mengurus satu server, dan itu tidak berubah. Yang menampung
+banyak adalah **aplikasi ini**: tiap server yang dipasangi agent jadi satu
+`ServerConnection` dan satu panel di grid.
+
+Splash bertahan sampai kredensial selesai dibaca DAN tiap server dihubungi
+sekali. Memotongnya lebih awal membuat grid sempat tergambar kosong — tidak
+bisa dibedakan dari "belum ada server" oleh orang yang sebenarnya punya
+lima. Warnanya sama persis dengan jendela native Android
+(`values/colors.xml`), jadi peralihannya tidak terlihat dan tidak ada
+kedipan putih.
+
+Sidebar berperilaku berbeda menurut lebar layar, dan itu disengaja: di HP
+tegak ia lapisan yang bisa ditutup, di layar lebar ia menetap dan tombolnya
+menyempitkan jadi ikon saja. Satu perilaku untuk kedua ukuran selalu salah
+di salah satunya.
 
 ## Struktur
 
 ```
 lib/
-  main.dart                     # merakit Session lalu runApp
+  main.dart                     # merakit Workspace lalu runApp
   src/
-    app.dart                    # memilih layar dari SessionPhase
-    session.dart                # satu-satunya state: fase + snapshot + polling
+    app.dart                    # splash -> shell
+    theme.dart                  # Material 3 dari satu seed color
+    session.dart                # Workspace (banyak server) + ServerConnection
     api/
       agent_client.dart         # dua endpoint, dan tidak lebih
       agent_exception.dart      # AgentFailure: kenapa gagal, bukan sekadar gagal
       models.dart               # JSON -> objek, parser tulis tangan
     storage/
-      credential_store.dart     # keychain / EncryptedSharedPreferences
-    screens/                    # enroll, waiting, server
+      credential_store.dart     # daftar server di keychain
+    screens/
+      splash_screen.dart
+      shell.dart                # sidebar collapse + isinya
+      servers_screen.dart       # grid panel
+      server_detail_screen.dart
+      add_server_screen.dart
+      about_screen.dart
     widgets/
+      brand.dart                # lambang, kembaran splash_mark.xml di Android
+      server_card.dart          # satu panel di grid
 ```
 
 ## Menjalankan
@@ -100,4 +124,5 @@ pendaftarannya.
 - Ikon, nama aplikasi, dan splash masih bawaan `flutter create`.
 - Belum ada penanganan untuk beberapa server di satu app — dan itu memang
   bukan arah fiturnya: tiap server punya agent-nya sendiri.
-- Tes baru satu: app berhenti di layar pendaftaran saat belum ada kredensial.
+- Grid dengan data asli belum pernah terlihat di layar sungguhan — bentuknya
+  dijaga widget test, bukan mata.
