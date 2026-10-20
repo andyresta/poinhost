@@ -4,14 +4,33 @@
     {
       "name": "wails-dev",
       "runtimeExecutable": "wails",
-      "runtimeArgs": ["dev"],
+      "runtimeArgs": [
+        "dev"
+      ],
       "port": 34115
     },
     {
       "name": "wails-dev-skipbindings",
       "runtimeExecutable": "wails",
-      "runtimeArgs": ["dev", "-skipbindings"],
+      "runtimeArgs": [
+        "dev",
+        "-skipbindings"
+      ],
       "port": 34115
+    },
+    {
+      "name": "mobile-web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "5123",
+        "--bind",
+        "127.0.0.1",
+        "-d",
+        "mobile/build/web"
+      ],
+      "port": 5123
     }
   ]
 }
