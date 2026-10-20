@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:poinhost_mobile/src/app.dart';
 import 'package:poinhost_mobile/src/screens/add_server_screen.dart';
 import 'package:poinhost_mobile/src/session.dart';
+import 'package:poinhost_mobile/src/settings.dart';
 import 'package:poinhost_mobile/src/storage/credential_store.dart';
 
 void main() {
@@ -13,7 +14,7 @@ void main() {
     final workspace = Workspace(store: InMemoryCredentialStore());
     addTearDown(workspace.dispose);
 
-    await tester.pumpWidget(PoinhostApp(workspace: workspace));
+    await tester.pumpWidget(PoinhostApp(workspace: workspace, settings: _settings()));
     await tester.pump();
     expect(find.text('Mobile Control'), findsOneWidget);
     expect(workspace.restored, isFalse);
@@ -73,3 +74,5 @@ void main() {
     );
   });
 }
+
+AppSettings _settings() => AppSettings(store: InMemorySettingsStore());

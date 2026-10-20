@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 
 import 'src/app.dart';
 import 'src/session.dart';
+import 'src/settings.dart';
 import 'src/storage/credential_store.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+
+  final settings = AppSettings(store: const SecureSettingsStore());
+  settings.load();
 
   final workspace = Workspace(store: const SecureCredentialStore());
   // Dijalankan TANPA await: kredensial dibaca dari keychain lalu tiap server
@@ -15,5 +19,5 @@ void main() {
   // jendela native, sehingga peralihannya tidak terlihat.
   workspace.restore();
 
-  runApp(PoinhostApp(workspace: workspace));
+  runApp(PoinhostApp(workspace: workspace, settings: settings));
 }

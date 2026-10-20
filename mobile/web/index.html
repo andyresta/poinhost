@@ -31,6 +31,13 @@
 
   <title>poinhost_mobile</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    /* Latar halaman SEBELUM Flutter menggambar frame pertamanya.
+       Tanpa ini body transparan, artinya putih bawaan browser -- kedipan
+       yang sama dengan yang sudah diperbaiki di sisi Android, cuma pindah
+       ke web. Nilainya harus sama dengan splashBackground di Dart. */
+    html, body { margin: 0; padding: 0; background-color: #0D1424; }
+  </style>
 </head>
 <body>
   <!--

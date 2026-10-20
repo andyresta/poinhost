@@ -5,6 +5,7 @@ import 'package:poinhost_mobile/src/api/agent_exception.dart';
 import 'package:poinhost_mobile/src/api/models.dart';
 import 'package:poinhost_mobile/src/app.dart';
 import 'package:poinhost_mobile/src/session.dart';
+import 'package:poinhost_mobile/src/settings.dart';
 import 'package:poinhost_mobile/src/storage/credential_store.dart';
 
 /// Agent palsu, supaya layar bisa diuji tanpa jaringan.
@@ -71,7 +72,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     final w = await _workspace(const [], (_) async => _snapshot('x'));
-    await tester.pumpWidget(PoinhostApp(workspace: w));
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Menu'));
@@ -95,7 +96,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     final w = await _workspace(const [], (_) async => _snapshot('x'));
-    await tester.pumpWidget(PoinhostApp(workspace: w));
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Menu'));
@@ -118,7 +119,7 @@ void main() {
     addTearDown(tester.view.reset);
 
     final w = await _workspace(const [], (_) async => _snapshot('x'));
-    await tester.pumpWidget(PoinhostApp(workspace: w));
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
     await tester.pumpAndSettle();
 
     // Menu langsung terlihat, tanpa hamburger.
@@ -135,6 +136,45 @@ void main() {
     w.dispose();
   });
 
+  // Pilihan tampilan harus punya TIGA keadaan. Sakelar dua arah mengubah
+  // "ikut sistem" jadi pilihan sekali jalan: begitu ditekan, app berhenti
+  // mengikuti setelan HP selamanya dan tidak ada jalan kembali.
+  testWidgets('tampilan bisa diubah dan bisa kembali ikut sistem',
+      (tester) async {
+    final w = await _workspace(const [], (_) async => _snapshot('x'));
+    final settings = _settings();
+    await settings.load();
+    expect(settings.mode, ThemeMode.system);
+
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: settings));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Tampilan: Ikut sistem'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Gelap').last);
+    await tester.pumpAndSettle();
+    expect(settings.mode, ThemeMode.dark);
+
+    await tester.tap(find.byTooltip('Tampilan: Gelap'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ikut sistem').last);
+    await tester.pumpAndSettle();
+    expect(settings.mode, ThemeMode.system);
+
+    w.dispose();
+  });
+
+  // Pilihan harus bertahan: tema yang kembali ke bawaan tiap kali app
+  // dibuka sama saja dengan tidak bisa dipilih.
+  test('pilihan tampilan tersimpan', () async {
+    final store = InMemorySettingsStore();
+    await AppSettings(store: store).setMode(ThemeMode.light);
+
+    final lagi = AppSettings(store: store);
+    await lagi.load();
+    expect(lagi.mode, ThemeMode.light);
+  });
+
   // Tiap server yang terhubung harus jadi SATU panel. Inilah bentuk layar
   // utamanya; kalau dua server menghasilkan satu kartu, gridnya tidak ada
   // gunanya.
@@ -144,7 +184,7 @@ void main() {
       (url) async => _snapshot(url.host.startsWith('a') ? 'produksi' : 'staging'),
     );
 
-    await tester.pumpWidget(PoinhostApp(workspace: w));
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
     await tester.pumpAndSettle();
 
     expect(find.text('produksi'), findsOneWidget);
@@ -171,7 +211,7 @@ void main() {
       },
     );
 
-    await tester.pumpWidget(PoinhostApp(workspace: w));
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
     await tester.pumpAndSettle();
 
     expect(find.text('Menunggu persetujuan'), findsOneWidget);
@@ -200,3 +240,5 @@ void main() {
     expect((await store.readAll()).map((c) => c.id), ['b']);
   });
 }
+
+AppSettings _settings() => AppSettings(store: InMemorySettingsStore());

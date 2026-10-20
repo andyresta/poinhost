@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../session.dart';
+import '../settings.dart';
 import '../widgets/brand.dart';
 import 'about_screen.dart';
 import 'servers_screen.dart';
@@ -25,9 +26,14 @@ enum ShellSection {
 /// menetap di tempatnya dan tombolnya hanya menyempitkan jadi ikon saja.
 /// Satu perilaku untuk kedua ukuran selalu salah di salah satunya.
 class AppShell extends StatefulWidget {
-  const AppShell({super.key, required this.workspace});
+  const AppShell({
+    super.key,
+    required this.workspace,
+    required this.settings,
+  });
 
   final Workspace workspace;
+  final AppSettings settings;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -50,6 +56,7 @@ class _AppShellState extends State<AppShell> {
           ? null
           : Drawer(
               child: _SidebarContent(
+                settings: widget.settings,
                 selected: _section,
                 expanded: true,
                 onSelect: (s) {
@@ -68,6 +75,7 @@ class _AppShellState extends State<AppShell> {
           children: [
             if (wide)
               _Sidebar(
+                settings: widget.settings,
                 expanded: _expanded,
                 selected: _section,
                 onSelect: (s) => setState(() => _section = s),
@@ -115,12 +123,14 @@ class _Content extends StatelessWidget {
 /// Sidebar yang menetap di layar lebar, bisa disempitkan jadi ikon saja.
 class _Sidebar extends StatelessWidget {
   const _Sidebar({
+    required this.settings,
     required this.expanded,
     required this.selected,
     required this.onSelect,
     required this.onToggle,
   });
 
+  final AppSettings settings;
   final bool expanded;
   final ShellSection selected;
   final ValueChanged<ShellSection> onSelect;
@@ -134,6 +144,7 @@ class _Sidebar extends StatelessWidget {
       width: expanded ? 216 : 72,
       color: Theme.of(context).colorScheme.surfaceContainerLow,
       child: _SidebarContent(
+        settings: settings,
         selected: selected,
         expanded: expanded,
         onSelect: onSelect,
@@ -145,6 +156,7 @@ class _Sidebar extends StatelessWidget {
 
 class _SidebarContent extends StatelessWidget {
   const _SidebarContent({
+    required this.settings,
     required this.selected,
     required this.expanded,
     required this.onSelect,
@@ -152,6 +164,7 @@ class _SidebarContent extends StatelessWidget {
     this.onClose,
   });
 
+  final AppSettings settings;
   final ShellSection selected;
   final bool expanded;
   final ValueChanged<ShellSection> onSelect;
@@ -206,6 +219,7 @@ class _SidebarContent extends StatelessWidget {
             onTap: () => onSelect(s),
           ),
         const Spacer(),
+        _ThemeControl(settings: settings, expanded: expanded),
         if (onToggle != null)
           Padding(
             padding: const EdgeInsets.all(8),
@@ -289,6 +303,87 @@ class _SidebarItem extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Pilihan terang/gelap, di kaki sidebar.
+///
+/// Tiga pilihan, bukan sakelar dua arah. "Ikut sistem" adalah bawaannya dan
+/// harus bisa dikembalikan — sakelar dua arah mengubahnya jadi pilihan
+/// sekali jalan: begitu seseorang menekannya, app berhenti mengikuti setelan
+/// HP-nya selamanya dan tidak ada jalan kembali.
+class _ThemeControl extends StatelessWidget {
+  const _ThemeControl({required this.settings, required this.expanded});
+
+  final AppSettings settings;
+  final bool expanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return AnimatedBuilder(
+      animation: settings,
+      builder: (context, _) {
+        final current = settings.mode;
+
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: expanded ? 12 : 8),
+          child: PopupMenuButton<ThemeMode>(
+            tooltip: 'Tampilan: ${current.label}',
+            initialValue: current,
+            onSelected: settings.setMode,
+            position: PopupMenuPosition.under,
+            itemBuilder: (context) => [
+              for (final m in ThemeMode.values)
+                PopupMenuItem(
+                  value: m,
+                  child: Row(
+                    children: [
+                      Icon(m.icon, size: 18),
+                      const SizedBox(width: 10),
+                      Text(m.label),
+                    ],
+                  ),
+                ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                mainAxisAlignment: expanded
+                    ? MainAxisAlignment.start
+                    : MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    current.icon,
+                    size: 20,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  if (expanded) ...[
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        current.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.expand_more,
+                      size: 18,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
