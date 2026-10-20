@@ -86,6 +86,31 @@ void main() {
     w.dispose();
   });
 
+  // Menutup lapisan menu sebenarnya bisa dengan menyentuh bagian gelap di
+  // sebelahnya atau menggeser, tapi dua-duanya tidak terlihat sebagai apa
+  // pun — yang membuka menu dengan tombol mencari tombol untuk menutupnya.
+  testWidgets('menu di layar sempit punya tombol tutup', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final w = await _workspace(const [], (_) async => _snapshot('x'));
+    await tester.pumpWidget(PoinhostApp(workspace: w));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Menu'));
+    await tester.pumpAndSettle();
+    expect(find.text('About'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Tutup menu'));
+    await tester.pumpAndSettle();
+
+    // Menunya tertutup, dan layarnya tidak berpindah ke mana-mana.
+    expect(find.text('About'), findsNothing);
+    expect(find.byTooltip('Menu'), findsOneWidget);
+    w.dispose();
+  });
+
   testWidgets('di layar lebar sidebar menetap dan bisa disempitkan',
       (tester) async {
     tester.view.physicalSize = const Size(1000, 800);
@@ -106,6 +131,7 @@ void main() {
     // Disempitkan: labelnya hilang, tapi menunya masih ada lewat ikon.
     expect(find.text('About'), findsNothing);
     expect(find.byTooltip('Tampilkan menu'), findsOneWidget);
+    expect(find.byTooltip('Tutup menu'), findsNothing);
     w.dispose();
   });
 

@@ -56,6 +56,11 @@ class _AppShellState extends State<AppShell> {
                   setState(() => _section = s);
                   Navigator.of(context).pop();
                 },
+                // Menutup lapisan ini sebenarnya bisa dengan menyentuh
+                // bagian gelap di sebelahnya atau menggeser — tapi dua-duanya
+                // tidak terlihat sebagai apa pun. Yang membuka menu dengan
+                // tombol mencari tombol untuk menutupnya.
+                onClose: () => Navigator.of(context).pop(),
               ),
             ),
       body: SafeArea(
@@ -144,12 +149,18 @@ class _SidebarContent extends StatelessWidget {
     required this.expanded,
     required this.onSelect,
     this.onToggle,
+    this.onClose,
   });
 
   final ShellSection selected;
   final bool expanded;
   final ValueChanged<ShellSection> onSelect;
+
+  /// Menyempitkan sidebar yang menetap, di layar lebar.
   final VoidCallback? onToggle;
+
+  /// Menutup sidebar yang berupa lapisan, di layar sempit.
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -176,6 +187,13 @@ class _SidebarContent extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (onClose != null)
+                  IconButton(
+                    onPressed: onClose,
+                    icon: const Icon(Icons.close),
+                    tooltip: 'Tutup menu',
+                    visualDensity: VisualDensity.compact,
+                  ),
               ],
             ],
           ),
