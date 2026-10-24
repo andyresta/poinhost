@@ -36,9 +36,10 @@ type Rule struct {
 	// `firewall-cmd --info-service` (mis. "80/tcp 443/tcp"). Dipakai juga
 	// oleh penjaga SSH supaya service "ssh" terhitung membuka port 22.
 	ServicePorts string `json:"servicePorts"`
-	// Owner: "poinhost-docker-access" / "poinhost-port-scope" kalau aturan
-	// ini dibuat fitur lain di aplikasi ini, selain itu kosong. Hanya bisa
-	// diketahui di ufw (lihat catatan di detectOwner).
+	// Owner: "poinhost-docker-access" / "poinhost-port-scope" /
+	// "poinhost-remote-access" kalau aturan ini dibuat fitur lain di aplikasi
+	// ini, selain itu kosong. Hanya bisa diketahui di ufw (lihat catatan di
+	// detectOwner).
 	Owner   string `json:"owner"`
 	Comment string `json:"comment"`
 	// Raw baris asli, ditampilkan untuk aturan yang tidak terparse penuh
@@ -92,7 +93,7 @@ type ListResponse struct {
 // Marker milik fitur lain di aplikasi ini. Aturan bermarker ditandai di UI
 // supaya user tidak mengubahnya dari sini lalu bingung kenapa berubah lagi
 // sendiri saat fitur asalnya dijalankan.
-var knownOwners = []string{"poinhost-docker-access", "poinhost-port-scope"}
+var knownOwners = []string{"poinhost-docker-access", "poinhost-port-scope", "poinhost-remote-access"}
 
 func detectOwner(comment string) string {
 	for _, o := range knownOwners {

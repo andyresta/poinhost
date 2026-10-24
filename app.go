@@ -1087,6 +1087,24 @@ func (a *App) DisableWebsiteDBDockerAccess(serverID, engine string) (*website.DB
 	return a.websiteSvc.DisableDBDockerAccess(serverID, engine)
 }
 
+// GetWebsiteDBRemoteAccessStatus membaca status remote access database
+// (klien eksternal seperti Navicat) — listener, aturan per sumber IP/CIDR,
+// dan status firewall tiap sumber. Lihat remoteaccess.go.
+func (a *App) GetWebsiteDBRemoteAccessStatus(serverID, engine string) (*website.DBRemoteAccessStatus, error) {
+	return a.websiteSvc.GetDBRemoteAccessStatus(serverID, engine)
+}
+
+// AddWebsiteDBRemoteRule mengizinkan satu sumber IP/CIDR connect ke
+// database dari luar (pg_hba.conf / bind-address + firewall).
+func (a *App) AddWebsiteDBRemoteRule(req website.DBRemoteRuleRequest) (*website.DBRemoteAccessStatus, error) {
+	return a.websiteSvc.AddDBRemoteRule(req)
+}
+
+// RemoveWebsiteDBRemoteRule mencabut satu sumber remote access.
+func (a *App) RemoveWebsiteDBRemoteRule(serverID, engine, id string) (*website.DBRemoteAccessStatus, error) {
+	return a.websiteSvc.RemoveDBRemoteRule(serverID, engine, id)
+}
+
 // DropWebsiteDatabase menghapus satu database beserta isinya (permanen).
 func (a *App) DropWebsiteDatabase(serverID, engine, name string) error {
 	return a.websiteSvc.DBDropDatabase(serverID, engine, name)

@@ -348,6 +348,37 @@ export const en = {
   'db.dockerDisableDetail':
     'The database goes back to listening on localhost only and the firewall rule installed by poinhost is removed. Docker containers currently using this database will lose their connection immediately.',
   'db.applying': 'Applying…',
+  'db.remoteAccess': 'Remote access (external clients)',
+  'db.remoteIntroPG':
+    'Lets external clients such as Navicat or DBeaver connect directly. Each source adds one pg_hba.conf line — opening the port in the firewall alone is not enough, PostgreSQL then rejects with "no pg_hba.conf entry". Safest alternative: SSH tunnel (needs no rule at all).',
+  'db.remoteIntroMySQL':
+    'Lets external clients such as Navicat or DBeaver connect directly: MySQL listens on 0.0.0.0 and the firewall is opened per source. The account still needs a matching host (\'%\' or the client IP) — set it in the Access tab. Safest alternative: SSH tunnel.',
+  'db.remotePort': 'Port',
+  'db.remoteEmpty': 'No external source is allowed yet.',
+  'db.remoteSource': 'Source',
+  'db.remoteAuth': 'Auth',
+  'db.remoteNote': 'Note',
+  'db.remoteFwManaged': 'opened by poinhost',
+  'db.remoteFwOpen': 'open',
+  'db.remoteFwBlocked': 'blocked by firewall',
+  'db.remoteSourcePlaceholder': 'Client IP or CIDR, e.g. 182.8.212.16',
+  'db.remoteMyIp': 'My IP ({ip})',
+  'db.remoteMyIpHint': 'The IP this computer connects from, as seen by the server',
+  'db.remoteDatabasePlaceholder': 'Database (empty = all)',
+  'db.remoteUserPlaceholder': 'User (empty = all)',
+  'db.remoteNotePlaceholder': 'Note (optional), e.g. office Navicat',
+  'db.remoteOpenFirewall': 'Also allow this source to port {port} in the active firewall (ufw/firewalld)',
+  'db.remoteRestartNote': 'PostgreSQL still listens on localhost only — adding the first source restarts PostgreSQL once, briefly dropping active connections.',
+  'db.remoteAdd': 'Allow source',
+  'db.remoteRemove': 'Remove source',
+  'db.remoteRemoveConfirm': 'Stop allowing {source} to connect to {engine}?',
+  'db.remoteRemoveDetail': 'Clients from this source will be rejected on their next connection.',
+  'db.remoteRemoveDetailFirewall':
+    'Clients from this source will be rejected on their next connection. The firewall rule poinhost opened for this source is removed too.',
+  'db.remoteAnywhereTitle': 'Open to the entire internet?',
+  'db.remoteAnywhereConfirm': 'Allow ANY IP address to connect to {engine}?',
+  'db.remoteAnywhereDetail':
+    'The database becomes a target for password brute-force from anywhere. Prefer the specific IP of the client, or an SSH tunnel.',
 
   // Explorer
   'explore.title': 'Explore — {label}',
@@ -1007,6 +1038,37 @@ export const id: Partial<Record<MessageKey, string>> = {
   'db.dockerDisableDetail':
     'Database kembali hanya mendengarkan localhost dan aturan firewall yang dipasang poinhost dicabut. Container Docker yang sedang memakai database ini akan langsung kehilangan koneksi.',
   'db.applying': 'Menerapkan…',
+  'db.remoteAccess': 'Remote access (klien eksternal)',
+  'db.remoteIntroPG':
+    'Mengizinkan klien eksternal seperti Navicat atau DBeaver connect langsung. Tiap sumber menambah satu baris pg_hba.conf — membuka port di firewall saja tidak cukup, PostgreSQL tetap menolak dengan "no pg_hba.conf entry". Alternatif paling aman: SSH tunnel (tidak perlu aturan apa pun).',
+  'db.remoteIntroMySQL':
+    'Mengizinkan klien eksternal seperti Navicat atau DBeaver connect langsung: MySQL mendengarkan 0.0.0.0 dan firewall dibuka per sumber. Akunnya tetap butuh host yang cocok (\'%\' atau IP klien) — atur di tab Akses. Alternatif paling aman: SSH tunnel.',
+  'db.remotePort': 'Port',
+  'db.remoteEmpty': 'Belum ada sumber eksternal yang diizinkan.',
+  'db.remoteSource': 'Sumber',
+  'db.remoteAuth': 'Auth',
+  'db.remoteNote': 'Catatan',
+  'db.remoteFwManaged': 'dibuka poinhost',
+  'db.remoteFwOpen': 'terbuka',
+  'db.remoteFwBlocked': 'diblokir firewall',
+  'db.remoteSourcePlaceholder': 'IP atau CIDR klien, mis. 182.8.212.16',
+  'db.remoteMyIp': 'IP saya ({ip})',
+  'db.remoteMyIpHint': 'IP yang dipakai komputer ini, sebagaimana terlihat oleh server',
+  'db.remoteDatabasePlaceholder': 'Database (kosong = semua)',
+  'db.remoteUserPlaceholder': 'User (kosong = semua)',
+  'db.remoteNotePlaceholder': 'Catatan (opsional), mis. Navicat kantor',
+  'db.remoteOpenFirewall': 'Izinkan juga sumber ini ke port {port} di firewall yang aktif (ufw/firewalld)',
+  'db.remoteRestartNote': 'PostgreSQL masih hanya mendengarkan localhost — menambah sumber pertama akan me-restart PostgreSQL sekali, koneksi aktif terputus sebentar.',
+  'db.remoteAdd': 'Izinkan sumber',
+  'db.remoteRemove': 'Hapus sumber',
+  'db.remoteRemoveConfirm': 'Berhenti mengizinkan {source} connect ke {engine}?',
+  'db.remoteRemoveDetail': 'Klien dari sumber ini akan ditolak pada koneksi berikutnya.',
+  'db.remoteRemoveDetailFirewall':
+    'Klien dari sumber ini akan ditolak pada koneksi berikutnya. Aturan firewall yang dibuka poinhost untuk sumber ini ikut dicabut.',
+  'db.remoteAnywhereTitle': 'Buka untuk seluruh internet?',
+  'db.remoteAnywhereConfirm': 'Izinkan SEMUA alamat IP connect ke {engine}?',
+  'db.remoteAnywhereDetail':
+    'Database jadi sasaran brute-force password dari mana saja. Lebih baik pakai IP spesifik klien, atau SSH tunnel.',
 
   'explore.title': 'Explore — {label}',
   'explore.databases': 'Database',

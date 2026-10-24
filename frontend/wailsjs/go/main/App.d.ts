@@ -16,6 +16,8 @@ import {filexfer} from '../models';
 
 export function AddFirewallRule(arg1:firewall.RuleRequest):Promise<firewall.ListResponse>;
 
+export function AddWebsiteDBRemoteRule(arg1:website.DBRemoteRuleRequest):Promise<website.DBRemoteAccessStatus>;
+
 export function AgentLifecycle(arg1:string,arg2:string):Promise<agentctl.Status>;
 
 export function AgentLogs(arg1:string,arg2:number):Promise<string>;
@@ -137,6 +139,8 @@ export function GetSystemService(arg1:string,arg2:string):Promise<services.Servi
 export function GetWebsiteDBDockerAccessStatus(arg1:string,arg2:string):Promise<website.DBDockerAccessStatus>;
 
 export function GetWebsiteDBPrivileges():Promise<Array<website.DBPrivilegeOption>>;
+
+export function GetWebsiteDBRemoteAccessStatus(arg1:string,arg2:string):Promise<website.DBRemoteAccessStatus>;
 
 export function GetWebsiteDBStatus(arg1:string,arg2:string):Promise<website.DBEngineStatus>;
 
@@ -265,6 +269,8 @@ export function ReloadFirewall(arg1:string):Promise<firewall.ListResponse>;
 export function RemoveDockerContainer(arg1:string,arg2:string):Promise<void>;
 
 export function RemoveDockerNetwork(arg1:string,arg2:string):Promise<void>;
+
+export function RemoveWebsiteDBRemoteRule(arg1:string,arg2:string,arg3:string):Promise<website.DBRemoteAccessStatus>;
 
 export function RenameFile(arg1:files.RenameRequest):Promise<void>;
 

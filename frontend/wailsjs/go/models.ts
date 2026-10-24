@@ -2944,6 +2944,103 @@ export namespace website {
 	        this.label = source["label"];
 	    }
 	}
+	export class DBRemoteRule {
+	    id: string;
+	    source: string;
+	    database?: string;
+	    username?: string;
+	    auth?: string;
+	    note?: string;
+	    firewallManaged: boolean;
+	    firewallAllowed: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DBRemoteRule(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.source = source["source"];
+	        this.database = source["database"];
+	        this.username = source["username"];
+	        this.auth = source["auth"];
+	        this.note = source["note"];
+	        this.firewallManaged = source["firewallManaged"];
+	        this.firewallAllowed = source["firewallAllowed"];
+	    }
+	}
+	export class DBRemoteAccessStatus {
+	    engine: string;
+	    port: number;
+	    listenAll: boolean;
+	    listenValue?: string;
+	    firewallDetected?: string;
+	    rules: DBRemoteRule[];
+	    clientIp?: string;
+	    localOnlyUsers?: string[];
+	    message?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new DBRemoteAccessStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.engine = source["engine"];
+	        this.port = source["port"];
+	        this.listenAll = source["listenAll"];
+	        this.listenValue = source["listenValue"];
+	        this.firewallDetected = source["firewallDetected"];
+	        this.rules = this.convertValues(source["rules"], DBRemoteRule);
+	        this.clientIp = source["clientIp"];
+	        this.localOnlyUsers = source["localOnlyUsers"];
+	        this.message = source["message"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
+	export class DBRemoteRuleRequest {
+	    serverId: string;
+	    engine: string;
+	    source: string;
+	    database?: string;
+	    username?: string;
+	    note?: string;
+	    openFirewall: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new DBRemoteRuleRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.serverId = source["serverId"];
+	        this.engine = source["engine"];
+	        this.source = source["source"];
+	        this.database = source["database"];
+	        this.username = source["username"];
+	        this.note = source["note"];
+	        this.openFirewall = source["openFirewall"];
+	    }
+	}
 	export class DBUserInfo {
 	    username: string;
 	    host?: string;

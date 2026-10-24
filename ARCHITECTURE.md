@@ -1647,6 +1647,65 @@ sendiri. Ditambahkan test regresi (`database_test.go`) yang meng-assert
 skrip-skrip ini tidak pernah balik memakai `-h 127.0.0.1` atau membuat
 akun `root@127.0.0.1`.
 
+### Remote access: klien eksternal per sumber IP/CIDR, bukan "buka ke internet"
+
+Pemicunya laporan nyata: user membuka port 5432 "dari mana saja" lewat
+panel Firewall, lalu Navicat tetap ditolak dengan
+`FATAL: no pg_hba.conf entry for host "182.8.212.16", user "...", database "..."`.
+Pesan itu justru membuktikan TCP sudah tembus (firewall & listener beres) —
+yang menolak `pg_hba.conf`, lapisan yang tidak pernah disentuh poinhost
+untuk sumber selain subnet Docker. Klien remote butuh TIGA lapisan terbuka:
+listener (`listen_addresses`/`bind-address`), firewall OS, dan kontrol akses
+milik database sendiri (`pg_hba.conf`; untuk MySQL host akun `user@host`).
+
+Fitur ini (`internal/modules/website/remoteaccess.go`, tab Pengaturan panel
+Database) mengurus ketiganya per SUMBER yang dipilih user:
+
+- **Satu aturan = satu sumber.** PostgreSQL: satu baris
+  `host <db> <user> <cidr> <auth>` di `pg_hba.conf`, didahului komentar
+  `# poinhost-remote-access id=<id> fw=<0|1> note=...`. Kolom database & user
+  bisa dibatasi (default `all`), auth mengikuti `password_encryption` (alasan
+  sama dengan akses Docker). MySQL: file drop-in tersendiri
+  `99-poinhost-remote.cnf` (`bind-address = 0.0.0.0`) yang juga menyimpan
+  daftar sumber sebagai komentar bermarker; file dihapus saat aturan terakhir
+  dicabut. Sumber disimpan DI SERVER, bukan di DB lokal — server jadi satu-
+  satunya sumber kebenaran, terbaca sama dari perangkat mana pun.
+- **Validasi sebelum reload.** Setelah baris ditambahkan, `pg_hba_file_rules`
+  dibaca; kalau PostgreSQL menganggap ada baris error, baris baru dicabut
+  lagi dan operasi gagal. `pg_hba.conf` yang rusak membuat reload diabaikan
+  dan restart berikutnya bisa menolak SEMUA koneksi.
+- **Reload vs restart.** Kalau listener sudah `*` cukup `pg_reload_conf()`;
+  restart hanya saat `listen_addresses` memang harus berubah (tidak bisa
+  lewat reload). Unit yang di-restart dicari dari unit `postgresql*` yang
+  sedang running (Debian: `postgresql@16-main`, RHEL: `postgresql-16`),
+  bukan ditebak per distro.
+- **Firewall berdasarkan EFEK, dan hanya mencabut milik sendiri.** Sebelum
+  memasang aturan, modul firewall ditanya apakah sumber itu SUDAH diizinkan
+  (`PortAllowedFromSource`, aturan "dari mana saja" dihitung mencakup). Kalau
+  sudah — kasus laporan di atas — tidak ada aturan baru. Kalau dipasang,
+  penanda `fw=1` dicatat, dan hanya aturan seperti itu (di ufw: berkomentar
+  `poinhost-remote-access`, sumber+port persis) yang ikut dicabut, dan hanya
+  kalau tidak ada aturan remote lain bersumber sama.
+- **Tidak saling memutus dengan akses Docker.** Marker & file terpisah;
+  `listen_addresses` baru di-reset kalau tidak tersisa aturan poinhost APA
+  PUN (remote maupun Docker) — revert akses Docker pun kini memeriksa aturan
+  remote dulu.
+- **"IP saya".** Status membawa IP komputer user sebagaimana terlihat server,
+  dibaca dari `$SSH_CLIENT` sesi SSH poinhost (dijalankan TANPA sudo, karena
+  sudo me-reset environment). Klien di komputer yang sama datang dari IP itu.
+- **MySQL tidak punya pg_hba.** Pembatasan sumber hanya ditegakkan firewall;
+  tanpa firewall aktif UI memperingatkan port terbuka untuk semua. Akun yang
+  hostnya cuma localhost dilaporkan (akun sistem `mysql`, `mariadb.sys`,
+  `mysql.*` disaring), tidak diubah diam-diam.
+
+Diverifikasi live di PostgreSQL 16 + MariaDB 10.11 + ufw sungguhan: error
+`no pg_hba.conf entry` direproduksi persis, lalu connect dari alamat
+non-loopback berhasil setelah aturan ditambah, user lain tetap ditolak,
+dan ditolak lagi setelah aturan dicabut; rollback saat pg_hba menolak
+baris; siklus tambah/hapus meninggalkan `pg_hba.conf` identik byte-per-byte
+dengan aslinya; aturan ufw bermarker dicabut tanpa menyentuh aturan
+"5432/tcp dari mana saja" milik user.
+
 ## 15. Backup: export/import data lintas perangkat (tanpa akun/server)
 
 Latar belakang: user bertanya soal sign-in Google + sync otomatis antar

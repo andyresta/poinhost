@@ -189,11 +189,16 @@ systemctl restart mariadb 2>/dev/null || systemctl restart mysql 2>/dev/null || 
 echo "POINHOST_DOCKER_ACCESS_REVERTED"
 `
 	}
+	// listen_addresses hanya dikembalikan ke default kalau tidak ada aturan
+	// remote access (remoteaccess.go) yang masih membutuhkannya — mematikan
+	// akses Docker tidak boleh ikut memutus klien remote.
 	return `set -e
-sudo -u postgres psql -c "ALTER SYSTEM RESET listen_addresses;" >/dev/null
 HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" | tr -d '[:space:]')
 if [ -n "$HBA" ] && grep -q "` + dockerAccessMarker + `" "$HBA" 2>/dev/null; then
   sed -i '/` + dockerAccessMarker + `/,+1d' "$HBA"
+fi
+if [ -z "$HBA" ] || ! grep -q "^# ` + remoteAccessMarker + ` id=" "$HBA" 2>/dev/null; then
+  sudo -u postgres psql -c "ALTER SYSTEM RESET listen_addresses;" >/dev/null
 fi
 systemctl restart postgresql 2>/dev/null || true
 ` + firewallRemoveScript(5432) + `

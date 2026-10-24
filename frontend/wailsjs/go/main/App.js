@@ -6,6 +6,10 @@ export function AddFirewallRule(arg1) {
   return window['go']['main']['App']['AddFirewallRule'](arg1);
 }
 
+export function AddWebsiteDBRemoteRule(arg1) {
+  return window['go']['main']['App']['AddWebsiteDBRemoteRule'](arg1);
+}
+
 export function AgentLifecycle(arg1, arg2) {
   return window['go']['main']['App']['AgentLifecycle'](arg1, arg2);
 }
@@ -248,6 +252,10 @@ export function GetWebsiteDBDockerAccessStatus(arg1, arg2) {
 
 export function GetWebsiteDBPrivileges() {
   return window['go']['main']['App']['GetWebsiteDBPrivileges']();
+}
+
+export function GetWebsiteDBRemoteAccessStatus(arg1, arg2) {
+  return window['go']['main']['App']['GetWebsiteDBRemoteAccessStatus'](arg1, arg2);
 }
 
 export function GetWebsiteDBStatus(arg1, arg2) {
@@ -504,6 +512,10 @@ export function RemoveDockerContainer(arg1, arg2) {
 
 export function RemoveDockerNetwork(arg1, arg2) {
   return window['go']['main']['App']['RemoveDockerNetwork'](arg1, arg2);
+}
+
+export function RemoveWebsiteDBRemoteRule(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoveWebsiteDBRemoteRule'](arg1, arg2, arg3);
 }
 
 export function RenameFile(arg1) {
