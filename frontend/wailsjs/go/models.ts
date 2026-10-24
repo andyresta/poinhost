@@ -2860,6 +2860,8 @@ export namespace website {
 	    enabled: boolean;
 	    message?: string;
 	    localOnlyUsers?: string[];
+	    dockerSubnets?: string[];
+	    hbaMissing?: string[];
 	
 	    static createFrom(source: any = {}) {
 	        return new DBDockerAccessStatus(source);
@@ -2874,6 +2876,8 @@ export namespace website {
 	        this.enabled = source["enabled"];
 	        this.message = source["message"];
 	        this.localOnlyUsers = source["localOnlyUsers"];
+	        this.dockerSubnets = source["dockerSubnets"];
+	        this.hbaMissing = source["hbaMissing"];
 	    }
 	}
 	export class DBEngineStatus {

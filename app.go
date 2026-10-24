@@ -1410,14 +1410,6 @@ func (a *App) DeleteFirewallRule(serverID, ruleID, zone string) (*firewall.ListR
 	return a.firewallSvc.DeleteRule(serverID, ruleID, zone)
 }
 
-// AllowDockerDatabaseAccess memasang aturan agar container Docker bisa
-// menghubungi MySQL/PostgreSQL di host. Jalan pintas untuk kasus yang tidak
-// terlihat jelas: port container yang di-publish tetap terbuka, tapi koneksi
-// container KE host kena kebijakan deny firewall.
-func (a *App) AllowDockerDatabaseAccess(serverID, zone string) (*firewall.ListResponse, error) {
-	return a.firewallSvc.AllowDockerToDatabase(serverID, zone)
-}
-
 // ReloadFirewall menerapkan ulang aturan firewall tanpa mematikannya.
 // Dipakai terutama sesudah Docker restart, yang menyisipkan ulang aturan
 // iptables-nya sendiri dan bisa mengubah urutan relatif terhadap firewall.

@@ -956,7 +956,11 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                     ) : (
                       <>
                         <TriangleAlert size={13} />{' '}
-                        {dockerAccess.bindAllInterfaces ? t('db.dockerAccessOffFirewall') : t('db.dockerAccessOffBind')}
+                        {!dockerAccess.bindAllInterfaces
+                          ? t('db.dockerAccessOffBind')
+                          : dockerAccess.firewallDetected && dockerAccess.firewallDetected !== 'none' && !dockerAccess.firewallRuleActive
+                            ? t('db.dockerAccessOffFirewall')
+                            : t('db.dockerAccessOffHba')}
                       </>
                     )}
                   </p>
@@ -967,6 +971,11 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                     <strong>{!dockerAccess.firewallDetected || dockerAccess.firewallDetected === 'none' ? t('common.none') : dockerAccess.firewallDetected}</strong>
                     {dockerAccess.firewallDetected && dockerAccess.firewallDetected !== 'none' && (
                       <> ({dockerAccess.firewallRuleActive ? t('db.dockerRuleInstalled') : t('db.dockerRuleMissing')})</>
+                    )}
+                    {dockerAccess.dockerSubnets && dockerAccess.dockerSubnets.length > 0 && (
+                      <>
+                        {' '}· {t('db.dockerNetworks')}: <code>{dockerAccess.dockerSubnets.join(', ')}</code>
+                      </>
                     )}
                   </p>
 

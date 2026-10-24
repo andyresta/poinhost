@@ -18,10 +18,6 @@ export function AgentLogs(arg1, arg2) {
   return window['go']['main']['App']['AgentLogs'](arg1, arg2);
 }
 
-export function AllowDockerDatabaseAccess(arg1, arg2) {
-  return window['go']['main']['App']['AllowDockerDatabaseAccess'](arg1, arg2);
-}
-
 export function ApplyComposeConfig(arg1, arg2) {
   return window['go']['main']['App']['ApplyComposeConfig'](arg1, arg2);
 }

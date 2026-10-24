@@ -22,8 +22,6 @@ export function AgentLifecycle(arg1:string,arg2:string):Promise<agentctl.Status>
 
 export function AgentLogs(arg1:string,arg2:number):Promise<string>;
 
-export function AllowDockerDatabaseAccess(arg1:string,arg2:string):Promise<firewall.ListResponse>;
-
 export function ApplyComposeConfig(arg1:string,arg2:string):Promise<docker.ComposeInfo>;
 
 export function ApproveMobileControlDevice(arg1:string,arg2:string):Promise<Array<agentctl.Device>>;
