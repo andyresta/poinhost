@@ -7,6 +7,11 @@ type ProxyRule struct {
 	Path      string `json:"path"`
 	Target    string `json:"target"`
 	WebSocket bool   `json:"webSocket,omitempty"`
+	// StripPath: path hanya PEMISAH — prefix-nya dibuang sebelum diteruskan,
+	// jadi "/fixunit/api/login" sampai di service tujuan sebagai
+	// "/api/login" (dan "/fixunit" sebagai "/"). false = perilaku lama: path
+	// diteruskan utuh apa adanya.
+	StripPath bool `json:"stripPath,omitempty"`
 }
 
 // DomainInfo satu domain/subdomain yang dikelola poinhost di server.

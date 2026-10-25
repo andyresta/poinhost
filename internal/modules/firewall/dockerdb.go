@@ -1,6 +1,13 @@
 package firewall
 
-// Jalan pintas "Izinkan Docker ke database".
+// Diagnosa "Docker → database" di sisi firewall.
+//
+// Panel Firewall hanya MELAPORKAN network Docker mana yang sudah tercakup
+// aturan allow ke port database; tombol yang memasang aturannya sudah
+// dipindah ke modul Database (website/dockeraccess.go), satu-satunya tempat
+// yang bisa membuka KETIGA lapisan sekaligus — listener, firewall, dan
+// pg_hba. Tombol firewall-saja dulu melaporkan "sudah diizinkan" padahal
+// database masih mendengarkan localhost dan pg_hba masih menolak.
 //
 // Container yang menghubungi MySQL/PostgreSQL di HOST memakai alamat gateway
 // bridge Docker (mis. host.docker.internal → 172.17.0.1). Itu alamat host,
@@ -16,23 +23,13 @@ package firewall
 // asumsi akan diam-diam tidak mencakup network yang sebenarnya dipakai.
 
 import (
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// dockerAccessMarker disamakan dengan paket website supaya aturan yang
-// dipasang lewat modul Database dan lewat panel Firewall adalah aturan yang
-// SAMA, bukan dua aturan berbeda dengan maksud serupa.
-const dockerAccessMarker = "poinhost-docker-access"
-
-// databasePorts port database yang dibukakan. PostgreSQL ikut dibuka walau
-// server hanya memakai MySQL (dan sebaliknya): aturan untuk port yang tidak
-// ada layanannya tidak membuka apa pun, sementara menebak-nebak engine mana
-// yang terpasang justru bisa salah dan menyisakan container yang tetap
-// menggantung.
+// databasePorts port database yang cakupannya dilaporkan.
 var databasePorts = []string{"3306", "5432"}
 
 // DockerSubnet satu bridge network Docker beserta subnetnya.
@@ -185,105 +182,6 @@ func markCoverage(subnets []DockerSubnet, rules []Rule) bool {
 	// Tanpa Docker sama sekali, tidak ada yang perlu diizinkan — tapi itu
 	// BUKAN "sudah terpasang". Dibedakan oleh pemanggil lewat panjang slice.
 	return all && len(subnets) > 0
-}
-
-// AllowDockerToDatabase memasang aturan allow dari subnet Docker yang
-// TERDETEKSI ke port database host.
-//
-// Hanya subnet yang belum tercakup yang ditambahkan, jadi menekannya berulang
-// tidak menumpuk aturan, dan server yang sudah punya aturan longgar (mis.
-// 172.16.0.0/12) tidak ditambahi aturan baru sama sekali.
-func (s *Service) AllowDockerToDatabase(serverID, zone string) (*ListResponse, error) {
-	if strings.TrimSpace(serverID) == "" {
-		return nil, fmt.Errorf("id server wajib diisi")
-	}
-	z, err := normalizeZone(zone)
-	if err != nil {
-		return nil, err
-	}
-	access, err := s.resolveAccess(serverID)
-	if err != nil {
-		return nil, err
-	}
-	backend, err := s.activeBackend(access)
-	if err != nil {
-		return nil, err
-	}
-	if backend != "ufw" && backend != "firewalld" {
-		return nil, fmt.Errorf("firewall di server ini tidak bisa diatur dari sini (backend: %s)", backend)
-	}
-
-	subnets, err := s.DetectDockerSubnets(serverID)
-	if err != nil {
-		return nil, err
-	}
-	if len(subnets) == 0 {
-		return nil, fmt.Errorf("tidak ada bridge network Docker yang terdeteksi di server ini")
-	}
-
-	current, err := s.ListRules(serverID, z)
-	if err != nil {
-		return nil, err
-	}
-
-	var missing []string
-	for _, sn := range subnets {
-		for _, p := range databasePorts {
-			port, err := strconv.Atoi(p)
-			if err != nil {
-				continue
-			}
-			if !subnetAllowedForPort(current.Rules, sn.Subnet, port) {
-				missing = append(missing, sn.Subnet+"|"+p)
-			}
-		}
-	}
-	if len(missing) == 0 {
-		return current, nil // sudah tercakup seluruhnya
-	}
-
-	var script string
-	switch backend {
-	case "ufw":
-		script = ufwDockerDBScript(missing)
-	case "firewalld":
-		script = firewalldDockerDBScript(missing, z)
-	}
-
-	s.mutex.Lock(serverID)
-	defer s.mutex.Unlock(serverID)
-	if _, err := s.run(access, script, 60*time.Second); err != nil {
-		return nil, err
-	}
-	return s.ListRules(serverID, z)
-}
-
-// ufwDockerDBScript menyusun aturan untuk pasangan "subnet|port" yang belum
-// tercakup. `ufw allow` sendiri idempotent, tapi menyaring lebih dulu membuat
-// daftar aturan tidak dipenuhi baris yang sebenarnya tidak perlu.
-func ufwDockerDBScript(missing []string) string {
-	var b strings.Builder
-	b.WriteString("set -e\n")
-	for _, m := range missing {
-		subnet, port, _ := strings.Cut(m, "|")
-		b.WriteString("ufw allow from " + subnet + " to any port " + port +
-			" proto tcp comment " + shellQuote(dockerAccessMarker) + "\n")
-	}
-	return strings.TrimRight(b.String(), "\n")
-}
-
-func firewalldDockerDBScript(missing []string, zone string) string {
-	var b strings.Builder
-	b.WriteString("set -e\n")
-	for _, m := range missing {
-		subnet, port, _ := strings.Cut(m, "|")
-		rule := `rule family="ipv4" source address="` + subnet +
-			`" port port="` + port + `" protocol="tcp" accept`
-		b.WriteString("firewall-cmd --permanent " + zoneFlag(zone) +
-			"--add-rich-rule=" + shellQuote(rule) + "\n")
-	}
-	b.WriteString("firewall-cmd --reload")
-	return b.String()
 }
 
 // PortAllowedFromDocker menjawab satu pertanyaan konkret: apakah container

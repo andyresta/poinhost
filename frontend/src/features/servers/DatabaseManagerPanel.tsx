@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { CircleCheck, TriangleAlert, Boxes, Link2, KeyRound, Search, X, UserPlus, Trash2, ArrowLeft } from 'lucide-react';
+import { CircleCheck, TriangleAlert, Boxes, Link2, KeyRound, Search, X, UserPlus, Trash2, ArrowLeft, Globe } from 'lucide-react';
 import { ActionMenu } from './ActionMenu';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { UserPrivilegesModal } from './UserPrivilegesModal';
@@ -29,6 +29,9 @@ import {
   GetWebsiteDBDockerAccessStatus,
   EnsureWebsiteDBDockerAccess,
   DisableWebsiteDBDockerAccess,
+  GetWebsiteDBRemoteAccessStatus,
+  AddWebsiteDBRemoteRule,
+  RemoveWebsiteDBRemoteRule,
   GetWebsiteDBVersions,
 } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
@@ -222,6 +225,18 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
   const [dockerAccess, setDockerAccess] = useState<website.DBDockerAccessStatus | null>(null);
   const [dockerAccessBusy, setDockerAccessBusy] = useState(false);
 
+  // Remote access: klien eksternal (Navicat, DBeaver) per sumber IP/CIDR.
+  // Errornya disimpan terpisah — gagal membaca pg_hba tidak boleh membuat
+  // seluruh panel Database ikut error.
+  const [remoteAccess, setRemoteAccess] = useState<website.DBRemoteAccessStatus | null>(null);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+  const [remoteBusy, setRemoteBusy] = useState(false);
+  const [remoteSource, setRemoteSource] = useState('');
+  const [remoteDatabase, setRemoteDatabase] = useState('');
+  const [remoteUser, setRemoteUser] = useState('');
+  const [remoteNote, setRemoteNote] = useState('');
+  const [remoteOpenFirewall, setRemoteOpenFirewall] = useState(true);
+
   const [installVersions, setInstallVersions] = useState<string[]>([]);
   const [installVersion, setInstallVersion] = useState('');
 
@@ -258,21 +273,31 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
       setDatabases([]);
       setUsers([]);
       setDockerAccess(null);
+      setRemoteAccess(null);
+      setRemoteError(null);
     }
     try {
       const st = await GetWebsiteDBStatus(serverId, engine);
       if (loadIdRef.current !== myLoadId) return; // sudah ada load() lebih baru — buang hasil ini
       setStatus(st);
       if (st.installed && st.active) {
-        const [dbs, us, da] = await Promise.all([
+        const [dbs, us, da, ra] = await Promise.all([
           ListWebsiteDatabases(serverId, engine),
           ListWebsiteDatabaseUsers(serverId, engine),
           GetWebsiteDBDockerAccessStatus(serverId, engine),
+          GetWebsiteDBRemoteAccessStatus(serverId, engine).catch((e) => {
+            if (loadIdRef.current === myLoadId) setRemoteError(String(e));
+            return null;
+          }),
         ]);
         if (loadIdRef.current !== myLoadId) return;
         setDatabases(dbs);
         setUsers(us);
         setDockerAccess(da);
+        if (ra) {
+          setRemoteAccess(ra);
+          setRemoteError(null);
+        }
       }
       const creds = await ListWebsiteDBCredentials(serverId);
       if (loadIdRef.current !== myLoadId) return;
@@ -487,6 +512,64 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
       setError(String(e));
     } finally {
       setDockerAccessBusy(false);
+    }
+  }
+
+  async function handleAddRemoteRule() {
+    const source = remoteSource.trim();
+    if (source === '0.0.0.0/0' || source === '::/0') {
+      const ok = await confirm({
+        title: t('db.remoteAnywhereTitle'),
+        message: t('db.remoteAnywhereConfirm', { engine: engineLabel }),
+        detail: t('db.remoteAnywhereDetail'),
+        confirmLabel: t('db.remoteAdd'),
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    setRemoteBusy(true);
+    setRemoteError(null);
+    try {
+      const st = await AddWebsiteDBRemoteRule(
+        website.DBRemoteRuleRequest.createFrom({
+          serverId,
+          engine,
+          source,
+          database: remoteDatabase.trim(),
+          username: remoteUser.trim(),
+          note: remoteNote.trim(),
+          openFirewall: remoteOpenFirewall,
+        }),
+      );
+      setRemoteAccess(st);
+      setRemoteSource('');
+      setRemoteDatabase('');
+      setRemoteUser('');
+      setRemoteNote('');
+    } catch (e) {
+      setRemoteError(String(e));
+    } finally {
+      setRemoteBusy(false);
+    }
+  }
+
+  async function handleRemoveRemoteRule(rule: website.DBRemoteRule) {
+    const ok = await confirm({
+      title: t('db.remoteRemove'),
+      message: t('db.remoteRemoveConfirm', { source: rule.source, engine: engineLabel }),
+      detail: rule.firewallManaged ? t('db.remoteRemoveDetailFirewall') : t('db.remoteRemoveDetail'),
+      confirmLabel: t('db.remoteRemove'),
+      danger: true,
+    });
+    if (!ok) return;
+    setRemoteBusy(true);
+    setRemoteError(null);
+    try {
+      setRemoteAccess(await RemoveWebsiteDBRemoteRule(serverId, engine, rule.id));
+    } catch (e) {
+      setRemoteError(String(e));
+    } finally {
+      setRemoteBusy(false);
     }
   }
 
@@ -873,7 +956,11 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                     ) : (
                       <>
                         <TriangleAlert size={13} />{' '}
-                        {dockerAccess.bindAllInterfaces ? t('db.dockerAccessOffFirewall') : t('db.dockerAccessOffBind')}
+                        {!dockerAccess.bindAllInterfaces
+                          ? t('db.dockerAccessOffBind')
+                          : dockerAccess.firewallDetected && dockerAccess.firewallDetected !== 'none' && !dockerAccess.firewallRuleActive
+                            ? t('db.dockerAccessOffFirewall')
+                            : t('db.dockerAccessOffHba')}
                       </>
                     )}
                   </p>
@@ -884,6 +971,11 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                     <strong>{!dockerAccess.firewallDetected || dockerAccess.firewallDetected === 'none' ? t('common.none') : dockerAccess.firewallDetected}</strong>
                     {dockerAccess.firewallDetected && dockerAccess.firewallDetected !== 'none' && (
                       <> ({dockerAccess.firewallRuleActive ? t('db.dockerRuleInstalled') : t('db.dockerRuleMissing')})</>
+                    )}
+                    {dockerAccess.dockerSubnets && dockerAccess.dockerSubnets.length > 0 && (
+                      <>
+                        {' '}· {t('db.dockerNetworks')}: <code>{dockerAccess.dockerSubnets.join(', ')}</code>
+                      </>
                     )}
                   </p>
 
@@ -900,6 +992,164 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
                   )}
                 </div>
               )}
+
+              {/* Remote access — klien eksternal (Navicat, DBeaver, server
+                  lain). Satu baris = satu sumber IP/CIDR; untuk PostgreSQL
+                  itu satu baris pg_hba.conf, lapisan yang tidak tersentuh
+                  saat port cuma dibuka di firewall. */}
+              <div className="docker-engine" style={{ marginTop: 14 }}>
+                <div className="files-panel__toolbar" style={{ marginBottom: 6 }}>
+                  <strong style={{ fontSize: 13 }}>{t('db.remoteAccess')}</strong>
+                  {remoteAccess && (
+                    <span
+                      className={`docker-badge ${remoteAccess.rules.length > 0 && remoteAccess.listenAll ? 'docker-badge--running' : 'docker-badge--stopped'}`}
+                      style={{ marginLeft: 8 }}
+                    >
+                      {remoteAccess.rules.length > 0 && remoteAccess.listenAll ? t('common.active') : t('common.inactive')}
+                    </span>
+                  )}
+                </div>
+
+                <p className="chmod-path" style={{ marginTop: 0 }}>
+                  {engine === 'mysql' ? t('db.remoteIntroMySQL') : t('db.remoteIntroPG')}
+                </p>
+
+                {remoteError && <p className="overview__error">{remoteError}</p>}
+
+                {!remoteAccess ? (
+                  !remoteError && <p className="workspace__placeholder">{t('common.loading')}</p>
+                ) : (
+                  <>
+                    <p className="chmod-path" style={{ marginTop: 0 }}>
+                      {t('db.dockerListenAll')}: <strong>{remoteAccess.listenAll ? t('common.yes') : t('common.no')}</strong>
+                      {remoteAccess.listenValue && <> ({remoteAccess.listenValue})</>} · {t('db.dockerFirewall')}:{' '}
+                      <strong>{!remoteAccess.firewallDetected || remoteAccess.firewallDetected === 'none' ? t('common.none') : remoteAccess.firewallDetected}</strong>
+                      {' '}· {t('db.remotePort')}: <strong>{remoteAccess.port}</strong>
+                    </p>
+
+                    {remoteAccess.message && <p className="overview__error">{remoteAccess.message}</p>}
+
+                    {remoteAccess.rules.length === 0 ? (
+                      <p className="workspace__placeholder">{t('db.remoteEmpty')}</p>
+                    ) : (
+                      <div className="db-table-scroll">
+                        <table className="files-panel__table">
+                          <thead>
+                            <tr>
+                              <th>{t('db.remoteSource')}</th>
+                              {engine === 'postgresql' && <th>{t('db.colDatabase')}</th>}
+                              {engine === 'postgresql' && <th>{t('common.username')}</th>}
+                              {engine === 'postgresql' && <th>{t('db.remoteAuth')}</th>}
+                              <th>{t('db.dockerFirewall')}</th>
+                              <th>{t('db.remoteNote')}</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {remoteAccess.rules.map((r) => (
+                              <tr key={r.id}>
+                                <td>
+                                  <code>{r.source}</code>
+                                </td>
+                                {engine === 'postgresql' && <td>{r.database}</td>}
+                                {engine === 'postgresql' && <td>{r.username}</td>}
+                                {engine === 'postgresql' && <td>{r.auth}</td>}
+                                <td>
+                                  {r.firewallAllowed ? (
+                                    <>
+                                      <CircleCheck size={12} /> {r.firewallManaged ? t('db.remoteFwManaged') : t('db.remoteFwOpen')}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <TriangleAlert size={12} /> {t('db.remoteFwBlocked')}
+                                    </>
+                                  )}
+                                </td>
+                                <td>{r.note || '—'}</td>
+                                <td style={{ textAlign: 'right' }}>
+                                  <button
+                                    className="btn btn--sm btn--danger"
+                                    disabled={remoteBusy}
+                                    title={t('db.remoteRemove')}
+                                    onClick={() => void handleRemoveRemoteRule(r)}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
+                    <div className="docker-recreate" style={{ marginTop: 10 }}>
+                      <div className="docker-recreate__row">
+                        <input
+                          placeholder={t('db.remoteSourcePlaceholder')}
+                          value={remoteSource}
+                          onChange={(e) => setRemoteSource(e.target.value)}
+                        />
+                        {remoteAccess.clientIp && (
+                          <button
+                            className="btn btn--sm"
+                            type="button"
+                            title={t('db.remoteMyIpHint')}
+                            onClick={() => setRemoteSource(remoteAccess.clientIp ?? '')}
+                          >
+                            {t('db.remoteMyIp', { ip: remoteAccess.clientIp })}
+                          </button>
+                        )}
+                      </div>
+                      {engine === 'postgresql' && (
+                        <div className="docker-recreate__row">
+                          <input
+                            placeholder={t('db.remoteDatabasePlaceholder')}
+                            value={remoteDatabase}
+                            onChange={(e) => setRemoteDatabase(e.target.value)}
+                            list="remote-db-options"
+                          />
+                          <datalist id="remote-db-options">
+                            {databases.map((d) => (
+                              <option key={d.name} value={d.name} />
+                            ))}
+                          </datalist>
+                          <input
+                            placeholder={t('db.remoteUserPlaceholder')}
+                            value={remoteUser}
+                            onChange={(e) => setRemoteUser(e.target.value)}
+                            list="remote-user-options"
+                          />
+                          <datalist id="remote-user-options">
+                            {users.map((u) => (
+                              <option key={u.username} value={u.username} />
+                            ))}
+                          </datalist>
+                        </div>
+                      )}
+                      <div className="docker-recreate__row">
+                        <input placeholder={t('db.remoteNotePlaceholder')} value={remoteNote} onChange={(e) => setRemoteNote(e.target.value)} />
+                      </div>
+                      <label className="form-check">
+                        <input type="checkbox" checked={remoteOpenFirewall} onChange={(e) => setRemoteOpenFirewall(e.target.checked)} />
+                        <span>{t('db.remoteOpenFirewall', { port: remoteAccess.port })}</span>
+                      </label>
+                      {engine === 'postgresql' && !remoteAccess.listenAll && (
+                        <p className="chmod-path" style={{ margin: '4px 0' }}>
+                          <TriangleAlert size={12} /> {t('db.remoteRestartNote')}
+                        </p>
+                      )}
+                      <button
+                        className="btn btn--sm btn--primary"
+                        disabled={remoteBusy || !remoteSource.trim()}
+                        onClick={() => void handleAddRemoteRule()}
+                      >
+                        {remoteBusy ? (<><span className="spinner" /> {t('db.applying')}</>) : (<><Globe size={13} /> {t('db.remoteAdd')}</>)}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </section>
           )}
 

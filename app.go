@@ -1087,6 +1087,24 @@ func (a *App) DisableWebsiteDBDockerAccess(serverID, engine string) (*website.DB
 	return a.websiteSvc.DisableDBDockerAccess(serverID, engine)
 }
 
+// GetWebsiteDBRemoteAccessStatus membaca status remote access database
+// (klien eksternal seperti Navicat) — listener, aturan per sumber IP/CIDR,
+// dan status firewall tiap sumber. Lihat remoteaccess.go.
+func (a *App) GetWebsiteDBRemoteAccessStatus(serverID, engine string) (*website.DBRemoteAccessStatus, error) {
+	return a.websiteSvc.GetDBRemoteAccessStatus(serverID, engine)
+}
+
+// AddWebsiteDBRemoteRule mengizinkan satu sumber IP/CIDR connect ke
+// database dari luar (pg_hba.conf / bind-address + firewall).
+func (a *App) AddWebsiteDBRemoteRule(req website.DBRemoteRuleRequest) (*website.DBRemoteAccessStatus, error) {
+	return a.websiteSvc.AddDBRemoteRule(req)
+}
+
+// RemoveWebsiteDBRemoteRule mencabut satu sumber remote access.
+func (a *App) RemoveWebsiteDBRemoteRule(serverID, engine, id string) (*website.DBRemoteAccessStatus, error) {
+	return a.websiteSvc.RemoveDBRemoteRule(serverID, engine, id)
+}
+
 // DropWebsiteDatabase menghapus satu database beserta isinya (permanen).
 func (a *App) DropWebsiteDatabase(serverID, engine, name string) error {
 	return a.websiteSvc.DBDropDatabase(serverID, engine, name)
@@ -1390,14 +1408,6 @@ func (a *App) AddFirewallRule(req firewall.RuleRequest) (*firewall.ListResponse,
 // DeleteFirewallRule menghapus satu aturan berdasarkan ID dari ListFirewallRules.
 func (a *App) DeleteFirewallRule(serverID, ruleID, zone string) (*firewall.ListResponse, error) {
 	return a.firewallSvc.DeleteRule(serverID, ruleID, zone)
-}
-
-// AllowDockerDatabaseAccess memasang aturan agar container Docker bisa
-// menghubungi MySQL/PostgreSQL di host. Jalan pintas untuk kasus yang tidak
-// terlihat jelas: port container yang di-publish tetap terbuka, tapi koneksi
-// container KE host kena kebijakan deny firewall.
-func (a *App) AllowDockerDatabaseAccess(serverID, zone string) (*firewall.ListResponse, error) {
-	return a.firewallSvc.AllowDockerToDatabase(serverID, zone)
 }
 
 // ReloadFirewall menerapkan ulang aturan firewall tanpa mematikannya.

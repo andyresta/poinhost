@@ -1,6 +1,7 @@
 package website
 
 import (
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -64,11 +65,24 @@ type DBDockerAccessStatus struct {
 	// sebuah akun adalah keputusan keamanan milik user, bukan efek samping
 	// dari menekan tombol.
 	LocalOnlyUsers []string `json:"localOnlyUsers,omitempty"`
+	// DockerSubnets sumber yang dipakai fitur ini: pool bawaan Docker plus
+	// subnet network Docker yang terdeteksi di luar pool itu.
+	DockerSubnets []string `json:"dockerSubnets,omitempty"`
+	// HbaMissing (PostgreSQL) subnet Docker yang belum punya baris pg_hba —
+	// container dari sana ditolak "no pg_hba.conf entry" walau listener dan
+	// firewall sudah terbuka. Biasanya network yang dibuat SESUDAH fitur ini
+	// diaktifkan; menekan "Aktifkan" lagi menyinkronkannya.
+	HbaMissing []string `json:"hbaMissing,omitempty"`
 }
 
 func (st *DBDockerAccessStatus) computeEnabled() {
 	firewallBlocks := st.FirewallDetected != "" && st.FirewallDetected != "none" && !st.FirewallRuleActive
-	st.Enabled = st.BindAllInterfaces && !firewallBlocks
+	st.Enabled = st.BindAllInterfaces && !firewallBlocks && len(st.HbaMissing) == 0
+
+	if st.BindAllInterfaces && !firewallBlocks && len(st.HbaMissing) > 0 {
+		st.Message = strings.TrimSpace(st.Message + " Listener dan firewall sudah terbuka, TAPI pg_hba.conf belum mengizinkan network Docker berikut sehingga container ditolak (\"no pg_hba.conf entry\"): " +
+			strings.Join(st.HbaMissing, ", ") + ". Tekan \"Aktifkan\" untuk menyinkronkan.")
+	}
 
 	// Jalur TCP yang terbuka belum berarti container BISA masuk: MySQL masih
 	// akan menolak akun yang hostnya cuma 'localhost'. Ini dilaporkan sebagai
@@ -87,18 +101,43 @@ func mysqlDockerConfPath(pm string) string {
 	return "/etc/my.cnf.d/99-poinhost-docker.cnf"
 }
 
-// firewallEnsureScript menambah SATU aturan allow sempit (hanya dari
-// dockerBridgeCIDR, BUKAN 0.0.0.0/0) ke firewall yang TERDETEKSI SEDANG
-// AKTIF — tidak pernah memasang/mengaktifkan firewall baru (itu keputusan
-// besar tersendiri, di luar cakupan fitur ini), cuma menambah satu aturan
-// sempit ke firewall yang memang sudah user pasang & jalankan.
+// dockerSubnetsScript mengisi $SUBNETS dengan sumber yang diizinkan:
+// dockerBridgeCIDR (pool bawaan Docker, sehingga network baru yang dibuat
+// NANTI dari pool itu otomatis ikut) PLUS setiap subnet IPv4 network Docker
+// yang TERDETEKSI di luar rentang itu.
+//
+// Dulu hanya dockerBridgeCIDR yang dipatok. Network dengan subnet kustom
+// (`default-address-pools` di daemon.json, atau compose dengan `ipam` sendiri
+// seperti 10.x / 192.168.x) lalu tidak pernah bisa connect: firewall
+// memblokirnya, dan untuk PostgreSQL pg_hba juga menolaknya — dan karena
+// status firewall SUDAH dihitung dari subnet terdeteksi, tombol "Aktifkan"
+// tampil terus tanpa pernah bisa memperbaikinya.
+const dockerSubnetsScript = `SUBNETS="` + dockerBridgeCIDR + `"
+if command -v docker >/dev/null 2>&1; then
+  for S in $(docker network ls -q 2>/dev/null | xargs -r docker network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' 2>/dev/null); do
+    echo "$S" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$' || continue
+    A=${S%%.*}; R=${S#*.}; B=${R%%.*}
+    if [ "$A" = 172 ] && [ "$B" -ge 16 ] && [ "$B" -le 31 ]; then continue; fi
+    case " $SUBNETS " in *" $S "*) ;; *) SUBNETS="$SUBNETS $S" ;; esac
+  done
+fi
+`
+
+// firewallEnsureScript menambah aturan allow SEMPIT (hanya dari $SUBNETS,
+// BUKAN 0.0.0.0/0) ke firewall yang TERDETEKSI SEDANG AKTIF — tidak pernah
+// memasang/mengaktifkan firewall baru (itu keputusan besar tersendiri, di
+// luar cakupan fitur ini). Butuh dockerSubnetsScript dijalankan lebih dulu.
 func firewallEnsureScript(port int) string {
 	p := strconv.Itoa(port)
 	return `if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "^Status: active"; then
-  ufw allow from ` + dockerBridgeCIDR + ` to any port ` + p + ` proto tcp comment '` + dockerAccessMarker + `' >/dev/null 2>&1 || true
+  for S in $SUBNETS; do
+    ufw allow from "$S" to any port ` + p + ` proto tcp comment '` + dockerAccessMarker + `' >/dev/null 2>&1 || true
+  done
   echo "FIREWALL=ufw"
 elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -qi running; then
-  firewall-cmd --permanent --add-rich-rule="rule family=\"ipv4\" source address=\"` + dockerBridgeCIDR + `\" port port=\"` + p + `\" protocol=\"tcp\" accept" >/dev/null 2>&1 || true
+  for S in $SUBNETS; do
+    firewall-cmd --permanent --add-rich-rule="rule family=\"ipv4\" source address=\"$S\" port port=\"` + p + `\" protocol=\"tcp\" accept" >/dev/null 2>&1 || true
+  done
   firewall-cmd --reload >/dev/null 2>&1 || true
   echo "FIREWALL=firewalld"
 else
@@ -106,12 +145,32 @@ else
 fi`
 }
 
+// pgHbaStripDockerFn membuang SEMUA baris pg_hba milik akses Docker — format
+// lama (komentar marker di baris sendiri + satu baris host sesudahnya, plus
+// baris kosong yang dulu ikut ditulis di depannya) maupun format baru (baris
+// host berkomentar marker di ujungnya). Ditulis balik lewat `cat >` supaya
+// pemilik & izin file pg_hba tidak berubah.
+const pgHbaStripDockerFn = `strip_docker_hba() {
+  awk -v m="# ` + dockerAccessMarker + `" '
+    { l[NR] = $0 }
+    END {
+      for (i = 1; i <= NR; i++) {
+        if (index(l[i], m) == 1) { s[i] = 1; s[i + 1] = 1; if (i > 1 && l[i - 1] == "") s[i - 1] = 1 }
+        else if (index(l[i], "` + dockerAccessMarker + `") > 0) s[i] = 1
+      }
+      for (i = 1; i <= NR; i++) if (!(i in s)) print l[i]
+    }' "$HBA" > "$HBA.poinhost.tmp" && cat "$HBA.poinhost.tmp" > "$HBA" && rm -f "$HBA.poinhost.tmp"
+}
+`
+
 // dbDockerAccessApplyScript membuat MySQL/PostgreSQL bisa diakses dari
 // container Docker DI HOST YANG SAMA — dipanggil otomatis di akhir
 // instalasi (lihat dbInstallScript) DAN tersedia manual lewat
-// EnsureDBDockerAccess untuk instalasi yang sudah ada sebelumnya. Aman
-// dijalankan berulang (idempotent): menimpa file config sendiri, mengecek
-// marker sebelum menambah baris pg_hba.conf.
+// EnsureDBDockerAccess. Ketiga lapisan diurus sekaligus: listener, firewall,
+// dan (PostgreSQL) pg_hba — sehingga ini satu-satunya tombol yang perlu
+// ditekan. Menjalankannya ulang = SINKRONISASI: baris pg_hba milik fitur ini
+// ditulis ulang dari subnet yang terdeteksi saat itu, jadi network Docker
+// yang dibuat belakangan ikut tercakup.
 //
 // PostgreSQL punya lapisan proteksi KEDUA yang independen dari firewall
 // OS: pg_hba.conf menolak sumber IP yang tidak cocok di level protokolnya
@@ -126,7 +185,7 @@ func dbDockerAccessApplyScript(engine, pm string) string {
 	if engine == "mysql" {
 		path := mysqlDockerConfPath(pm)
 		return `set -e
-mkdir -p "$(dirname ` + path + `)"
+` + dockerSubnetsScript + `mkdir -p "$(dirname ` + path + `)"
 cat > ` + path + ` <<'POINHOSTEOF'
 # ` + dockerAccessMarker + ` — supaya container Docker di host yang sama bisa
 # connect ke MySQL/MariaDB ini (mis. lewat host.docker.internal). Jangan
@@ -134,14 +193,17 @@ cat > ` + path + ` <<'POINHOSTEOF'
 [mysqld]
 bind-address = 0.0.0.0
 POINHOSTEOF
-systemctl restart mariadb 2>/dev/null || systemctl restart mysql 2>/dev/null || true
+BIND=$(` + mysqlBindProbe + `)
+case "$BIND" in
+  0.0.0.0|'*'|::) ;;
+  *) systemctl restart mariadb 2>/dev/null || systemctl restart mysql 2>/dev/null || true ;;
+esac
 ` + firewallEnsureScript(3306) + `
 echo "POINHOST_DOCKER_ACCESS_DONE"
 `
 	}
 	return `set -e
-sudo -u postgres psql -c "ALTER SYSTEM SET listen_addresses = '*';" >/dev/null
-HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" | tr -d '[:space:]')
+` + pgRestartFn + pgHbaStripDockerFn + dockerSubnetsScript + `HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" | tr -d '[:space:]')
 # Metode auth MENGIKUTI password_encryption server, bukan "md5" yang dipatok
 # mati. PostgreSQL 14+ menyimpan password sebagai scram-sha-256, dan baris
 # pg_hba bertuliskan md5 akan menolak login walau passwordnya benar —
@@ -152,24 +214,39 @@ case "$AUTH" in
   scram-sha-256|md5) ;;
   *) AUTH=scram-sha-256 ;;
 esac
-if [ -n "$HBA" ] && ! grep -q "` + dockerAccessMarker + `" "$HBA" 2>/dev/null; then
-  printf '\n# ` + dockerAccessMarker + ` — izinkan koneksi dari container Docker di host yang sama\nhost    all             all             ` + dockerBridgeCIDR + `            %s\n' "$AUTH" >> "$HBA"
+if [ -n "$HBA" ] && [ -f "$HBA" ]; then
+  strip_docker_hba
+  [ -s "$HBA" ] && [ -n "$(tail -c1 "$HBA")" ] && echo >> "$HBA"
+  for S in $SUBNETS; do
+    printf 'host    all    all    %s    %s    # ` + dockerAccessMarker + `\n' "$S" "$AUTH" >> "$HBA"
+  done
 fi
-systemctl restart postgresql 2>/dev/null || true
+LISTEN=$(sudo -u postgres psql -tAc "SHOW listen_addresses;" | tr -d '[:space:]')
+case "$LISTEN" in
+  *'*'*|*0.0.0.0*) sudo -u postgres psql -tAc "SELECT pg_reload_conf();" >/dev/null ;;
+  *)
+    sudo -u postgres psql -c "ALTER SYSTEM SET listen_addresses = '*';" >/dev/null
+    pg_restart ;;
+esac
 ` + firewallEnsureScript(5432) + `
 echo "POINHOST_DOCKER_ACCESS_DONE"
 `
 }
 
-// firewallRemoveScript mencabut aturan allow yang DIPASANG poinhost untuk
-// port ini — kebalikan firewallEnsureScript. Aturan lain (punya user
-// sendiri) tidak disentuh sama sekali.
+// firewallRemoveScript mencabut aturan allow dari $SUBNETS untuk port ini —
+// kebalikan firewallEnsureScript (juga aturan yang dulu dipasang tombol
+// Docker di panel Firewall, yang bentuknya sama). Aturan lain milik user
+// tidak disentuh.
 func firewallRemoveScript(port int) string {
 	p := strconv.Itoa(port)
 	return `if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "^Status: active"; then
-  ufw --force delete allow from ` + dockerBridgeCIDR + ` to any port ` + p + ` proto tcp >/dev/null 2>&1 || true
+  for S in $SUBNETS; do
+    ufw --force delete allow from "$S" to any port ` + p + ` proto tcp >/dev/null 2>&1 || true
+  done
 elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -qi running; then
-  firewall-cmd --permanent --remove-rich-rule="rule family=\"ipv4\" source address=\"` + dockerBridgeCIDR + `\" port port=\"` + p + `\" protocol=\"tcp\" accept" >/dev/null 2>&1 || true
+  for S in $SUBNETS; do
+    firewall-cmd --permanent --remove-rich-rule="rule family=\"ipv4\" source address=\"$S\" port port=\"` + p + `\" protocol=\"tcp\" accept" >/dev/null 2>&1 || true
+  done
   firewall-cmd --reload >/dev/null 2>&1 || true
 fi`
 }
@@ -183,19 +260,26 @@ func dbDockerAccessRevertScript(engine, pm string) string {
 	if engine == "mysql" {
 		path := mysqlDockerConfPath(pm)
 		return `set -e
-rm -f ` + path + `
+` + dockerSubnetsScript + `rm -f ` + path + `
 systemctl restart mariadb 2>/dev/null || systemctl restart mysql 2>/dev/null || true
 ` + firewallRemoveScript(3306) + `
 echo "POINHOST_DOCKER_ACCESS_REVERTED"
 `
 	}
+	// listen_addresses hanya dikembalikan ke default kalau tidak ada aturan
+	// remote access (remoteaccess.go) yang masih membutuhkannya — mematikan
+	// akses Docker tidak boleh ikut memutus klien remote.
 	return `set -e
-sudo -u postgres psql -c "ALTER SYSTEM RESET listen_addresses;" >/dev/null
-HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" | tr -d '[:space:]')
-if [ -n "$HBA" ] && grep -q "` + dockerAccessMarker + `" "$HBA" 2>/dev/null; then
-  sed -i '/` + dockerAccessMarker + `/,+1d' "$HBA"
+` + pgRestartFn + pgHbaStripDockerFn + dockerSubnetsScript + `HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" | tr -d '[:space:]')
+if [ -n "$HBA" ] && [ -f "$HBA" ]; then
+  strip_docker_hba
 fi
-systemctl restart postgresql 2>/dev/null || true
+if [ -z "$HBA" ] || ! grep -q "^# ` + remoteAccessMarker + ` id=" "$HBA" 2>/dev/null; then
+  sudo -u postgres psql -c "ALTER SYSTEM RESET listen_addresses;" >/dev/null
+  pg_restart
+else
+  sudo -u postgres psql -tAc "SELECT pg_reload_conf();" >/dev/null
+fi
 ` + firewallRemoveScript(5432) + `
 echo "POINHOST_DOCKER_ACCESS_REVERTED"
 `
@@ -215,9 +299,86 @@ echo "BIND=$BIND"
 mysql -u root --batch --skip-column-names -e "SELECT user FROM mysql.user GROUP BY user HAVING SUM(host NOT IN ('localhost','127.0.0.1','::1')) = 0;" 2>/dev/null | sed 's/^/LOCALUSER=/'
 `
 	}
-	return `LISTEN=$(sudo -u postgres psql -tAc "SHOW listen_addresses;" 2>/dev/null | tr -d '[:space:]')
+	// pg_hba ikut dibaca: listen_addresses '*' saja tidak berarti container
+	// bisa masuk — apalagi sejak remote access (remoteaccess.go) juga bisa
+	// membuat listener '*' tanpa satu pun baris pg_hba untuk Docker.
+	return dockerSubnetsScript + `LISTEN=$(sudo -u postgres psql -tAc "SHOW listen_addresses;" 2>/dev/null | tr -d '[:space:]')
 echo "BIND=$LISTEN"
+for S in $SUBNETS; do echo "DOCKERNET=$S"; done
+HBA=$(sudo -u postgres psql -tAc "SHOW hba_file;" 2>/dev/null | tr -d '[:space:]')
+if [ -n "$HBA" ] && [ -f "$HBA" ]; then
+  awk '
+    /^# ` + dockerAccessMarker + `/ { legacy = 1; next }
+    legacy && $1 == "host" { print "HBADOCKER=" $4; legacy = 0; next }
+    { legacy = 0 }
+    $1 == "host" && /` + dockerAccessMarker + `/ { print "HBADOCKER=" $4 }
+  ' "$HBA"
+fi
+exit 0
 `
+}
+
+// cidrContains true kalau jaringan outer mencakup SELURUH inner.
+func cidrContains(outer, inner string) bool {
+	_, o, err := net.ParseCIDR(outer)
+	if err != nil {
+		return false
+	}
+	_, in, err := net.ParseCIDR(inner)
+	if err != nil {
+		return false
+	}
+	oOnes, oBits := o.Mask.Size()
+	iOnes, iBits := in.Mask.Size()
+	return oBits == iBits && oOnes <= iOnes && o.Contains(in.IP)
+}
+
+// hbaMissingSubnets subnet Docker yang belum tercakup baris pg_hba mana pun.
+func hbaMissingSubnets(subnets, hba []string) []string {
+	var missing []string
+	for _, sn := range subnets {
+		covered := false
+		for _, h := range hba {
+			if cidrContains(h, sn) {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			missing = append(missing, sn)
+		}
+	}
+	return missing
+}
+
+// parseDockerAccessStatus dipisah supaya bisa diuji tanpa SSH.
+func parseDockerAccessStatus(engine, stdout string) *DBDockerAccessStatus {
+	st := &DBDockerAccessStatus{Engine: engine}
+	var hba []string
+	for _, line := range strings.Split(stdout, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "BIND="):
+			v := strings.TrimPrefix(line, "BIND=")
+			st.BindAllInterfaces = v == "0.0.0.0" || strings.Contains(v, "*")
+		case strings.HasPrefix(line, "FIREWALL="):
+			st.FirewallDetected = strings.TrimPrefix(line, "FIREWALL=")
+		case strings.HasPrefix(line, "FWRULE="):
+			st.FirewallRuleActive = strings.TrimPrefix(line, "FWRULE=") == "1"
+		case strings.HasPrefix(line, "LOCALUSER="):
+			if u := strings.TrimSpace(strings.TrimPrefix(line, "LOCALUSER=")); u != "" && !mysqlSystemAccount(u) {
+				st.LocalOnlyUsers = append(st.LocalOnlyUsers, u)
+			}
+		case strings.HasPrefix(line, "DOCKERNET="):
+			st.DockerSubnets = append(st.DockerSubnets, strings.TrimPrefix(line, "DOCKERNET="))
+		case strings.HasPrefix(line, "HBADOCKER="):
+			hba = append(hba, strings.TrimPrefix(line, "HBADOCKER="))
+		}
+	}
+	if engine != "mysql" {
+		st.HbaMissing = hbaMissingSubnets(st.DockerSubnets, hba)
+	}
+	return st
 }
 
 // GetDBDockerAccessStatus membaca status akses Docker->database saat ini —
@@ -237,23 +398,7 @@ func (s *Service) GetDBDockerAccessStatus(serverID, engine string) (*DBDockerAcc
 		return nil, err
 	}
 
-	st := &DBDockerAccessStatus{Engine: engine}
-	for _, line := range strings.Split(res.Stdout, "\n") {
-		line = strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(line, "BIND="):
-			v := strings.TrimPrefix(line, "BIND=")
-			st.BindAllInterfaces = v == "0.0.0.0" || strings.Contains(v, "*")
-		case strings.HasPrefix(line, "FIREWALL="):
-			st.FirewallDetected = strings.TrimPrefix(line, "FIREWALL=")
-		case strings.HasPrefix(line, "FWRULE="):
-			st.FirewallRuleActive = strings.TrimPrefix(line, "FWRULE=") == "1"
-		case strings.HasPrefix(line, "LOCALUSER="):
-			if u := strings.TrimSpace(strings.TrimPrefix(line, "LOCALUSER=")); u != "" {
-				st.LocalOnlyUsers = append(st.LocalOnlyUsers, u)
-			}
-		}
-	}
+	st := parseDockerAccessStatus(engine, res.Stdout)
 	// Status firewall DITANYAKAN ke modul firewall, bukan ditebak dari
 	// komentar aturan. Versi lama mencari marker "poinhost-docker-access" di
 	// keluaran `ufw status`, sehingga aturan sah yang ditulis lewat jalur lain

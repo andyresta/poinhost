@@ -1084,6 +1084,29 @@ PHP/static di path lain. Reverse-proxy port-forward SERVER-WIDE (menu
 "Reverse Proxy" terpisah di homepoin, tidak terikat satu domain) SENGAJA
 tidak ikut di-porting — itu bukan bagian dari menu Website.
 
+**Teruskan path vs path hanya pemisah.** Aturan per-path punya pilihan
+`StripPath` (checkbox "teruskan path" di UI, default dicentang = perilaku
+lama). Tanpa strip, `location /fixunit { proxy_pass http://h:3001; }`
+meneruskan URI utuh: `/fixunit/api/login` sampai sebagai
+`/fixunit/api/login`. Dengan strip, yang ditulis
+`location /fixunit/ { proxy_pass http://h:3001/; }`: nginx mengganti bagian
+yang cocok dengan URI di `proxy_pass`, jadi yang sampai `/api/login`.
+Keduanya HARUS berakhir `/` — salah satu saja menghasilkan `//api/login`
+atau prefix yang tetap terbawa. Location ber-slash juga membuat
+`/fixunitxyz` tidak ikut tertangkap (jatuh ke location lain), dan
+`/fixunit` tanpa slash dibalas nginx sendiri dengan 301 ke `/fixunit/`
+(perilaku bawaan `proxy_pass` di location ber-slash) — sengaja tidak
+diteruskan langsung sebagai `/`, karena halaman yang disajikan di
+`/fixunit` tanpa slash membuat URL relatif (`css/app.css`) di-resolve
+browser ke root domain. `X-Forwarded-Prefix` dikirim supaya framework yang
+mendukungnya bisa menyusun URL absolut di bawah prefix. Pilihan ini
+disimpan sebagai `strip=1` di baris `# poinhost-proxy` vhost (satu-satunya
+sumber kebenaran), sehingga menyimpan aturan lain di domain yang sama tidak
+mengembalikannya ke mode lama. Path aturan baru kini juga divalidasi
+(`/[A-Za-z0-9._~-/]`), karena ditulis apa adanya ke `location <path> {` —
+path berisi spasi, `;` atau `{` sebelumnya bisa menyisipkan direktif nginx.
+Diverifikasi di nginx 1.24 sungguhan dengan backend echo.
+
 ### Files — reuse penuh modul Files yang sudah ada, bukan file manager baru
 
 `DomainFilesTab.tsx` cuma resolve document root domain (`GetWebsiteDomainRoot`,
@@ -1554,30 +1577,49 @@ sengaja tidak diporting (§14 di atas, alasan arsitektur tunnel):
   `postgresql.auto.conf` (prioritas tertinggi, jalur SQL yang stabil di
   semua versi, tidak perlu mencari `postgresql.conf` di path spesifik
   distro).
-- **Pembatasan jangkauan**: bukan `0.0.0.0/0`, tapi `172.16.0.0/12` —
-  rentang alamat bridge network Docker BAWAAN (`docker0` di
-  `172.17.0.0/16`, plus jaringan bridge kustom yang secara default
-  dialokasikan Docker dari `172.18.0.0/16` sampai `172.31.0.0/16`).
-  Hanya mengizinkan traffic dari Docker lokal di mesin yang sama, bukan
-  membuka port ke jaringan/internet luar.
+- **Pembatasan jangkauan**: bukan `0.0.0.0/0`, tapi `172.16.0.0/12`
+  (pool bridge Docker BAWAAN — `docker0` di `172.17.0.0/16`, plus network
+  yang dialokasikan dari `172.18.0.0/16` s.d. `172.31.0.0/16`, termasuk yang
+  dibuat NANTI) **ditambah setiap subnet IPv4 network Docker yang terdeteksi
+  di luar pool itu** (`docker network inspect`). Versi awal hanya mematok
+  `172.16.0.0/12`; network dengan subnet kustom (`default-address-pools` di
+  daemon.json, atau compose dengan `ipam` sendiri — 10.x, 192.168.x) lalu
+  tidak pernah bisa connect: firewall memblokirnya dan pg_hba menolaknya,
+  sementara status firewall SUDAH dihitung dari subnet terdeteksi sehingga
+  tombol "Aktifkan" tampil terus tanpa pernah bisa memperbaikinya.
 - **Asimetri keamanan MySQL vs PostgreSQL**: PostgreSQL punya lapisan
   proteksi kedua yang independen dari firewall OS — `pg_hba.conf`
   menolak sumber IP yang tidak cocok di level protokolnya sendiri,
   sebelum autentikasi, jadi tetap aman walau firewall OS tidak aktif.
-  Baris `host all all 172.16.0.0/12 md5` ditambahkan ke `pg_hba.conf`
-  (dicari via `SHOW hba_file;`, idempotent lewat marker
-  `poinhost-docker-access`). MySQL TIDAK punya mekanisme setara — sintaks
-  grant `user@host` MySQL adalah pola ala `LIKE`, bukan pencocokan CIDR
-  sungguhan — sehingga untuk MySQL, firewall OS yang aktif jadi lapisan
-  proteksi utama satu-satunya.
+  Satu baris `host all all <subnet> <auth>  # poinhost-docker-access` per
+  subnet (dicari via `SHOW hba_file;`, auth mengikuti
+  `password_encryption`). Menerapkan ulang = SINKRONISASI: semua baris
+  bermarker (termasuk format lama — komentar marker di baris sendiri + satu
+  baris host + baris kosong di depannya) dibuang lalu ditulis ulang dari
+  subnet saat itu, jadi network yang dibuat belakangan ikut tercakup tanpa
+  menumpuk baris. Status PostgreSQL ikut membaca pg_hba (`HbaMissing`):
+  listener `*` saja tidak lagi dibaca "container bisa connect", karena
+  remote access juga bisa membuat listener `*` tanpa satu pun baris Docker.
+  MySQL TIDAK punya mekanisme setara — sintaks grant `user@host` MySQL
+  adalah pola ala `LIKE`, bukan pencocokan CIDR sungguhan — sehingga untuk
+  MySQL, firewall OS yang aktif jadi lapisan proteksi utama satu-satunya.
 - **Firewall**: fitur ini TIDAK PERNAH memasang atau mengaktifkan
   firewall baru (keputusan sebesar itu di luar cakupan fitur ini) —
-  hanya menambah SATU aturan allow sempit (scope `172.16.0.0/12`, per
-  port) ke `ufw`/`firewalld` KALAU salah satunya terdeteksi sedang aktif.
+  hanya menambah aturan allow sempit per subnet di atas (per port) ke
+  `ufw`/`firewalld` KALAU salah satunya terdeteksi sedang aktif.
   Kalau tidak ada firewall aktif terdeteksi untuk MySQL, bind-address
   tetap diubah sesuai permintaan, tapi hasilnya membawa pesan peringatan
   eksplisit (bukan diam-diam meninggalkan port terbuka tanpa
   pemberitahuan).
+- **Satu tombol, di modul Database.** Panel Firewall dulu punya tombol
+  "Izinkan Docker → database" sendiri yang hanya membuka lapisan firewall,
+  lalu melaporkan "sudah diizinkan" padahal database masih mendengarkan
+  localhost (`Connection refused`) dan pg_hba masih menolak. Tombol itu
+  dihapus; panel Firewall kini hanya MELAPORKAN network Docker mana yang
+  sudah lolos firewall ke port database, dan mengarahkan ke Database →
+  Pengaturan → Akses dari Docker, satu-satunya tempat yang membuka ketiga
+  lapisan sekaligus. Pencabutan di Database juga membersihkan aturan yang
+  dulu dipasang tombol lama (bentuk aturannya sama).
 - **Dua jalur, satu implementasi**: (1) otomatis dibakukan ke akhir
   `dbInstallScript` — instalasi BARU lewat wizard poinhost langsung siap
   diakses dari Docker tanpa langkah tambahan apa pun, sesuai permintaan
@@ -1646,6 +1688,76 @@ sebagaimana mestinya; yang rusak murni pembacaan status oleh poinhost
 sendiri. Ditambahkan test regresi (`database_test.go`) yang meng-assert
 skrip-skrip ini tidak pernah balik memakai `-h 127.0.0.1` atau membuat
 akun `root@127.0.0.1`.
+
+### Remote access: klien eksternal per sumber IP/CIDR, bukan "buka ke internet"
+
+Pemicunya laporan nyata: user membuka port 5432 "dari mana saja" lewat
+panel Firewall, lalu Navicat tetap ditolak dengan
+`FATAL: no pg_hba.conf entry for host "182.8.212.16", user "...", database "..."`.
+Pesan itu justru membuktikan TCP sudah tembus (firewall & listener beres) —
+yang menolak `pg_hba.conf`, lapisan yang tidak pernah disentuh poinhost
+untuk sumber selain subnet Docker. Klien remote butuh TIGA lapisan terbuka:
+listener (`listen_addresses`/`bind-address`), firewall OS, dan kontrol akses
+milik database sendiri (`pg_hba.conf`; untuk MySQL host akun `user@host`).
+
+Fitur ini (`internal/modules/website/remoteaccess.go`, tab Pengaturan panel
+Database) mengurus ketiganya per SUMBER yang dipilih user:
+
+- **Satu aturan = satu sumber.** PostgreSQL: satu baris
+  `host <db> <user> <cidr> <auth>` di `pg_hba.conf`, didahului komentar
+  `# poinhost-remote-access id=<id> fw=<0|1> note=...`. Kolom database & user
+  bisa dibatasi (default `all`), auth mengikuti `password_encryption` (alasan
+  sama dengan akses Docker). MySQL: file drop-in tersendiri
+  `99-poinhost-remote.cnf` (`bind-address = 0.0.0.0`) yang juga menyimpan
+  daftar sumber sebagai komentar bermarker; file dihapus saat aturan terakhir
+  dicabut. Sumber disimpan DI SERVER, bukan di DB lokal — server jadi satu-
+  satunya sumber kebenaran, terbaca sama dari perangkat mana pun.
+- **Validasi sebelum reload.** Setelah baris ditambahkan, `pg_hba_file_rules`
+  dibaca; kalau PostgreSQL menganggap ada baris error, baris baru dicabut
+  lagi dan operasi gagal. `pg_hba.conf` yang rusak membuat reload diabaikan
+  dan restart berikutnya bisa menolak SEMUA koneksi.
+- **Reload vs restart.** Kalau listener sudah `*` cukup `pg_reload_conf()`;
+  restart hanya saat `listen_addresses` memang harus berubah (tidak bisa
+  lewat reload). Unit yang di-restart dicari dari unit `postgresql*` yang
+  sedang running (Debian: `postgresql@16-main`, RHEL: `postgresql-16`),
+  bukan ditebak per distro.
+- **Firewall berdasarkan EFEK, dan hanya mencabut milik sendiri.** Sebelum
+  memasang aturan, modul firewall ditanya apakah sumber itu SUDAH diizinkan
+  (`PortAllowedFromSource`, aturan "dari mana saja" dihitung mencakup). Kalau
+  sudah — kasus laporan di atas — tidak ada aturan baru. Kalau dipasang,
+  penanda `fw=1` dicatat, dan hanya aturan seperti itu (di ufw: berkomentar
+  `poinhost-remote-access`, sumber+port persis) yang ikut dicabut, dan hanya
+  kalau tidak ada aturan remote lain bersumber sama.
+- **Tidak saling memutus dengan akses Docker.** Marker & file terpisah;
+  `listen_addresses` baru di-reset kalau tidak tersisa aturan poinhost APA
+  PUN (remote maupun Docker) — revert akses Docker pun kini memeriksa aturan
+  remote dulu.
+- **"IP saya".** Status membawa IP komputer user sebagaimana terlihat server,
+  dibaca dari `$SSH_CLIENT` sesi SSH poinhost (dijalankan TANPA sudo, karena
+  sudo me-reset environment). Klien di komputer yang sama datang dari IP itu.
+- **MySQL tidak punya pg_hba.** Pembatasan sumber hanya ditegakkan firewall;
+  tanpa firewall aktif UI memperingatkan port terbuka untuk semua. Akun yang
+  hostnya cuma localhost dilaporkan (akun sistem `mysql`, `mariadb.sys`,
+  `mysql.*` disaring), tidak diubah diam-diam.
+
+Diverifikasi live di PostgreSQL 16 + MariaDB 10.11 + ufw sungguhan: error
+`no pg_hba.conf entry` direproduksi persis, lalu connect dari alamat
+non-loopback berhasil setelah aturan ditambah, user lain tetap ditolak,
+dan ditolak lagi setelah aturan dicabut; rollback saat pg_hba menolak
+baris; siklus tambah/hapus meninggalkan `pg_hba.conf` identik byte-per-byte
+dengan aslinya; aturan ufw bermarker dicabut tanpa menyentuh aturan
+"5432/tcp dari mana saja" milik user. Diuji ulang dengan klien di network
+namespace terpisah (lalu lintas benar-benar melewati firewall host, bukan
+loopback) di **firewalld** (nftables) maupun **ufw**: diblokir firewall →
+tembus setelah aturan poinhost → diblokir lagi setelah dicabut; service
+`postgresql` milik user di firewalld tidak ikut tercabut.
+
+Akses Docker diuji dengan cara yang sama untuk dua network sekaligus
+(172.18.0.0/16 dari pool bawaan dan 10.200.0.0/24 kustom), di firewalld
+dan ufw, PostgreSQL dan MariaDB: keduanya `CONNECTED` setelah satu kali
+"Aktifkan", diblokir lagi setelah "Nonaktifkan"; baris pg_hba format lama
+terbaca, termigrasi, dan setelah dicabut pg_hba kembali identik dengan
+aslinya; status cakupan di panel Firewall ikut berubah benar.
 
 ## 15. Backup: export/import data lintas perangkat (tanpa akun/server)
 

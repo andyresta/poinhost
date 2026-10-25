@@ -581,34 +581,6 @@ func TestMarkCoveragePerSubnet(t *testing.T) {
 	}
 }
 
-// Skrip hanya memasang aturan untuk yang BELUM tercakup, dan memakai marker
-// bersama dengan modul Database.
-func TestDockerDBScriptHanyaYangKurang(t *testing.T) {
-	ufw := ufwDockerDBScript([]string{"172.22.0.0/16|3306", "10.55.0.0/16|5432"})
-	for _, want := range []string{
-		"ufw allow from 172.22.0.0/16 to any port 3306 proto tcp comment 'poinhost-docker-access'",
-		"ufw allow from 10.55.0.0/16 to any port 5432 proto tcp comment 'poinhost-docker-access'",
-	} {
-		if !strings.Contains(ufw, want) {
-			t.Fatalf("skrip ufw kurang %q:\n%s", want, ufw)
-		}
-	}
-	if strings.Contains(ufw, "172.16.0.0/12") {
-		t.Fatalf("tidak boleh memasang rentang yang diasumsikan:\n%s", ufw)
-	}
-
-	fwd := firewalldDockerDBScript([]string{"172.22.0.0/16|3306"}, "internal")
-	if !strings.Contains(fwd, "--zone=internal") {
-		t.Fatalf("zone tidak diteruskan:\n%s", fwd)
-	}
-	if !strings.Contains(fwd, `source address="172.22.0.0/16"`) {
-		t.Fatalf("subnet hasil deteksi tidak dipakai:\n%s", fwd)
-	}
-	if !strings.HasSuffix(strings.TrimSpace(fwd), "firewall-cmd --reload") {
-		t.Fatalf("firewalld wajib reload di akhir:\n%s", fwd)
-	}
-}
-
 // Status yang dibaca UI: subnet hasil deteksi dan cakupannya, dalam satu
 // round-trip yang sama dengan pembacaan aturan.
 func TestParseListMenyertakanSubnetDocker(t *testing.T) {

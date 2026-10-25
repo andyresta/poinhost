@@ -79,3 +79,70 @@ func TestPgHbaMengikutiPasswordEncryption(t *testing.T) {
 		t.Fatalf("baris pg_hba masih mematok md5:\n%s", script)
 	}
 }
+
+// Network Docker dengan subnet kustom (10.x / 192.168.x dari
+// default-address-pools atau compose) harus ikut diizinkan — dulu yang
+// dipatok hanya 172.16.0.0/12, sehingga container di network seperti itu
+// tidak pernah bisa connect apa pun yang ditekan.
+func TestAksesDockerMemakaiSubnetTerdeteksi(t *testing.T) {
+	for _, engine := range []string{"postgresql", "mysql"} {
+		script := dbDockerAccessApplyScript(engine, "apt")
+		if !strings.Contains(script, "docker network inspect") {
+			t.Fatalf("%s: subnet harus dideteksi dari server:\n%s", engine, script)
+		}
+		if !strings.Contains(script, `for S in $SUBNETS`) {
+			t.Fatalf("%s: aturan harus dipasang per subnet terdeteksi:\n%s", engine, script)
+		}
+	}
+	pg := dbDockerAccessApplyScript("postgresql", "apt")
+	if !strings.Contains(pg, "strip_docker_hba") || !strings.Contains(pg, "# "+dockerAccessMarker+`\n' "$S" "$AUTH"`) {
+		t.Fatalf("pg_hba harus disinkronkan ulang per subnet:\n%s", pg)
+	}
+	// Menerapkan ulang tidak boleh lagi dilewati hanya karena marker lama ada.
+	if strings.Contains(pg, `! grep -q "`+dockerAccessMarker+`"`) {
+		t.Fatalf("baris pg_hba lama tidak boleh menghalangi sinkronisasi:\n%s", pg)
+	}
+}
+
+func TestHbaMissingSubnets(t *testing.T) {
+	subnets := []string{"172.16.0.0/12", "10.200.0.0/24", "192.168.50.0/24"}
+	// format lama hanya punya 172.16.0.0/12
+	missing := hbaMissingSubnets(subnets, []string{"172.16.0.0/12"})
+	if len(missing) != 2 || missing[0] != "10.200.0.0/24" || missing[1] != "192.168.50.0/24" {
+		t.Fatalf("subnet kustom harus dilaporkan belum tercakup, dapat %v", missing)
+	}
+	if m := hbaMissingSubnets(subnets, []string{"172.16.0.0/12", "10.0.0.0/8", "192.168.50.0/24"}); len(m) != 0 {
+		t.Fatalf("semua tercakup (termasuk lewat CIDR lebih longgar), dapat %v", m)
+	}
+	if cidrContains("172.17.0.0/16", "172.16.0.0/12") {
+		t.Fatal("CIDR sempit tidak boleh dianggap mencakup yang lebih longgar")
+	}
+}
+
+// Sejak remote access bisa membuat listener '*', listener terbuka saja
+// tidak boleh lagi dibaca "container bisa connect".
+func TestStatusDockerPostgresMemeriksaPgHba(t *testing.T) {
+	out := "BIND=*\nDOCKERNET=172.16.0.0/12\nDOCKERNET=10.200.0.0/24\nHBADOCKER=172.16.0.0/12\n"
+	st := parseDockerAccessStatus("postgresql", out)
+	st.FirewallDetected = "none"
+	st.computeEnabled()
+	if st.Enabled {
+		t.Fatal("pg_hba belum mencakup 10.200.0.0/24 — belum boleh enabled")
+	}
+	if !strings.Contains(st.Message, "10.200.0.0/24") || !strings.Contains(st.Message, "no pg_hba.conf entry") {
+		t.Fatalf("pesan harus menyebut subnet dan gejalanya: %q", st.Message)
+	}
+	ok := parseDockerAccessStatus("postgresql", out+"HBADOCKER=10.200.0.0/24\n")
+	ok.FirewallDetected = "none"
+	ok.computeEnabled()
+	if !ok.Enabled || ok.Message != "" {
+		t.Fatalf("semua lapisan terbuka — harus enabled tanpa pesan: %+v", ok)
+	}
+	// MySQL tidak punya pg_hba
+	my := parseDockerAccessStatus("mysql", "BIND=0.0.0.0\nLOCALUSER=mariadb.sys\n")
+	my.FirewallDetected = "none"
+	my.computeEnabled()
+	if !my.Enabled || len(my.LocalOnlyUsers) != 0 {
+		t.Fatalf("MySQL: enabled & akun sistem disaring, dapat %+v", my)
+	}
+}
