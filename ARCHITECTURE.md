@@ -1084,6 +1084,29 @@ PHP/static di path lain. Reverse-proxy port-forward SERVER-WIDE (menu
 "Reverse Proxy" terpisah di homepoin, tidak terikat satu domain) SENGAJA
 tidak ikut di-porting — itu bukan bagian dari menu Website.
 
+**Teruskan path vs path hanya pemisah.** Aturan per-path punya pilihan
+`StripPath` (checkbox "teruskan path" di UI, default dicentang = perilaku
+lama). Tanpa strip, `location /fixunit { proxy_pass http://h:3001; }`
+meneruskan URI utuh: `/fixunit/api/login` sampai sebagai
+`/fixunit/api/login`. Dengan strip, yang ditulis
+`location /fixunit/ { proxy_pass http://h:3001/; }`: nginx mengganti bagian
+yang cocok dengan URI di `proxy_pass`, jadi yang sampai `/api/login`.
+Keduanya HARUS berakhir `/` — salah satu saja menghasilkan `//api/login`
+atau prefix yang tetap terbawa. Location ber-slash juga membuat
+`/fixunitxyz` tidak ikut tertangkap (jatuh ke location lain), dan
+`/fixunit` tanpa slash dibalas nginx sendiri dengan 301 ke `/fixunit/`
+(perilaku bawaan `proxy_pass` di location ber-slash) — sengaja tidak
+diteruskan langsung sebagai `/`, karena halaman yang disajikan di
+`/fixunit` tanpa slash membuat URL relatif (`css/app.css`) di-resolve
+browser ke root domain. `X-Forwarded-Prefix` dikirim supaya framework yang
+mendukungnya bisa menyusun URL absolut di bawah prefix. Pilihan ini
+disimpan sebagai `strip=1` di baris `# poinhost-proxy` vhost (satu-satunya
+sumber kebenaran), sehingga menyimpan aturan lain di domain yang sama tidak
+mengembalikannya ke mode lama. Path aturan baru kini juga divalidasi
+(`/[A-Za-z0-9._~-/]`), karena ditulis apa adanya ke `location <path> {` —
+path berisi spasi, `;` atau `{` sebelumnya bisa menyisipkan direktif nginx.
+Diverifikasi di nginx 1.24 sungguhan dengan backend echo.
+
 ### Files — reuse penuh modul Files yang sudah ada, bukan file manager baru
 
 `DomainFilesTab.tsx` cuma resolve document root domain (`GetWebsiteDomainRoot`,

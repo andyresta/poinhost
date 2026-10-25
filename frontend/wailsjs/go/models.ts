@@ -2422,6 +2422,7 @@ export namespace website {
 	    path: string;
 	    target: string;
 	    webSocket?: boolean;
+	    stripPath?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProxyRule(source);
@@ -2432,6 +2433,7 @@ export namespace website {
 	        this.path = source["path"];
 	        this.target = source["target"];
 	        this.webSocket = source["webSocket"];
+	        this.stripPath = source["stripPath"];
 	    }
 	}
 	export class DomainInfo {
@@ -3710,6 +3712,7 @@ export namespace website {
 	    path: string;
 	    target: string;
 	    webSocket: boolean;
+	    stripPath: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new ProxyRuleRequest(source);
@@ -3722,6 +3725,7 @@ export namespace website {
 	        this.path = source["path"];
 	        this.target = source["target"];
 	        this.webSocket = source["webSocket"];
+	        this.stripPath = source["stripPath"];
 	    }
 	}
 	export class ProxySetDomainRequest {
