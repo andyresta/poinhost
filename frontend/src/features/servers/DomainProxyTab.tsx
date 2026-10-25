@@ -22,6 +22,9 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
   const [rulePath, setRulePath] = useState('');
   const [ruleTarget, setRuleTarget] = useState('');
   const [ruleWs, setRuleWs] = useState(false);
+  // Default dicentang = perilaku lama (path ikut diteruskan). Tidak dicentang
+  // = path hanya pemisah, prefix-nya dibuang sebelum sampai di service tujuan.
+  const [ruleKeepPath, setRuleKeepPath] = useState(true);
 
   async function load() {
     try {
@@ -72,11 +75,19 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
     setError(null);
     try {
       await SetWebsiteProxyRule(
-        new website.ProxyRuleRequest({ serverId, domain, path: rulePath.trim(), target: ruleTarget.trim(), webSocket: ruleWs }),
+        new website.ProxyRuleRequest({
+          serverId,
+          domain,
+          path: rulePath.trim(),
+          target: ruleTarget.trim(),
+          webSocket: ruleWs,
+          stripPath: !ruleKeepPath,
+        }),
       );
       setRulePath('');
       setRuleTarget('');
       setRuleWs(false);
+      setRuleKeepPath(true);
       await load();
     } catch (e) {
       setError(String(e));
@@ -99,6 +110,12 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
   }
 
   if (!status) return <p className="workspace__placeholder">Memuat…</p>;
+
+  // Pratinjau path yang sampai di service tujuan, supaya bedanya dua mode
+  // terlihat sebelum disimpan — bukan ditebak dari label checkbox.
+  const previewPath = rulePath.trim() ? '/' + rulePath.trim().replace(/^\/+|\/+$/g, '') : '/api';
+  const previewIsRoot = previewPath === '/';
+  const previewKeep = ruleKeepPath || previewIsRoot;
 
   return (
     <div>
@@ -141,6 +158,7 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
             <tr>
               <th>Path</th>
               <th>Target</th>
+              <th>Diteruskan sebagai</th>
               <th>WS</th>
               <th></th>
             </tr>
@@ -150,6 +168,17 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
               <tr key={r.path}>
                 <td>{r.path}</td>
                 <td>{r.target}</td>
+                <td>
+                  {r.stripPath ? (
+                    <span title="Prefix path dibuang — path hanya pemisah">
+                      <code>{r.path}/x</code> → <code>/x</code>
+                    </span>
+                  ) : (
+                    <span title="Path diteruskan utuh">
+                      <code>{r.path === '/' ? '/x' : `${r.path}/x`}</code> → sama
+                    </span>
+                  )}
+                </td>
                 <td>{r.webSocket ? <Check size={13} /> : '—'}</td>
                 <td className="files-panel__row-actions">
                   <button disabled={busy} onClick={() => void handleDeleteRule(r.path)}>
@@ -160,7 +189,7 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
             ))}
             {(status.proxyRules ?? []).length === 0 && (
               <tr>
-                <td colSpan={4} className="files-panel__empty">
+                <td colSpan={5} className="files-panel__empty">
                   Belum ada aturan per-path.
                 </td>
               </tr>
@@ -174,10 +203,34 @@ export function DomainProxyTab({ serverId, domain }: { serverId: string; domain:
             <input type="checkbox" checked={ruleWs} onChange={(e) => setRuleWs(e.target.checked)} />
             ws
           </label>
+          <label className="docker-recreate__ro" title="Kalau tidak dicentang, path hanya pemisah: prefix-nya dibuang sebelum diteruskan">
+            <input
+              type="checkbox"
+              checked={previewKeep}
+              disabled={previewIsRoot}
+              onChange={(e) => setRuleKeepPath(e.target.checked)}
+            />
+            teruskan path
+          </label>
           <button className="btn btn--sm" disabled={busy || !rulePath.trim() || !ruleTarget.trim()} onClick={() => void handleAddRule()}>
             {busy && <span className="spinner" />} + Tambah
           </button>
         </div>
+        <p className="chmod-path" style={{ margin: '6px 0 0' }}>
+          {previewKeep ? (
+            <>
+              <code>{domain}{previewIsRoot ? '' : previewPath}/login</code> → service tujuan menerima{' '}
+              <code>{previewIsRoot ? '' : previewPath}/login</code> (path ikut diteruskan).
+            </>
+          ) : (
+            <>
+              <code>{domain}{previewPath}/login</code> → service tujuan menerima <code>/login</code>, dan{' '}
+              <code>{domain}{previewPath}</code> menerima <code>/</code>. Path hanya pemisah; header{' '}
+              <code>X-Forwarded-Prefix: {previewPath}</code> ikut dikirim. Pastikan aplikasinya memakai URL relatif atau
+              mendukung base path, kalau tidak file CSS/JS-nya akan dicari di root domain.
+            </>
+          )}
+        </p>
       </section>
     </div>
   );
