@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { RotateCw, Plus, Trash2, ShieldCheck, ShieldOff, TriangleAlert, Lock, Boxes, Check, RefreshCw } from 'lucide-react';
+import { RotateCw, Plus, Trash2, ShieldCheck, ShieldOff, TriangleAlert, Lock, Boxes, RefreshCw } from 'lucide-react';
 import {
   ListFirewallRules,
   AddFirewallRule,
   DeleteFirewallRule,
   SetFirewallEnabled,
-  AllowDockerDatabaseAccess,
   ReloadFirewall,
 } from '../../../wailsjs/go/main/App';
 import { firewall } from '../../../wailsjs/go/models';
@@ -129,29 +128,6 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
     apply(await AddFirewallRule(new firewall.RuleRequest({ serverId, zone, ...rule })));
   }
 
-  // Jalan pintas untuk kegagalan yang paling tidak kelihatan: port container
-  // yang di-publish tetap terbuka, tapi koneksi container KE database di host
-  // kena kebijakan deny — aplikasi lalu menggantung sampai timeout, bukan
-  // menolak dengan jelas.
-  async function handleAllowDockerDB() {
-    const ok = await confirm({
-      title: t('fw.dockerDb'),
-      message: t('fw.dockerDbConfirm'),
-      detail: t('fw.dockerDbDetail'),
-      confirmLabel: t('fw.dockerDbApply'),
-    });
-    if (!ok) return;
-    setBusy(true);
-    setError(null);
-    try {
-      apply(await AllowDockerDatabaseAccess(serverId, zone));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   // Reload dibutuhkan terutama sesudah Docker restart: Docker menyisipkan
   // ulang aturan iptables-nya dan itu bisa mengubah urutan relatif terhadap
   // rantai firewall. Reload menyusun ulang tanpa jeda "semua terbuka" seperti
@@ -251,7 +227,10 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
                   n: String(belumTercakup),
                   total: String(status.dockerSubnets.length),
                 })
-              : t('fw.dockerNetsOk', { total: String(status.dockerSubnets.length) })}
+              : t('fw.dockerNetsOk', { total: String(status.dockerSubnets.length) })}{' '}
+            {/* Info saja: membuka akses Docker → database butuh listener dan
+                pg_hba juga, jadi tombolnya ada di modul Database. */}
+            {t('fw.dockerNetsManage')}
           </span>
           <button className="fw-notice__link" onClick={() => setShowNets((v) => !v)}>
             {showNets ? t('common.hide') : t('common.detail')}
@@ -278,18 +257,6 @@ export function FirewallPanel({ serverId }: { serverId: string }) {
             <button className="btn btn--sm" disabled={busy} onClick={() => setShowAdd(true)}>
               <Plus size={13} /> {t('fw.addRule')}
             </button>
-            {/* Sudah terpasang → tombolnya tetap terlihat tapi mati, supaya
-                statusnya jelas dan user tidak menebak perlu ditekan lagi. */}
-            <button
-              className="btn btn--sm"
-              disabled={busy || status?.dockerDbAllowed}
-              title={status?.dockerDbAllowed ? t('fw.dockerDbDone') : t('fw.dockerDbHint')}
-              onClick={() => void handleAllowDockerDB()}
-            >
-              {status?.dockerDbAllowed ? <Check size={13} /> : <Boxes size={13} />}{' '}
-              {status?.dockerDbAllowed ? t('fw.dockerDbDone') : t('fw.dockerDb')}
-            </button>
-
             <button
               className="btn btn--sm"
               disabled={busy || !status?.active}

@@ -131,15 +131,43 @@ func buildMetaComment(o *vhostOptions) string {
 		if r.WebSocket {
 			b.WriteString(" ws=1")
 		}
+		if r.StripPath {
+			b.WriteString(" strip=1")
+		}
 		b.WriteByte('\n')
 	}
 	return b.String()
 }
 
+// stripProxyTarget target proxy_pass untuk mode StripPath: nginx mengganti
+// bagian URI yang cocok dengan location ("/fixunit/") dengan URI di
+// proxy_pass, jadi target HARUS berakhir "/" — "http://127.0.0.1:3000"
+// jadi "http://127.0.0.1:3000/", "http://h:3000/app" jadi
+// "http://h:3000/app/".
+func stripProxyTarget(target string) string {
+	if strings.HasSuffix(target, "/") {
+		return target
+	}
+	return target + "/"
+}
+
 func buildProxyLocationBlock(r ProxyRule) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "    location %s {\n", r.Path)
-	fmt.Fprintf(&b, "        proxy_pass %s;\n", r.Target)
+	if r.StripPath && r.Path != "/" {
+		// Location ber-slash ("/fixunit/") + proxy_pass ber-URI = prefix
+		// dibuang. Location ber-slash juga berarti "/fixunitxyz" TIDAK ikut
+		// tertangkap, dan request "/fixunit" (tanpa slash) dibalas nginx
+		// sendiri dengan 301 ke "/fixunit/" (perilaku bawaan proxy_pass pada
+		// location ber-slash) — bukan diteruskan dengan path yang salah.
+		fmt.Fprintf(&b, "    location %s/ {\n", r.Path)
+		fmt.Fprintf(&b, "        proxy_pass %s;\n", stripProxyTarget(r.Target))
+		// Konvensi yang dibaca banyak framework (Spring, ASP.NET, Express
+		// lewat middleware) untuk menyusun URL absolut di bawah prefix.
+		fmt.Fprintf(&b, "        proxy_set_header X-Forwarded-Prefix %s;\n", r.Path)
+	} else {
+		fmt.Fprintf(&b, "    location %s {\n", r.Path)
+		fmt.Fprintf(&b, "        proxy_pass %s;\n", r.Target)
+	}
 	b.WriteString("        proxy_http_version 1.1;\n")
 	b.WriteString("        proxy_set_header Host $host;\n")
 	b.WriteString("        proxy_set_header X-Real-IP $remote_addr;\n")
@@ -330,6 +358,8 @@ func parseVhostFile(path, content string, enabled bool) (DomainInfo, bool) {
 					rule.Target = v
 				} else if tok == "ws=1" {
 					rule.WebSocket = true
+				} else if tok == "strip=1" {
+					rule.StripPath = true
 				}
 			}
 			if rule.Path != "" {

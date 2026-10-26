@@ -35,6 +35,8 @@ type ProxyRuleRequest struct {
 	Path      string `json:"path"`
 	Target    string `json:"target"`
 	WebSocket bool   `json:"webSocket"`
+	// StripPath lihat ProxyRule.StripPath. Diabaikan untuk path "/".
+	StripPath bool `json:"stripPath"`
 }
 
 var proxyTargetRE = regexp.MustCompile(`^https?://[^\s'"]+$`)
@@ -51,6 +53,18 @@ func normalizeProxyPath(raw string) string {
 		p = strings.TrimSuffix(p, "/")
 	}
 	return p
+}
+
+// proxyPathRE karakter yang aman ditulis apa adanya ke `location <path> {`
+// dan ke baris metadata (dipisah spasi). Tanpa ini path berisi spasi, `;`
+// atau `{` bisa menyisipkan direktif nginx sembarang ke vhost.
+var proxyPathRE = regexp.MustCompile(`^/[A-Za-z0-9._~\-/]*$`)
+
+func validateProxyPath(path string) error {
+	if !proxyPathRE.MatchString(path) || strings.Contains(path, "//") {
+		return errFmt("path proxy tidak valid — hanya huruf, angka, dan . _ ~ - /, contoh: /api atau /fixunit")
+	}
+	return nil
 }
 
 func validateProxyTarget(target string) error {
@@ -151,9 +165,15 @@ func (s *Service) ProxySetRule(req ProxyRuleRequest) error {
 		return err
 	}
 	path := normalizeProxyPath(req.Path)
+	if err := validateProxyPath(path); err != nil {
+		return err
+	}
 	if err := validateProxyTarget(req.Target); err != nil {
 		return err
 	}
+	// Membuang prefix "/" tidak berarti apa-apa — semuanya tetap diteruskan.
+	strip := req.StripPath && path != "/"
+	rule := ProxyRule{Path: path, Target: strings.TrimSpace(req.Target), WebSocket: req.WebSocket, StripPath: strip}
 	info, err := s.getDomain(req.ServerID, domain)
 	if err != nil {
 		return err
@@ -167,14 +187,14 @@ func (s *Service) ProxySetRule(req ProxyRuleRequest) error {
 	replaced := false
 	for _, r := range info.ProxyRules {
 		if r.Path == path {
-			rules = append(rules, ProxyRule{Path: path, Target: strings.TrimSpace(req.Target), WebSocket: req.WebSocket})
+			rules = append(rules, rule)
 			replaced = true
 			continue
 		}
 		rules = append(rules, r)
 	}
 	if !replaced {
-		rules = append(rules, ProxyRule{Path: path, Target: strings.TrimSpace(req.Target), WebSocket: req.WebSocket})
+		rules = append(rules, rule)
 	}
 
 	opts := optionsFromInfo(info)
