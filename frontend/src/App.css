@@ -2530,6 +2530,11 @@ button svg {
   margin: 0 0 8px;
   font-size: 13px;
 }
+/* Aksi di kanan judul seksi. Judulnya sudah flex, jadi yang dibutuhkan
+   hanya mendorong tombolnya ke tepi — bukan tata letak baru. */
+.agent-section__action {
+  margin-left: auto;
+}
 .agent-subhead {
   margin: 16px 0 6px;
   font-size: 12px;

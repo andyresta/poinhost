@@ -3,6 +3,7 @@ package agentctl
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -32,11 +33,21 @@ func (s *Service) callAdmin(ctx context.Context, serverID, method, path string) 
 	if err != nil {
 		return "", err
 	}
-	script := "curl -fsS --max-time 10 -X " + method +
+	// Socket diperiksa lebih dulu supaya agent versi lama punya jawaban yang
+	// bisa ditindaklanjuti. Tanpa ini curl gagal menyambung dan yang sampai
+	// ke layar adalah "agent tidak merespons", yang mengirim pemiliknya
+	// memeriksa service yang sebenarnya sehat — padahal yang kurang cuma
+	// satu tombol Update agent.
+	script := "if [ ! -S " + shellQuote(AdminSocket) + " ]; then echo " +
+		shellQuote(errAgentTooOld) + " >&2; exit 90; fi\n" +
+		"curl -fsS --max-time 10 -X " + method +
 		" --unix-socket " + shellQuote(AdminSocket) +
 		" http://localhost" + path + "\n"
 	res, err := s.run(ctx, access, script, 30*time.Second)
 	if err != nil {
+		if res != nil && strings.Contains(res.Stderr, errAgentTooOld) {
+			return "", errors.New(errAgentTooOld)
+		}
 		return "", fmt.Errorf("agent tidak merespons — pastikan service-nya berjalan dan versinya sudah mendukung persetujuan perangkat: %w", err)
 	}
 	return strings.TrimSpace(res.Stdout), nil

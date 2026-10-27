@@ -46,6 +46,14 @@ import type { MessageKey } from '../../i18n/messages';
 // agentctl.Progress di Go.
 type AgentProgress = { serverId: string; phase: string; percent: number };
 
+// Jarak antar pembacaan ulang daftar perangkat.
+//
+// Tiap pembacaan adalah satu perintah lewat sesi SSH yang sudah terbuka di
+// pool, bukan sambungan baru, jadi ongkosnya kecil. Yang membatasi justru
+// kesabaran: HP yang mendaftar harus muncul dalam hitungan detik, bukan
+// setelah pemiliknya menyerah dan menekan tombol.
+const devicePollMs = 10_000;
+
 // Modul Mobile Control.
 //
 // Memasang poinhost-agent sebagai service systemd di server, lalu menyediakan
@@ -85,12 +93,18 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
   const [reach, setReach] = useState<agentctl.Reachability | null>(null);
   const [reachError, setReachError] = useState<string | null>(null);
 
+  // Mengembalikan statusnya, bukan hanya menyimpannya ke state: refreshAll
+  // perlu tahu agent-nya jalan atau tidak SEBELUM memutuskan membaca daftar
+  // perangkat, dan state React belum tersedia di dalam callback yang sama.
   const load = useCallback(async () => {
     setError(null);
     try {
-      setStatus(await DetectAgent(serverId));
+      const next = await DetectAgent(serverId);
+      setStatus(next);
+      return next;
     } catch (e) {
       setError(String(e));
+      return null;
     } finally {
       setLoading(false);
     }
@@ -138,6 +152,36 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
       void loadDevices();
     }
   }, [status?.state, loadReach, loadDevices]);
+
+  // Refresh menyegarkan SEMUA yang terlihat di panel ini.
+  //
+  // Sebelumnya tombol itu hanya memanggil load(), dan daftar perangkat
+  // dimuat oleh effect di atas yang bergantung pada status.state. Selama
+  // agent tetap 'running' nilainya tidak berubah, effect-nya tidak jalan
+  // lagi, dan tombolnya tampak rusak: ditekan, status memang dibaca ulang,
+  // tapi HP yang baru mendaftar tidak pernah muncul.
+  const refreshAll = useCallback(async () => {
+    const next = await load();
+    if (next?.state !== 'running') return;
+    await Promise.all([loadReach(), loadDevices()]);
+  }, [load, loadReach, loadDevices]);
+
+  // Daftar perangkat menyegarkan dirinya sendiri selama panel ini terbuka.
+  //
+  // Panel inilah yang dibuka pemilik server justru saat menunggu HP
+  // mendaftar. Mengharuskan ia menekan tombol untuk melihat sesuatu yang
+  // ia tunggu adalah cara paling pasti membuat fiturnya terasa mati —
+  // tidak ada yang berubah di layar, dan tidak ada petunjuk bahwa yang
+  // kurang hanyalah satu klik.
+  //
+  // Dilewati selama ada aksi berjalan: jawaban polling yang dibaca
+  // sepersekian detik sebelum Setujui ditekan akan menimpa hasil
+  // persetujuan, dan perangkatnya melompat kembali ke "menunggu".
+  useEffect(() => {
+    if (status?.state !== 'running' || busy !== null) return;
+    const id = setInterval(() => void loadDevices(), devicePollMs);
+    return () => clearInterval(id);
+  }, [status?.state, busy, loadDevices]);
 
   // Kemajuan pemasangan/update datang per server, supaya tab lain yang sedang
   // menjalankan operasinya sendiri tidak saling menimpa.
@@ -238,6 +282,10 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
   const installed = status.installed;
   const anyBusy = busy !== null;
 
+  // Yang menunggu dihitung terpisah supaya terbaca tanpa menelusuri daftar.
+  // Dari seluruh isi panel ini, hanya baris itu yang menuntut tindakan.
+  const pendingDevices = devices?.filter((d) => d.status === 'pending').length ?? 0;
+
 
   return (
     <div className="files-panel">
@@ -272,7 +320,7 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
             {t('mobile.autostart')}: <strong>{status.enabled ? t('common.yes') : t('common.no')}</strong>
           </span>
         )}
-        <button className="btn btn--ghost" disabled={anyBusy} onClick={() => void load()}>
+        <button className="btn btn--ghost" disabled={anyBusy} onClick={() => void refreshAll()}>
           <RotateCw size={13} /> {t('common.refresh')}
         </button>
       </div>
@@ -402,6 +450,22 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
         <section className="agent-section">
           <h3>
             <Phone size={14} /> {t('mobile.devices')}
+            {pendingDevices > 0 && (
+              <span className="docker-badge docker-badge--stopped">
+                {t('mobile.devicesWaiting', { count: String(pendingDevices) })}
+              </span>
+            )}
+            {/* Tombolnya ada walau tidak ada galat. Sebelumnya ia hanya
+                muncul di dalam blok deviceError, jadi di jalur normal —
+                justru saat ada yang ditunggu — tidak ada cara menyegarkan
+                daftar ini sama sekali. */}
+            <button
+              className="btn btn--ghost agent-section__action"
+              disabled={anyBusy}
+              onClick={() => void loadDevices()}
+            >
+              <RotateCw size={13} /> {t('common.refresh')}
+            </button>
           </h3>
 
           {deviceError && (
