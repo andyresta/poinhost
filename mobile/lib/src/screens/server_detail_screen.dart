@@ -138,7 +138,10 @@ class ServerDetailScreen extends StatelessWidget {
 }
 
 bool _danger(ServerConnection c) => switch (c.phase) {
-      ServerPhase.revoked || ServerPhase.rejected || ServerPhase.unreachable =>
+      ServerPhase.revoked ||
+      ServerPhase.rejected ||
+      ServerPhase.unreachable ||
+      ServerPhase.notReady =>
         true,
       _ => false,
     };
@@ -158,6 +161,7 @@ class _StatusLine extends StatelessWidget {
       ServerPhase.revoked => 'Akses dicabut',
       ServerPhase.rejected => 'Perangkat dihapus di server',
       ServerPhase.unreachable => 'Tidak bisa dihubungi',
+      ServerPhase.notReady => 'Agent belum siap',
       ServerPhase.ready => switch (conn) {
           AgentConnection.online => 'Terhubung',
           AgentConnection.reconnecting => 'Menyambung ulang',

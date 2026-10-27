@@ -26,6 +26,14 @@ enum ServerPhase {
   /// Tidak sampai ke agent: jaringan, DNS, TLS, atau agent mati.
   unreachable,
 
+  /// Agent MENJAWAB, tapi belum bisa melayani — pendaftaran belum dibuka,
+  /// atau ia belum mengelola mesinnya sendiri.
+  ///
+  /// Dibedakan dari [unreachable] karena perbaikannya ada di tempat yang
+  /// sama sekali berbeda: yang ini ditekan di panel Mobile Control, bukan
+  /// dicari di jaringan.
+  notReady,
+
   /// Terbaca; [ServerConnection.snapshot] berisi keadaannya.
   ready,
 }
@@ -90,7 +98,7 @@ class ServerConnection extends ChangeNotifier {
         AgentFailure.pendingApproval => ServerPhase.awaitingApproval,
         AgentFailure.accessRevoked => ServerPhase.revoked,
         AgentFailure.tokenRejected => ServerPhase.rejected,
-        AgentFailure.agentNotReady ||
+        AgentFailure.agentNotReady => ServerPhase.notReady,
         AgentFailure.unreachable ||
         AgentFailure.unexpected =>
           ServerPhase.unreachable,

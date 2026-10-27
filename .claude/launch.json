@@ -20,15 +20,12 @@
     },
     {
       "name": "mobile-web",
-      "runtimeExecutable": "python",
+      "runtimeExecutable": "go",
       "runtimeArgs": [
-        "-m",
-        "http.server",
-        "5123",
-        "--bind",
-        "127.0.0.1",
-        "-d",
-        "mobile/build/web"
+        "run",
+        "./cmd/mobile-devproxy",
+        "-addr",
+        "127.0.0.1:5123"
       ],
       "port": 5123
     }

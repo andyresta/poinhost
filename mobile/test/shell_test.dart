@@ -259,6 +259,28 @@ void main() {
     w.dispose();
   });
 
+  // 503 berarti agent MENJAWAB — ia terjangkau, hanya belum siap melayani.
+  // Menyebutnya "tidak bisa dihubungi" mengirim pemiliknya memeriksa
+  // jaringan, padahal perbaikannya ada di panel Mobile Control.
+  testWidgets('agent yang menjawab 503 bukan "tidak bisa dihubungi"',
+      (tester) async {
+    final w = await _workspace(
+      [_creds('a', 'Belum siap')],
+      (_) async => throw AgentException(
+        AgentFailure.agentNotReady,
+        'agent belum mengelola mesinnya sendiri',
+      ),
+    );
+
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
+    await tester.pumpAndSettle();
+
+    expect(w.connections.single.phase, ServerPhase.notReady);
+    expect(find.text('Agent belum siap'), findsOneWidget);
+    expect(find.text('Tidak bisa dihubungi'), findsNothing);
+    w.dispose();
+  });
+
   // Menghapus di HP tidak boleh menyentuh daftar perangkat di agent — itu
   // hak pemilik server. Yang diuji di sini: entri benar-benar hilang dari
   // penyimpanan, bukan hanya dari layar.

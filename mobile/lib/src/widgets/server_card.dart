@@ -148,6 +148,7 @@ class _StateNote extends StatelessWidget {
       ServerPhase.revoked => ('Akses dicabut', true),
       ServerPhase.rejected => ('Perangkat dihapus', true),
       ServerPhase.unreachable => ('Tidak bisa dihubungi', true),
+      ServerPhase.notReady => ('Agent belum siap', true),
       ServerPhase.ready => ('Metrik belum terkumpul', false),
     };
 
