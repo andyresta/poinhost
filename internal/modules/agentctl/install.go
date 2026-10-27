@@ -347,6 +347,26 @@ func (s *Service) Update(ctx context.Context, serverID string) (*Status, error) 
 		return nil, err
 	}
 
+	// Nama server diselaraskan sekalian.
+	//
+	// Config agent menyimpan nama yang dipakainya untuk menyebut mesinnya
+	// sendiri di aplikasi mobile, dan ia hanya ditulis saat memasang atau
+	// mengaktifkan pengelolaan-diri. Jadi server yang diganti namanya di
+	// poinhost — dan setiap instalasi lama, yang masih menyimpan "This
+	// server" bawaan installer — tidak akan pernah berubah namanya lewat
+	// Update, padahal itu tombol yang wajar ditekan orang saat melihat nama
+	// yang salah.
+	//
+	// Kegagalannya TIDAK membatalkan update: binary yang mutakhir jauh
+	// lebih penting daripada namanya, dan agent tetap jalan dengan nama
+	// lama kalau penulisan config gagal.
+	if cfg, cerr := s.readConfig(ctx, access); cerr == nil && cfg.SelfServer.Enabled {
+		if want := selfServerName(access); strings.TrimSpace(cfg.SelfServer.Name) != want {
+			cfg.SelfServer.Name = want
+			_ = s.writeConfig(ctx, serverID, access, cfg)
+		}
+	}
+
 	if err := s.uploadBinary(ctx, serverID, gz, 8, 72); err != nil {
 		return nil, err
 	}

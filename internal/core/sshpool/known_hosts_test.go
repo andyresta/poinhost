@@ -1,10 +1,18 @@
 package sshpool
 
 import (
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
+	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/crypto/ssh"
 )
 
 const (
@@ -96,4 +104,86 @@ func TestReplaceLinesFor_Idempoten(t *testing.T) {
 	if got := s.LinesFor("10.0.0.9"); len(got) != 2 {
 		t.Errorf("dapat %d baris setelah 3x tulis, mau 2", len(got))
 	}
+}
+
+// Satu host boleh punya beberapa host key — agent menanam SELURUH
+// /etc/ssh/ssh_host_*_key.pub mesinnya, jadi 127.0.0.1 punya baris ecdsa,
+// ed25519, dan rsa sekaligus. Klien hanya menegosiasikan satu di antaranya.
+//
+// Verifikasi yang berhenti di baris pertama yang host-nya cocok akan menolak
+// sambungan yang benar-benar sah sebagai SSH_HOST_KEY_MISMATCH, hanya karena
+// yang dinegosiasikan bukan kebetulan yang tertulis paling atas. Itulah yang
+// membuat agent tidak pernah bisa membaca mesinnya sendiri.
+func TestVerify_HostDenganBeberapaJenisKunci(t *testing.T) {
+	ed, edLine := kunciUji(t, "127.0.0.1", "ed25519")
+	_, ecLine := kunciUji(t, "127.0.0.1", "ecdsa")
+
+	// ecdsa ditulis LEBIH DULU, persis seperti urutan glob di server
+	// (ssh_host_ecdsa_key.pub sebelum ssh_host_ed25519_key.pub).
+	s := NewKnownHostsStore(tulisKnownHosts(t, ecLine, edLine))
+	if err := s.verify("127.0.0.1:22", ed); err != nil {
+		t.Fatalf("kunci ed25519 yang sah ditolak: %v", err)
+	}
+}
+
+func TestVerify_KunciBerubahUntukJenisYangSama(t *testing.T) {
+	_, lamaLine := kunciUji(t, "127.0.0.1", "ed25519")
+	baru, _ := kunciUji(t, "127.0.0.1", "ed25519")
+
+	s := NewKnownHostsStore(tulisKnownHosts(t, lamaLine))
+	var mm *HostKeyMismatch
+	if err := s.verify("127.0.0.1:22", baru); !errors.As(err, &mm) {
+		t.Fatalf("kunci yang berubah diterima, err = %v", err)
+	}
+	if mm.OldFingerprint == "" {
+		t.Error("fingerprint lama tidak ikut dilaporkan")
+	}
+}
+
+// Host dikenal, tapi tidak untuk jenis kunci yang ditawarkan: itu bukan
+// "berubah", itu belum pernah dipercaya.
+func TestVerify_JenisKunciYangBelumPernahDipercaya(t *testing.T) {
+	ed, _ := kunciUji(t, "127.0.0.1", "ed25519")
+	_, ecLine := kunciUji(t, "127.0.0.1", "ecdsa")
+
+	s := NewKnownHostsStore(tulisKnownHosts(t, ecLine))
+	var mm *HostKeyMismatch
+	if err := s.verify("127.0.0.1:22", ed); !errors.As(err, &mm) {
+		t.Fatalf("jenis kunci yang tidak dikenal diterima, err = %v", err)
+	}
+	if mm.OldFingerprint != "" {
+		t.Errorf("dilaporkan sebagai perubahan kunci (lama=%q), bukan host baru", mm.OldFingerprint)
+	}
+}
+
+// kunciUji membuat host key baru beserta baris known_hosts-nya.
+func kunciUji(t *testing.T, host, jenis string) (ssh.PublicKey, string) {
+	t.Helper()
+	var signer ssh.Signer
+	switch jenis {
+	case "ed25519":
+		_, priv, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer, err = ssh.NewSignerFromKey(priv)
+		if err != nil {
+			t.Fatal(err)
+		}
+	case "ecdsa":
+		priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer, err = ssh.NewSignerFromKey(priv)
+		if err != nil {
+			t.Fatal(err)
+		}
+	default:
+		t.Fatalf("jenis tidak dikenal: %s", jenis)
+	}
+	pub := signer.PublicKey()
+	line := host + " " + pub.Type() + " " +
+		base64.StdEncoding.EncodeToString(pub.Marshal())
+	return pub, line
 }

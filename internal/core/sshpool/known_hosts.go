@@ -59,6 +59,18 @@ func (s *KnownHostsStore) verify(hostname string, key ssh.PublicKey) error {
 		return err
 	}
 
+	// Satu host boleh punya BEBERAPA baris — satu per jenis host key
+	// (ed25519, ecdsa, rsa) — dan klien hanya menegosiasikan satu di
+	// antaranya. Jadi yang dibandingkan hanya baris dengan jenis yang sama,
+	// dan pencarian tidak boleh berhenti di baris pertama yang host-nya
+	// cocok: kalau berhenti, host dengan tiga kunci akan ditolak sebagai
+	// SSH_HOST_KEY_MISMATCH begitu yang dinegosiasikan bukan kebetulan yang
+	// tertulis paling atas.
+	//
+	// Ini tidak pernah terlihat untuk server yang dipercaya lewat dialog:
+	// Trust menulis SATU baris saja. Yang menabraknya adalah agent, yang
+	// menanam seluruh /etc/ssh/ssh_host_*_key.pub mesinnya sekaligus.
+	var mismatch *HostKeyMismatch
 	lines := strings.Split(string(data), "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -76,13 +88,24 @@ func (s *KnownHostsStore) verify(hostname string, key ssh.PublicKey) error {
 		if err != nil {
 			continue
 		}
-		oldFP := FingerprintSHA256(storedKey)
-		if oldFP != newFP {
-			return &HostKeyMismatch{Host: host, OldFingerprint: oldFP, NewFingerprint: newFP}
+		if storedKey.Type() != key.Type() {
+			continue
 		}
-		return nil
+		oldFP := FingerprintSHA256(storedKey)
+		if oldFP == newFP {
+			return nil
+		}
+		// Kunci untuk jenis ini BERUBAH. Dicatat, bukan langsung
+		// dikembalikan: baris lain dengan jenis yang sama masih mungkin
+		// cocok, dan yang pertama cukup untuk pesannya.
+		if mismatch == nil {
+			mismatch = &HostKeyMismatch{Host: host, OldFingerprint: oldFP, NewFingerprint: newFP}
+		}
 	}
 
+	if mismatch != nil {
+		return mismatch
+	}
 	return &HostKeyMismatch{Host: host, NewFingerprint: newFP}
 }
 
