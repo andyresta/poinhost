@@ -103,6 +103,13 @@ class ServerConnection extends ChangeNotifier {
         AgentFailure.unexpected =>
           ServerPhase.unreachable,
       };
+    } catch (e) {
+      // Sama alasannya dengan layar tambah server: yang lolos dari
+      // AgentClient tidak boleh membuat kartunya diam. Di sini akibatnya
+      // lebih halus dan lebih lama — kartu itu akan tertinggal di "Memuat…"
+      // selamanya, karena polling berikutnya gagal dengan cara yang sama.
+      message = 'Gagal membaca server: $e';
+      phase = ServerPhase.unreachable;
     } finally {
       _inFlight = false;
       notifyListeners();

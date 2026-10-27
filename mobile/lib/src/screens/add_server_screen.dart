@@ -56,7 +56,17 @@ class _AddServerScreenState extends State<AddServerScreen> {
         if (mounted) Navigator.of(context).pop();
         return;
       }
-      setState(() => _error = e.message);
+      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      // Jaring terakhir, sengaja menangkap apa pun.
+      //
+      // AgentClient-lah yang bertugas menerjemahkan kegagalan, dan apa pun
+      // yang lolos darinya adalah bug di sana. Tapi akibatnya di layar ini
+      // jauh lebih buruk daripada bug-nya sendiri: galat yang tidak
+      // tertangkap membuat tombol Daftar tampak tidak melakukan apa-apa,
+      // dan tidak ada cara bagi pemiliknya untuk menebak apa yang salah.
+      // Lebih baik menampilkan pesan yang kasar daripada diam.
+      if (mounted) setState(() => _error = 'Pendaftaran gagal: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }

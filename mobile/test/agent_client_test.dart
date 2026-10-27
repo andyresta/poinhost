@@ -74,6 +74,20 @@ void main() {
     expect(f, AgentFailure.unexpected);
   });
 
+  // Di web SETIAP kegagalan jaringan berbentuk ini — termasuk CORS yang
+  // ditolak. Sebelum ada penanganannya, ia lolos dari seluruh penerjemahan
+  // di AgentClient dan sampai ke layar sebagai galat yang tidak tertangkap:
+  // tombol Daftar ditekan, dan tidak terjadi apa-apa sama sekali.
+  test('ClientException jadi unreachable, bukan galat yang lolos', () async {
+    final c = AgentClient(
+      baseUrl: Uri.parse('https://agent.contoh.id'),
+      httpClient: MockClient(
+        (_) async => throw http.ClientException('Failed to fetch'),
+      ),
+    );
+    expect(await _gagalnya(c), AgentFailure.unreachable);
+  });
+
   test('200 terbaca sebagai snapshot', () async {
     final c = _clientYangMembalas(
       200,

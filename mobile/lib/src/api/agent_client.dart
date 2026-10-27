@@ -110,6 +110,19 @@ class AgentClient {
         AgentFailure.unreachable,
         'Sertifikat HTTPS agent tidak bisa diverifikasi.',
       );
+    } on http.ClientException catch (e) {
+      // Ketiga catch di atas semuanya tipe dart:io, dan di web TIDAK ADA
+      // satu pun yang pernah terlempar: package:http memakai BrowserClient
+      // di sana, dan semua kegagalan jaringan — termasuk CORS yang ditolak —
+      // keluar sebagai ClientException. Tanpa baris ini galatnya lolos dari
+      // seluruh penerjemahan di berkas ini dan muncul sebagai app yang diam.
+      //
+      // Di HP ia tetap terpakai: sambungan yang putus di tengah jawaban
+      // sampai ke sini, bukan ke SocketException.
+      throw AgentException(
+        AgentFailure.unreachable,
+        'Tidak bisa menghubungi agent di ${baseUrl.host}: ${e.message}',
+      );
     }
 
     return _parse(response);
