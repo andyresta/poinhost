@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -290,6 +291,37 @@ func ensureSelfServer(svc *servers.Service, acfg *agentcfg.Config, cfgPath strin
 			acfg.SelfServerID = keep.ID
 			if serr := agentcfg.Save(cfgPath, acfg); serr != nil {
 				return fmt.Errorf("simpan selfServerId: %w", serr)
+			}
+		}
+		// Nama di config bisa BERUBAH setelah entri ini dibuat: server
+		// diganti namanya di poinhost, atau — untuk instalasi yang lebih
+		// lama — config-nya masih menyimpan "This server" yang dulu ditulis
+		// tetap di installer. Entri yang sudah ada ikut dinamai ulang.
+		//
+		// Tanpa ini nama lama menempel selamanya: memperbarui agent hanya
+		// mengganti binary-nya, dan entri server di database agent tidak
+		// pernah disentuh lagi setelah dibuat.
+		if n := strings.TrimSpace(self.Name); n != "" && keep.Name != n {
+			if _, uerr := svc.Save(servers.SaveServerRequest{
+				ID:       keep.ID,
+				Name:     n,
+				Host:     keep.Host,
+				Port:     keep.Port,
+				Username: keep.Username,
+				AuthType: keep.AuthType,
+				KeyPath:  keep.KeyPath,
+				UseSudo:  keep.UseSudo,
+				Tags:     keep.Tags,
+				// Color dan Notes ikut dikirim apa adanya. Save menulis
+				// ulang barisnya UTUH, dan field yang tidak diisi kembali
+				// ke default — jadi menghilangkannya di sini berarti
+				// mengganti nama sekaligus diam-diam membuang yang lain.
+				Color: keep.Color,
+				Notes: keep.Notes,
+			}); uerr != nil {
+				log.Printf("ganti nama entri server lokal: %v", uerr)
+			} else {
+				log.Printf("entri server lokal dinamai ulang jadi %q", n)
 			}
 		}
 		return nil
