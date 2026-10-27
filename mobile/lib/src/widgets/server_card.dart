@@ -146,6 +146,13 @@ class _StateNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // Agent IKUT mengirim kenapa pembacaan terakhir gagal. Menggantinya
+    // dengan "belum terbaca" yang netral membuang satu-satunya petunjuk
+    // yang ada — pemiliknya melihat kartu yang diam, padahal jawabannya
+    // sudah sampai ke HP-nya.
+    final galat = connection.snapshot?.metrics?.error;
+
     final (text, danger) = switch (connection.phase) {
       ServerPhase.loading => ('Memuat…', false),
       ServerPhase.awaitingApproval => ('Menunggu persetujuan', false),
@@ -153,6 +160,7 @@ class _StateNote extends StatelessWidget {
       ServerPhase.rejected => ('Perangkat dihapus', true),
       ServerPhase.unreachable => ('Tidak bisa dihubungi', true),
       ServerPhase.notReady => ('Agent belum siap', true),
+      ServerPhase.ready when galat != null => (galat, true),
       ServerPhase.ready => ('Metrik belum terbaca', false),
     };
 
@@ -160,6 +168,8 @@ class _StateNote extends StatelessWidget {
       alignment: Alignment.topLeft,
       child: Text(
         text,
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
         style: theme.textTheme.bodySmall?.copyWith(
           color: danger
               ? theme.colorScheme.error

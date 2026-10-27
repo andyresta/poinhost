@@ -293,6 +293,43 @@ void main() {
     w.dispose();
   });
 
+  // Agent ikut mengirim kenapa pembacaan terakhir gagal. Menggantinya dengan
+  // "belum terbaca" yang netral membuang satu-satunya petunjuk yang ada.
+  testWidgets('kartu menampilkan alasan dari agent, bukan kalimat netral',
+      (tester) async {
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => const ServerSnapshot(
+        id: 's1',
+        name: 'prod',
+        host: '127.0.0.1',
+        agentVersion: '0.3.2',
+        agentUptimeSeconds: 60,
+        metrics: ServerMetrics(
+          connection: AgentConnection.offline,
+          osName: '',
+          hostname: '',
+          uptimeSeconds: 0,
+          cpuCores: 0,
+          cpuUsedPct: 0,
+          memUsedMB: 0,
+          memTotalMB: 0,
+          diskUsedGB: 0,
+          diskTotalGB: 0,
+          stale: true,
+          error: 'SSH_HOST_KEY_MISMATCH',
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('SSH_HOST_KEY_MISMATCH'), findsOneWidget);
+    expect(find.text('Metrik belum terbaca'), findsNothing);
+    w.dispose();
+  });
+
   // Server yang BELUM bisa dibaca tetap menempati kartunya dengan alasannya
   // tertulis. Menyembunyikannya sampai sehat berarti server yang mati
   // menghilang dari layar, justru saat paling perlu terlihat.
