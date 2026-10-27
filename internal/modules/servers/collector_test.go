@@ -67,6 +67,30 @@ func TestEnqueueDue_ServerOfflineYangPernahTerbacaDilewati(t *testing.T) {
 	}
 }
 
+// Percobaan yang gagal TIDAK boleh menjadwalkan ulang secepat server sehat:
+// tiap percobaan menahan satu worker selama metricsTimeout. Tapi ia juga
+// tidak boleh berhenti — berhenti itulah kunci mati yang baru saja dibuang.
+func TestJedaBerikutnya_YangBelumPernahTerbacaMundurLebihJauh(t *testing.T) {
+	c, _ := collectorUji(t, "s1")
+	c.downInterval = 42 * time.Minute
+
+	// Sudah dicoba dan gagal, jadi MetricsCheckedAt masih kosong.
+	c.cache["s1"] = ServerStatus{ID: "s1", MetricsError: "dial gagal"}
+	if got := c.jedaBerikutnya("s1"); got != 42*time.Minute {
+		t.Errorf("jeda = %v, mau downInterval", got)
+	}
+
+	// Pernah terbaca: kembali ke irama biasa, walau percobaan terakhir gagal.
+	c.cache["s1"] = ServerStatus{
+		ID:               "s1",
+		MetricsError:     "sesaat gagal",
+		MetricsCheckedAt: time.Now().Add(-time.Minute),
+	}
+	if got := c.jedaBerikutnya("s1"); got != c.idleInterval {
+		t.Errorf("jeda = %v, mau idleInterval", got)
+	}
+}
+
 // collectorUji membuat Collector dengan repo asli berisi satu server aktif.
 // Pool dan executor sengaja nil: enqueueDue hanya membaca daftar server dan
 // cache, tidak menyentuh SSH sama sekali.

@@ -20,6 +20,16 @@ const (
 	DefaultConnectionPoll = 4 * time.Second  // baca status pool (gratis, tanpa SSH)
 	DefaultSchedulerTick  = 5 * time.Second  // granularitas pengecekan jadwal metrik
 	DefaultMetricsTimeout = 8 * time.Second
+
+	// DefaultDownInterval dipakai untuk server yang BELUM PERNAH berhasil
+	// dibaca metriknya.
+	//
+	// Server seperti itu tidak boleh dilewati selamanya — itu kunci mati
+	// yang membuat agent melaporkan nol berjam-jam. Tapi mencobanya tiap
+	// DefaultIdleInterval juga salah: tiap percobaan menahan satu dari enam
+	// worker selama DefaultMetricsTimeout, dan sekumpulan server mati bisa
+	// menghabiskan kapasitas yang dibutuhkan server yang sehat.
+	DefaultDownInterval = 5 * time.Minute
 )
 
 // Collector menjaga snapshot status tiap server & menjadwalkan pengambilan
@@ -38,6 +48,7 @@ type Collector struct {
 	workers        int
 	activeInterval time.Duration
 	idleInterval   time.Duration
+	downInterval   time.Duration
 	metricsTimeout time.Duration
 
 	mu       sync.RWMutex
@@ -58,6 +69,7 @@ func NewCollector(svc *Service) *Collector {
 		workers:        DefaultMetricsWorkers,
 		activeInterval: DefaultActiveInterval,
 		idleInterval:   DefaultIdleInterval,
+		downInterval:   DefaultDownInterval,
 		metricsTimeout: DefaultMetricsTimeout,
 		cache:          make(map[string]ServerStatus),
 		subs:           make(map[string]int),
@@ -284,6 +296,21 @@ func (c *Collector) enqueueDue(jobs chan<- string) {
 	}
 }
 
+// jedaBerikutnya menentukan kapan server ini dicoba lagi setelah satu
+// percobaan selesai. Mengasumsikan c.mu SUDAH dipegang pemanggil.
+//
+// Dipisah dari metricsWorker supaya keputusannya bisa diuji tanpa SSH:
+// worker-nya selalu memprobe sungguhan, jadi menguji penjadwalannya lewat
+// sana berarti membutuhkan executor, pool, dan server yang hidup.
+func (c *Collector) jedaBerikutnya(serverID string) time.Duration {
+	// Belum pernah terbaca sama sekali -> mundur lebih jauh. Percobaannya
+	// tetap ada, hanya lebih jarang; lihat DefaultDownInterval.
+	if st, ok := c.cache[serverID]; ok && st.MetricsCheckedAt.IsZero() {
+		return c.downInterval
+	}
+	return c.intervalFor(serverID)
+}
+
 // intervalFor mengasumsikan c.mu SUDAH dipegang pemanggil (read atau write)
 // — sengaja tidak lock sendiri di sini karena semua pemanggilnya memanggil
 // ini dari dalam critical section yang lain. sync.RWMutex Go tidak
@@ -305,7 +332,7 @@ func (c *Collector) metricsWorker(jobs <-chan string) {
 
 		c.mu.Lock()
 		c.inFlight[serverID] = false
-		c.nextDue[serverID] = time.Now().Add(c.intervalFor(serverID))
+		c.nextDue[serverID] = time.Now().Add(c.jedaBerikutnya(serverID))
 		c.mu.Unlock()
 	}
 }
