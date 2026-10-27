@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
+import '../format.dart';
 import '../session.dart';
 import '../theme.dart';
 
@@ -54,9 +55,19 @@ class ServerDetailScreen extends StatelessWidget {
           appBar: AppBar(
             title: Text(connection.displayName),
             actions: [
+              // Ikon berganti jadi spinner selama permintaannya berjalan.
+              // Tanpa itu menekan Segarkan tidak mengubah apa pun di layar
+              // sampai jawabannya tiba, dan di jaringan seluler jeda itu
+              // cukup panjang untuk terbaca sebagai tombol yang rusak.
               IconButton(
                 onPressed: connection.isBusy ? null : connection.refresh,
-                icon: const Icon(Icons.refresh),
+                icon: connection.isBusy
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
                 tooltip: 'Segarkan',
               ),
               IconButton(
@@ -81,8 +92,8 @@ class ServerDetailScreen extends StatelessWidget {
                 if (connection.message != null)
                   _Note(text: connection.message!, danger: _danger(connection)),
 
-                if (metrics == null)
-                  const _Note(text: 'Agent belum mengumpulkan metrik.')
+                if (metrics == null || !metrics.collected)
+                  const _Note(text: 'Metrik belum terbaca.')
                 else ...[
                   if (metrics.stale)
                     const _Note(text: 'Angka terakhir, belum diperbarui.'),
@@ -96,20 +107,26 @@ class ServerDetailScreen extends StatelessWidget {
                   ),
                   _Gauge(
                     label: 'Memori',
-                    value: _gb(metrics.memUsedMB / 1024, metrics.memTotalMB / 1024),
-                    fraction: _ratio(metrics.memUsedMB, metrics.memTotalMB),
+                    value: gbPair(
+                      metrics.memUsedMB / 1024,
+                      metrics.memTotalMB / 1024,
+                    ),
+                    fraction: ratio(metrics.memUsedMB, metrics.memTotalMB),
                     faded: metrics.stale,
                   ),
                   _Gauge(
                     label: 'Disk',
-                    value: _gb(metrics.diskUsedGB, metrics.diskTotalGB),
-                    fraction: _ratio(metrics.diskUsedGB, metrics.diskTotalGB),
+                    value: gbPair(metrics.diskUsedGB, metrics.diskTotalGB),
+                    fraction: ratio(metrics.diskUsedGB, metrics.diskTotalGB),
                     faded: metrics.stale,
                   ),
                   const SizedBox(height: 12),
                   _Row(label: 'OS', value: metrics.osName),
                   _Row(label: 'Hostname', value: metrics.hostname),
-                  _Row(label: 'Uptime', value: _uptime(metrics.uptimeSeconds)),
+                  _Row(
+                    label: 'Uptime',
+                    value: formatUptime(metrics.uptimeSeconds, long: true),
+                  ),
                 ],
 
                 const Divider(height: 36),
@@ -118,7 +135,7 @@ class ServerDetailScreen extends StatelessWidget {
                 if (snapshot != null)
                   _Row(
                     label: 'Agent uptime',
-                    value: _uptime(snapshot.agentUptimeSeconds),
+                    value: formatUptime(snapshot.agentUptimeSeconds, long: true),
                   ),
                 const SizedBox(height: 20),
                 Text(
@@ -306,20 +323,4 @@ class _Row extends StatelessWidget {
       ),
     );
   }
-}
-
-String _gb(double used, double total) =>
-    '${used.toStringAsFixed(1)} / ${total.toStringAsFixed(1)} GB';
-
-/// Pembagian yang aman dari total nol — agent mengirim nol untuk field yang
-/// belum terkumpul, dan tanpa penjagaan ini bar-nya menampilkan NaN.
-double _ratio(num used, num total) => total <= 0 ? 0 : used / total;
-
-String _uptime(int seconds) {
-  final d = seconds ~/ 86400;
-  final h = (seconds % 86400) ~/ 3600;
-  final m = (seconds % 3600) ~/ 60;
-  if (d > 0) return '$d hari $h jam';
-  if (h > 0) return '$h jam $m menit';
-  return '$m menit';
 }

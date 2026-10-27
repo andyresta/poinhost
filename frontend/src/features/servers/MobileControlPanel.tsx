@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CircleCheck,
   CircleSlash,
@@ -92,6 +92,48 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
   // cukup mengenali hasilnya dan menunjukkan URL yang dipakai HP.
   const [reach, setReach] = useState<agentctl.Reachability | null>(null);
   const [reachError, setReachError] = useState<string | null>(null);
+
+  // Mana yang baru disalin, supaya tombolnya bisa menjawab.
+  //
+  // Menyalin tidak mengubah apa pun di layar, jadi tanpa jawaban tidak ada
+  // cara membedakan "tersalin" dari "kliknya tidak kena" — dan yang disalin
+  // di sini adalah token yang diketik ulang di HP, tempat salah salin baru
+  // ketahuan jauh kemudian.
+  const [copied, setCopied] = useState<string | null>(null);
+  const copyTimer = useRef<number | undefined>(undefined);
+
+  // Refresh mana yang sedang dijawab.
+  //
+  // Dipisah dari polling 10 detik dengan sengaja: kalau polling ikut
+  // menyalakan spinner, ikonnya berkedip sendiri terus-menerus dan jadi
+  // kebisingan, bukan jawaban. Spinner ini menjawab KLIK.
+  const [refreshing, setRefreshing] = useState<string | null>(null);
+
+  const manualRefresh = useCallback(async (key: string, fn: () => Promise<unknown>) => {
+    setRefreshing(key);
+    try {
+      await fn();
+    } finally {
+      setRefreshing(null);
+    }
+  }, []);
+
+  useEffect(() => () => window.clearTimeout(copyTimer.current), []);
+
+  // Konfirmasi hanya muncul kalau penyalinannya BENAR-BENAR berhasil.
+  // navigator.clipboard tidak selalu ada di webview, dan tombol yang selalu
+  // bilang "tersalin" lebih buruk daripada yang diam: user menutup dialog,
+  // menempel di HP, dan yang keluar isi clipboard yang lama.
+  const copy = useCallback(async (key: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      return;
+    }
+    setCopied(key);
+    window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(() => setCopied(null), 1600);
+  }, []);
 
   // Mengembalikan statusnya, bukan hanya menyimpannya ke state: refreshAll
   // perlu tahu agent-nya jalan atau tidak SEBELUM memutuskan membaca daftar
@@ -320,8 +362,13 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
             {t('mobile.autostart')}: <strong>{status.enabled ? t('common.yes') : t('common.no')}</strong>
           </span>
         )}
-        <button className="btn btn--ghost" disabled={anyBusy} onClick={() => void refreshAll()}>
-          <RotateCw size={13} /> {t('common.refresh')}
+        <button
+          className="btn btn--ghost"
+          disabled={anyBusy || refreshing !== null}
+          onClick={() => void manualRefresh('all', refreshAll)}
+        >
+          {refreshing === 'all' ? <span className="spinner" /> : <RotateCw size={13} />}{' '}
+          {t('common.refresh')}
         </button>
       </div>
 
@@ -406,11 +453,12 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
             <div className="agent-pairing">
               <code className="agent-pairing__code">{token.token}</code>
               <button
-                className="btn btn--ghost"
-                onClick={() => void navigator.clipboard?.writeText(token.token)}
+                className={`btn btn--ghost${copied === 'token' ? ' btn--copied' : ''}`}
+                onClick={() => void copy('token', token.token)}
                 title={t('common.copy')}
               >
-                <Copy size={13} />
+                {copied === 'token' ? <Check size={13} /> : <Copy size={13} />}{' '}
+                {copied === 'token' ? t('common.copied') : ''}
               </button>
               <button className="btn btn--ghost" onClick={() => setToken(null)}>
                 <EyeOff size={13} /> {t('mobile.hideToken')}
@@ -461,10 +509,11 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
                 daftar ini sama sekali. */}
             <button
               className="btn btn--ghost agent-section__action"
-              disabled={anyBusy}
-              onClick={() => void loadDevices()}
+              disabled={anyBusy || refreshing !== null}
+              onClick={() => void manualRefresh('devices', loadDevices)}
             >
-              <RotateCw size={13} /> {t('common.refresh')}
+              {refreshing === 'devices' ? <span className="spinner" /> : <RotateCw size={13} />}{' '}
+              {t('common.refresh')}
             </button>
           </h3>
 
@@ -483,59 +532,74 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
             (devices.length === 0 ? (
               <p className="agent-hint">{t('mobile.noDevices')}</p>
             ) : (
-              <ul className="agent-users">
-                {devices.map((dev) => (
-                  <li key={dev.id}>
-                    <span>
-                      <span className={`docker-badge ${deviceBadge(dev.status)}`}>
-                        {t(deviceStatusKey(dev.status))}
-                      </span>{' '}
-                      <strong>{dev.name}</strong>
-                      {dev.platform && <code>{dev.platform}</code>}{' '}
-                      <em title={dev.createdAt}>{shortDate(dev.createdAt)}</em>
-                    </span>
-                    <span className="agent-actions">
-                      {/* Yang menunggu dan yang dicabut sama-sama bisa
-                          disetujui: mencabut lalu memulihkan HP yang sama
-                          tidak perlu mendaftar ulang. */}
-                      {dev.status !== 'approved' && (
+              <table className="files-panel__table">
+                <thead>
+                  <tr>
+                    <th>{t('common.name')}</th>
+                    <th>{t('mobile.colWhen')}</th>
+                    <th>{t('common.status')}</th>
+                    <th>{t('common.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {devices.map((dev) => (
+                    <tr key={dev.id}>
+                      {/* Nama dipotong, bukan dibungkus: satu nama panjang
+                          yang wrap membuat barisnya dua kali lebih tinggi dan
+                          tombol aksinya tidak lagi sebaris dengan datanya. */}
+                      <td className="mc-devices__name" title={dev.name}>
+                        {dev.name}
+                        {dev.platform && <code>{dev.platform}</code>}
+                      </td>
+                      <td title={dev.createdAt}>{shortDate(dev.createdAt)}</td>
+                      <td>
+                        <span className={`docker-badge ${deviceBadge(dev.status)}`}>
+                          {t(deviceStatusKey(dev.status))}
+                        </span>
+                      </td>
+                      <td className="files-panel__row-actions">
+                        {/* Yang menunggu dan yang dicabut sama-sama bisa
+                            disetujui: mencabut lalu memulihkan HP yang sama
+                            tidak perlu mendaftar ulang. */}
+                        {dev.status !== 'approved' && (
+                          <button
+                            className="btn btn--primary"
+                            disabled={anyBusy}
+                            onClick={() =>
+                              void act(
+                                `approve:${dev.id}`,
+                                () => ApproveMobileControlDevice(serverId, dev.id),
+                                (list) => setDevices(list),
+                              )
+                            }
+                          >
+                            {busy === `approve:${dev.id}` ? <span className="spinner" /> : <Check size={12} />}{' '}
+                            {t('mobile.approve')}
+                          </button>
+                        )}
+                        {dev.status === 'approved' && (
+                          <button className="btn" disabled={anyBusy} onClick={() => void handleRevokeDevice(dev)}>
+                            {busy === `revoke:${dev.id}` ? (
+                              <span className="spinner" />
+                            ) : (
+                              <CircleSlash size={12} />
+                            )}{' '}
+                            {t('mobile.revoke')}
+                          </button>
+                        )}
                         <button
-                          className="btn btn--primary"
+                          className="btn btn--ghost"
                           disabled={anyBusy}
-                          onClick={() =>
-                            void act(
-                              `approve:${dev.id}`,
-                              () => ApproveMobileControlDevice(serverId, dev.id),
-                              (list) => setDevices(list),
-                            )
-                          }
+                          onClick={() => void handleRemoveDevice(dev)}
+                          title={t('mobile.removeDevice')}
                         >
-                          {busy === `approve:${dev.id}` ? <span className="spinner" /> : <Check size={12} />}{' '}
-                          {t('mobile.approve')}
+                          {busy === `remove:${dev.id}` ? <span className="spinner" /> : <Trash2 size={12} />}
                         </button>
-                      )}
-                      {dev.status === 'approved' && (
-                        <button className="btn" disabled={anyBusy} onClick={() => void handleRevokeDevice(dev)}>
-                          {busy === `revoke:${dev.id}` ? (
-                            <span className="spinner" />
-                          ) : (
-                            <CircleSlash size={12} />
-                          )}{' '}
-                          {t('mobile.revoke')}
-                        </button>
-                      )}
-                      <button
-                        className="btn btn--ghost"
-                        disabled={anyBusy}
-                        onClick={() => void handleRemoveDevice(dev)}
-                        title={t('mobile.removeDevice')}
-                      >
-                        {busy === `remove:${dev.id}` ? <span className="spinner" /> : <Trash2 size={12} />}
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             ))}
         </section>
       )}
@@ -563,11 +627,12 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
               <div className="agent-pairing">
                 <code className="agent-pairing__code">{reach.url}</code>
                 <button
-                  className="btn btn--ghost"
-                  onClick={() => void navigator.clipboard?.writeText(reach.url ?? '')}
+                  className={`btn btn--ghost${copied === 'url' ? ' btn--copied' : ''}`}
+                  onClick={() => void copy('url', reach.url ?? '')}
                   title={t('common.copy')}
                 >
-                  <Copy size={13} />
+                  {copied === 'url' ? <Check size={13} /> : <Copy size={13} />}{' '}
+                  {copied === 'url' ? t('common.copied') : ''}
                 </button>
                 {!reach.sslEnabled && (
                   <span className="docker-badge docker-badge--stopped">{t('mobile.noTLS')}</span>

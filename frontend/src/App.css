@@ -2584,17 +2584,29 @@ button svg {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
-.agent-users {
-  margin: 0 0 10px;
-  padding: 0;
-  list-style: none;
-  font-size: 12px;
+/* Nama perangkat di tabel Devices: dipotong, tidak membungkus. Nama panjang
+   yang wrap membuat barisnya dua kali lebih tinggi dan tombol aksinya tidak
+   lagi sebaris dengan datanya. max-width tidak berlaku di table-cell, jadi
+   capnya dipasang di sini lewat lebar kolom, bukan di <td>-nya saja. */
+.mc-devices__name {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.agent-users li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 4px 0;
+.mc-devices__name code {
+  margin-left: 8px;
+  color: var(--neutral);
+}
+/* Tombol salin yang baru berhasil. Warnanya kembali sendiri setelah 1,6
+   detik, jadi transisinya dipasang di dua arah. */
+.btn--copied,
+.btn--copied:hover {
+  color: var(--success);
+  border-color: var(--success);
+}
+.btn--copied {
+  transition: color 120ms ease, border-color 120ms ease;
 }
 .agent-pairing {
   display: flex;

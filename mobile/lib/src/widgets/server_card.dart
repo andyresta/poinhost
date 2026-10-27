@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
+import '../format.dart';
 import '../session.dart';
 import '../theme.dart';
 
 /// Satu panel di grid: satu server yang dipasangi agent.
 ///
-/// Kartu ini harus terbaca dalam sekali lirik, jadi urutannya tetap: nama,
-/// keadaan, lalu angka. Server yang BELUM bisa dibaca tetap menempati
-/// kartunya sendiri dengan alasannya tertulis — menyembunyikannya sampai
-/// sehat berarti server yang mati menghilang dari layar, yang justru saat
-/// paling dibutuhkan terlihat.
+/// Urutannya tetap — nama, alamat, lalu angka — supaya kartu bisa dibaca
+/// dalam sekali lirik. Angkanya menempel LANGSUNG di bawah alamat, bukan
+/// didorong ke dasar kartu: yang dicari mata saat menyapu grid adalah
+/// kolom angka yang sejajar di semua kartu.
+///
+/// Server yang BELUM bisa dibaca tetap menempati kartunya sendiri dengan
+/// alasannya tertulis — menyembunyikannya sampai sehat berarti server yang
+/// mati menghilang dari layar, justru saat paling dibutuhkan terlihat.
 class ServerCard extends StatelessWidget {
   const ServerCard({
     super.key,
@@ -25,13 +29,14 @@ class ServerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final metrics = connection.snapshot?.metrics;
+    final terbaca = metrics != null && metrics.collected;
 
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.fromLTRB(13, 12, 13, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -51,7 +56,7 @@ class ServerCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               Text(
                 connection.host,
                 maxLines: 1,
@@ -60,39 +65,38 @@ class ServerCard extends StatelessWidget {
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 11),
 
-              if (metrics == null)
+              if (!terbaca)
                 Expanded(child: _StateNote(connection: connection))
-              else
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      _Bar(
-                        label: 'CPU',
-                        value: '${metrics.cpuUsedPct.toStringAsFixed(0)}%',
-                        fraction: metrics.cpuUsedPct / 100,
-                        faded: metrics.stale,
-                      ),
-                      const SizedBox(height: 8),
-                      _Bar(
-                        label: 'RAM',
-                        value: _pct(metrics.memUsedMB, metrics.memTotalMB),
-                        fraction: _ratio(metrics.memUsedMB, metrics.memTotalMB),
-                        faded: metrics.stale,
-                      ),
-                      const SizedBox(height: 8),
-                      _Bar(
-                        label: 'Disk',
-                        value: _pct(metrics.diskUsedGB, metrics.diskTotalGB),
-                        fraction:
-                            _ratio(metrics.diskUsedGB, metrics.diskTotalGB),
-                        faded: metrics.stale,
-                      ),
-                    ],
-                  ),
+              else ...[
+                _Bar(
+                  label: 'CPU',
+                  value: '${metrics.cpuUsedPct.toStringAsFixed(0)}%',
+                  fraction: metrics.cpuUsedPct / 100,
+                  faded: metrics.stale,
                 ),
+                const SizedBox(height: 7),
+                _Bar(
+                  label: 'RAM',
+                  value: pct(metrics.memUsedMB, metrics.memTotalMB),
+                  fraction: ratio(metrics.memUsedMB, metrics.memTotalMB),
+                  faded: metrics.stale,
+                ),
+                const SizedBox(height: 7),
+                _Bar(
+                  label: 'DISK',
+                  value: pct(metrics.diskUsedGB, metrics.diskTotalGB),
+                  fraction: ratio(metrics.diskUsedGB, metrics.diskTotalGB),
+                  faded: metrics.stale,
+                ),
+                const SizedBox(height: 8),
+                _Line(
+                  label: 'UPTIME',
+                  value: formatUptime(metrics.uptimeSeconds),
+                  faded: metrics.stale,
+                ),
+              ],
             ],
           ),
         ),
@@ -149,11 +153,11 @@ class _StateNote extends StatelessWidget {
       ServerPhase.rejected => ('Perangkat dihapus', true),
       ServerPhase.unreachable => ('Tidak bisa dihubungi', true),
       ServerPhase.notReady => ('Agent belum siap', true),
-      ServerPhase.ready => ('Metrik belum terkumpul', false),
+      ServerPhase.ready => ('Metrik belum terbaca', false),
     };
 
     return Align(
-      alignment: Alignment.bottomLeft,
+      alignment: Alignment.topLeft,
       child: Text(
         text,
         style: theme.textTheme.bodySmall?.copyWith(
@@ -166,6 +170,7 @@ class _StateNote extends StatelessWidget {
   }
 }
 
+/// Satu baris berlabel dengan bar di bawahnya.
 class _Bar extends StatelessWidget {
   const _Bar({
     required this.label,
@@ -187,13 +192,7 @@ class _Bar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Text(label, style: theme.textTheme.labelSmall),
-              const Spacer(),
-              Text(value, style: theme.textTheme.labelSmall),
-            ],
-          ),
+          _Line(label: label, value: value, faded: false),
           const SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
@@ -211,9 +210,34 @@ class _Bar extends StatelessWidget {
   }
 }
 
-/// Pembagian yang aman dari total nol — agent mengirim nol untuk field yang
-/// belum terkumpul, dan tanpa penjagaan ini bar-nya menampilkan NaN.
-double _ratio(num used, num total) => total <= 0 ? 0 : used / total;
+/// Label di kiri, nilai di kanan — tanpa bar.
+class _Line extends StatelessWidget {
+  const _Line({
+    required this.label,
+    required this.value,
+    required this.faded,
+  });
 
-String _pct(num used, num total) =>
-    total <= 0 ? '—' : '${(used / total * 100).toStringAsFixed(0)}%';
+  final String label;
+  final String value;
+  final bool faded;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.labelSmall;
+    return Opacity(
+      opacity: faded ? 0.45 : 1,
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: style?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
+          const Spacer(),
+          Text(value, style: style),
+        ],
+      ),
+    );
+  }
+}

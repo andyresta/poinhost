@@ -250,7 +250,21 @@ func (c *Collector) enqueueDue(jobs chan<- string) {
 		// Server sudah diketahui offline (dari connectionLoop, gratis) ->
 		// jangan buang waktu ~1-2 detik mencoba metrik yang pasti timeout;
 		// cukup jadwalkan ulang beberapa saat lagi untuk dicek kembali.
-		if cur, ok := c.cache[srv.ID]; ok && cur.Connection == string(sshpool.StatusOffline) {
+		//
+		// Tapi HANYA kalau metriknya pernah benar-benar terbaca. Pool
+		// melaporkan "offline" juga untuk server yang belum pernah di-dial
+		// sama sekali — ia tidak punya status "belum dicoba" — dan probe
+		// inilah satu-satunya yang membuka koneksi di agent, yang tidak
+		// punya UI tempat orang mengklik server lalu men-dial-nya.
+		//
+		// Tanpa syarat kedua ini keduanya saling menunggu: metrik dilewati
+		// karena offline, dan statusnya tidak pernah lepas dari offline
+		// karena tidak ada yang menyambung. Agent berjalan berjam-jam dan
+		// melaporkan CPU, RAM, dan disk nol tanpa satu pun pesan galat,
+		// karena probe-nya memang tidak pernah dijalankan.
+		cur, cached := c.cache[srv.ID]
+		pernahTerbaca := cached && !cur.MetricsCheckedAt.IsZero()
+		if cached && cur.Connection == string(sshpool.StatusOffline) && pernahTerbaca {
 			c.nextDue[srv.ID] = now.Add(c.intervalFor(srv.ID))
 			c.mu.Unlock()
 			continue

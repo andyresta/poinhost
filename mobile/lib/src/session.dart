@@ -218,8 +218,29 @@ class Workspace extends ChangeNotifier {
     return null;
   }
 
-  Future<void> refreshAll() =>
-      Future.wait(_connections.map((c) => c.refresh()));
+  /// Apakah penyegaran yang DIMINTA user sedang berjalan.
+  ///
+  /// Polling 20 detik sengaja tidak menyalakannya: ikon yang berputar
+  /// sendiri tiap 20 detik bukan jawaban atas apa pun, cuma kebisingan —
+  /// dan justru membuat putaran yang menjawab tekanan jari tidak terbaca.
+  bool get isRefreshing => _refreshing;
+  bool _refreshing = false;
+
+  Future<void> refreshAll({bool manual = false}) async {
+    if (!manual) {
+      await Future.wait(_connections.map((c) => c.refresh()));
+      return;
+    }
+    if (_refreshing) return;
+    _refreshing = true;
+    notifyListeners();
+    try {
+      await Future.wait(_connections.map((c) => c.refresh()));
+    } finally {
+      _refreshing = false;
+      notifyListeners();
+    }
+  }
 
   ServerConnection _build(Credentials c) =>
       ServerConnection(credentials: c, client: _clientFor(c.baseUrl));

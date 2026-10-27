@@ -62,7 +62,14 @@ func NewService(serversSvc *servers.Service, websiteSvc *website.Service, execut
 // modul docker/services/firewall: sudo murni untuk naik ke root kalau user SSH
 // bukan root.
 type agentAccess struct {
-	serverID     string
+	serverID string
+
+	// serverName adalah nama server ini di poinhost, yang akan dipakai agent
+	// untuk menyebut mesinnya sendiri di aplikasi mobile. Sebelumnya agent
+	// memakai "This server" yang ditulis tetap di kode, sehingga tiap HP
+	// melihat nama yang sama untuk server mana pun.
+	serverName string
+
 	sshUser      string
 	sshPort      int
 	useSudo      bool
@@ -75,10 +82,11 @@ func (s *Service) resolveAccess(serverID string) (*agentAccess, error) {
 		return nil, err
 	}
 	a := &agentAccess{
-		serverID: serverID,
-		sshUser:  srv.Username,
-		sshPort:  srv.Port,
-		useSudo:  srv.UseSudo,
+		serverID:   serverID,
+		serverName: strings.TrimSpace(srv.Name),
+		sshUser:    srv.Username,
+		sshPort:    srv.Port,
+		useSudo:    srv.UseSudo,
 	}
 	if a.sshPort <= 0 {
 		a.sshPort = 22

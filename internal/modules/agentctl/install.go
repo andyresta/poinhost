@@ -95,7 +95,7 @@ func (s *Service) Install(ctx context.Context, req InstallRequest) (*Status, err
 		authorizedKey = pub
 		acfg.SelfServer = agentcfg.SelfServer{
 			Enabled:  true,
-			Name:     "This server",
+			Name:     selfServerName(access),
 			Host:     "127.0.0.1",
 			Port:     access.sshPort,
 			Username: "root",
@@ -298,7 +298,7 @@ func (s *Service) EnableSelfManagement(ctx context.Context, serverID string) (*S
 
 	acfg.SelfServer = agentcfg.SelfServer{
 		Enabled:  true,
-		Name:     "This server",
+		Name:     selfServerName(access),
 		Host:     "127.0.0.1",
 		Port:     access.sshPort,
 		Username: "root",
@@ -558,4 +558,18 @@ func generateKeypair() (privatePEM string, authorizedKey string, err error) {
 func checksum(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// selfServerName adalah nama yang dipakai agent untuk menyebut mesinnya
+// sendiri di aplikasi mobile.
+//
+// Diambil dari nama server di poinhost, bukan ditulis tetap: aplikasi mobile
+// memegang beberapa server sekaligus, dan tiap kartu yang bertuliskan "This
+// server" membuat grid itu mustahil dibaca. Nama kosong tetap punya cadangan
+// supaya kartunya tidak pernah tanpa judul.
+func selfServerName(access *agentAccess) string {
+	if n := strings.TrimSpace(access.serverName); n != "" {
+		return n
+	}
+	return "This server"
 }

@@ -69,6 +69,14 @@ class ServerMetrics {
 
   final DateTime? checkedAt;
 
+  /// Apakah angkanya pernah benar-benar diukur.
+  ///
+  /// Agent menghilangkan seluruh field numerik selama belum pernah memprobe
+  /// mesinnya, dan hanya mengirim status koneksinya. Tanpa pembedaan ini
+  /// layar menggambar CPU 0%, RAM 0,0/0,0 GB, uptime 0 menit — yang terbaca
+  /// persis seperti server sehat yang sedang menganggur.
+  bool get collected => checkedAt != null;
+
   /// Kenapa pengambilan metrik terakhir gagal, kalau gagal.
   final String? error;
 

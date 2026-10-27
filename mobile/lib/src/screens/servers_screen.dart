@@ -38,8 +38,16 @@ class ServersScreen extends StatelessWidget {
             title: const Text('Server'),
             actions: [
               IconButton(
-                onPressed: workspace.isEmpty ? null : workspace.refreshAll,
-                icon: const Icon(Icons.refresh),
+                onPressed: workspace.isEmpty || workspace.isRefreshing
+                    ? null
+                    : () => workspace.refreshAll(manual: true),
+                icon: workspace.isRefreshing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
                 tooltip: 'Segarkan',
               ),
               const SizedBox(width: 4),

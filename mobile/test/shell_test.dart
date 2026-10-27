@@ -27,7 +27,7 @@ ServerSnapshot _snapshot(String name) => ServerSnapshot(
       host: '10.0.0.1',
       agentVersion: '0.3.0',
       agentUptimeSeconds: 3600,
-      metrics: const ServerMetrics(
+      metrics: ServerMetrics(
         connection: AgentConnection.online,
         osName: 'Ubuntu 24.04',
         hostname: 'prod',
@@ -38,6 +38,32 @@ ServerSnapshot _snapshot(String name) => ServerSnapshot(
         memTotalMB: 8192,
         diskUsedGB: 31.4,
         diskTotalGB: 160,
+        stale: false,
+        // Wajib ada: checkedAt-lah yang menandai angka ini PERNAH diukur.
+        // Tanpa itu kartunya benar kalau menolak menggambarnya.
+        checkedAt: DateTime(2026, 10, 27, 12),
+      ),
+    );
+
+/// Snapshot yang agent-nya menjawab tapi belum pernah memprobe mesinnya:
+/// status koneksi ada, angkanya tidak.
+ServerSnapshot _snapshotBelumTerbaca() => const ServerSnapshot(
+      id: 's1',
+      name: 'baru',
+      host: '10.0.0.1',
+      agentVersion: '0.3.0',
+      agentUptimeSeconds: 30,
+      metrics: ServerMetrics(
+        connection: AgentConnection.offline,
+        osName: '',
+        hostname: '',
+        uptimeSeconds: 0,
+        cpuCores: 0,
+        cpuUsedPct: 0,
+        memUsedMB: 0,
+        memTotalMB: 0,
+        diskUsedGB: 0,
+        diskTotalGB: 0,
         stale: false,
       ),
     );
@@ -227,6 +253,43 @@ void main() {
     expect(find.text('produksi'), findsOneWidget);
     expect(find.text('staging'), findsOneWidget);
     expect(find.text('Belum ada server'), findsNothing);
+    w.dispose();
+  });
+
+  testWidgets('kartu memuat CPU, RAM, DISK, dan UPTIME', (tester) async {
+    final w = await _workspace(
+      [_creds('a', 'Produksi')],
+      (_) async => _snapshot('produksi'),
+    );
+
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
+    await tester.pumpAndSettle();
+
+    for (final label in ['CPU', 'RAM', 'DISK', 'UPTIME']) {
+      expect(find.text(label), findsOneWidget, reason: 'label $label');
+    }
+    expect(find.text('25%'), findsOneWidget); // RAM 2048/8192
+    expect(find.text('2j 0m'), findsOneWidget); // uptime 7200 detik
+    w.dispose();
+  });
+
+  // Agent yang belum pernah memprobe mesinnya mengirim status koneksi saja.
+  // Menggambar nol untuk angka yang tidak pernah diukur terbaca persis
+  // seperti server sehat yang menganggur — dan bentuknya data, jadi tidak
+  // ada yang membantahnya.
+  testWidgets('angka yang belum pernah diukur tidak digambar sebagai nol',
+      (tester) async {
+    final w = await _workspace(
+      [_creds('a', 'Baru')],
+      (_) async => _snapshotBelumTerbaca(),
+    );
+
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Metrik belum terbaca'), findsOneWidget);
+    expect(find.text('0%'), findsNothing);
+    expect(find.text('CPU'), findsNothing);
     w.dispose();
   });
 

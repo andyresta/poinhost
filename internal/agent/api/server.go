@@ -191,20 +191,27 @@ func (d Deps) deviceAuth(next http.Handler) http.Handler {
 // dipakai aplikasi mobile yang terpasang di HP orang.
 func statusJSON(st backend.Status) map[string]any {
 	out := map[string]any{
-		"connection":    st.Connection,
-		"osName":        st.OSName,
-		"hostname":      st.Hostname,
-		"uptimeSeconds": st.UptimeSeconds,
-		"cpuCores":      st.CPUCores,
-		"cpuUsedPct":    st.CPUUsedPct,
-		"memUsedMB":     st.MemUsedMB,
-		"memTotalMB":    st.MemTotalMB,
-		"diskUsedGB":    st.DiskUsedGB,
-		"diskTotalGB":   st.DiskTotalGB,
-		"stale":         st.Stale,
+		"connection": st.Connection,
+		"stale":      st.Stale,
 	}
+	// Angka hanya dikirim kalau PERNAH diukur.
+	//
+	// Status yang belum pernah diprobe tetap punya entri — status koneksinya
+	// saja — dan seluruh angkanya nol. Mengirimnya apa adanya membuat layar
+	// HP menggambar CPU 0%, RAM 0,0/0,0 GB, uptime 0 menit: bentuknya data,
+	// jadi tidak ada yang membantahnya, padahal artinya "belum terbaca".
+	// Yang hilang dari respons bisa ditampilkan apa adanya sebagai hilang.
 	if !st.CheckedAt.IsZero() {
 		out["checkedAt"] = st.CheckedAt.UTC().Format(time.RFC3339)
+		out["osName"] = st.OSName
+		out["hostname"] = st.Hostname
+		out["uptimeSeconds"] = st.UptimeSeconds
+		out["cpuCores"] = st.CPUCores
+		out["cpuUsedPct"] = st.CPUUsedPct
+		out["memUsedMB"] = st.MemUsedMB
+		out["memTotalMB"] = st.MemTotalMB
+		out["diskUsedGB"] = st.DiskUsedGB
+		out["diskTotalGB"] = st.DiskTotalGB
 	}
 	if st.Error != "" {
 		out["error"] = st.Error
