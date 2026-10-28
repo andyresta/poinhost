@@ -372,6 +372,17 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
             {t('mobile.version')}: <strong>{status.version}</strong>
           </span>
         )}
+        {/* Versi yang DIBAWA build ini, selalu ditampilkan saat agent
+            terpasang — termasuk ketika sama dengan yang di server.
+            Tanpanya, hilangnya tombol Update tidak bisa dibedakan dari
+            "sudah mutakhir", "build ini tidak membawa binary", dan "versinya
+            tidak bisa dibandingkan": ketiganya sama-sama tidak menampilkan
+            apa pun, dan tidak satu pun bisa ditelusuri dari layar. */}
+        {installed && (
+          <span className="fw-status__item">
+            {t('mobile.bundled')}: <strong>{status.bundledVersion || '—'}</strong>
+          </span>
+        )}
         {status.listen && (
           <span className="fw-status__item">
             {t('mobile.listen')}: <strong>{status.listen}</strong>
