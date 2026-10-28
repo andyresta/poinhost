@@ -80,6 +80,25 @@ ThemeData buildTheme(Brightness brightness) {
 /// berpasangan dengan teks atau ikon. Sekitar satu dari dua belas laki-laki
 /// tidak bisa membedakan merah dan hijau, dan "titik berwarna" tanpa label
 /// adalah cara tercepat membuat layar status tidak berguna bagi mereka.
+class GaugeColors {
+  const GaugeColors._();
+
+  /// Warna cincin menurut seberapa penuh.
+  ///
+  /// Ambangnya sengaja tinggi: disk 60% terpakai itu normal, dan layar yang
+  /// menguning sejak setengah penuh mengajari pemiliknya mengabaikan warna —
+  /// sehingga 95% pun tidak lagi menarik perhatian.
+  ///
+  /// Sama seperti [StatusColors], warna ini tidak pernah berdiri sendiri:
+  /// angkanya selalu tertulis di tengah cincin.
+  static Color of(BuildContext context, double fraction) {
+    final scheme = Theme.of(context).colorScheme;
+    if (fraction >= 0.9) return scheme.error;
+    if (fraction >= 0.75) return const Color(0xFFD98A00);
+    return scheme.primary;
+  }
+}
+
 class StatusColors {
   const StatusColors._();
 

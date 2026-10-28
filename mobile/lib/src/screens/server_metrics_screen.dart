@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
@@ -23,6 +25,7 @@ class ServerMetricsScreen extends StatelessWidget {
         final theme = Theme.of(context);
         final snapshot = connection.snapshot;
         final metrics = snapshot?.metrics;
+        final terbaca = metrics != null && metrics.collected;
 
         return Scaffold(
           appBar: AppBar(
@@ -49,10 +52,10 @@ class ServerMetricsScreen extends StatelessWidget {
           body: RefreshIndicator(
             onRefresh: connection.refresh,
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 32),
               children: [
                 _StatusLine(connection: connection),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Pesan TIDAK menggantikan angka yang sudah tergambar.
                 // Jaringan seluler putus-sambung terus; mengosongkan layar
@@ -60,52 +63,78 @@ class ServerMetricsScreen extends StatelessWidget {
                 if (connection.message != null)
                   _Note(text: connection.message!, danger: _danger(connection)),
 
-                if (metrics == null || !metrics.collected)
+                if (!terbaca)
                   const _Note(text: 'Metrik belum terbaca.')
                 else ...[
                   if (metrics.stale)
                     const _Note(text: 'Angka terakhir, belum diperbarui.'),
-                  if (metrics.error != null) _Note(text: metrics.error!, danger: true),
-                  _Gauge(
-                    label: 'CPU',
-                    value: '${metrics.cpuUsedPct.toStringAsFixed(1)}%',
-                    detail: '${metrics.cpuCores} core',
-                    fraction: metrics.cpuUsedPct / 100,
-                    faded: metrics.stale,
-                  ),
-                  _Gauge(
-                    label: 'Memori',
-                    value: gbPair(
-                      metrics.memUsedMB / 1024,
-                      metrics.memTotalMB / 1024,
+                  if (metrics.error != null)
+                    _Note(text: metrics.error!, danger: true),
+                  Opacity(
+                    opacity: metrics.stale ? 0.5 : 1,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _Ring(
+                            label: 'CPU',
+                            fraction: metrics.cpuUsedPct / 100,
+                            center: '${metrics.cpuUsedPct.toStringAsFixed(0)}%',
+                            detail: '${metrics.cpuCores} core',
+                          ),
+                        ),
+                        Expanded(
+                          child: _Ring(
+                            label: 'RAM',
+                            fraction:
+                                ratio(metrics.memUsedMB, metrics.memTotalMB),
+                            center:
+                                pct(metrics.memUsedMB, metrics.memTotalMB),
+                            detail: gbPair(
+                              metrics.memUsedMB / 1024,
+                              metrics.memTotalMB / 1024,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: _Ring(
+                            label: 'DISK',
+                            fraction:
+                                ratio(metrics.diskUsedGB, metrics.diskTotalGB),
+                            center:
+                                pct(metrics.diskUsedGB, metrics.diskTotalGB),
+                            detail: gbPair(
+                              metrics.diskUsedGB,
+                              metrics.diskTotalGB,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    fraction: ratio(metrics.memUsedMB, metrics.memTotalMB),
-                    faded: metrics.stale,
                   ),
-                  _Gauge(
-                    label: 'Disk',
-                    value: gbPair(metrics.diskUsedGB, metrics.diskTotalGB),
-                    fraction: ratio(metrics.diskUsedGB, metrics.diskTotalGB),
-                    faded: metrics.stale,
-                  ),
-                  const SizedBox(height: 12),
-                  _Row(label: 'OS', value: metrics.osName),
-                  _Row(label: 'Hostname', value: metrics.hostname),
-                  _Row(
-                    label: 'Uptime',
-                    value: formatUptime(metrics.uptimeSeconds, long: true),
+                  const SizedBox(height: 22),
+                  _InfoCard(
+                    rows: [
+                      ('OS', metrics.osName),
+                      ('Hostname', metrics.hostname),
+                      ('Uptime', formatUptime(metrics.uptimeSeconds, long: true)),
+                    ],
                   ),
                 ],
 
-                const Divider(height: 36),
-                _Row(label: 'Alamat', value: connection.credentials.baseUrl.host),
-                _Row(label: 'Agent', value: snapshot?.agentVersion ?? '—'),
-                if (snapshot != null)
-                  _Row(
-                    label: 'Agent uptime',
-                    value: formatUptime(snapshot.agentUptimeSeconds, long: true),
-                  ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
+                _InfoCard(
+                  rows: [
+                    ('Alamat', connection.credentials.baseUrl.host),
+                    ('Agent', snapshot?.agentVersion ?? '—'),
+                    if (snapshot != null)
+                      (
+                        'Agent uptime',
+                        formatUptime(snapshot.agentUptimeSeconds, long: true),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
                 Text(
                   'Hanya baca. Aplikasi ini menampilkan keadaan server, tidak '
                   'mengubahnya.',
@@ -130,6 +159,171 @@ bool _danger(ServerConnection c) => switch (c.phase) {
         true,
       _ => false,
     };
+
+/// Satu cincin: label, busur terisi, angka di tengah, nilai asli di bawah.
+///
+/// Angkanya ditulis di tengah cincin, bukan hanya diwakili panjang busur —
+/// busur menjawab "kira-kira seberapa penuh", angka menjawab "berapa", dan
+/// layar yang seluruh gunanya memantau butuh keduanya. Itu juga yang membuat
+/// warnanya aman: ia menegaskan sesuatu yang sudah terbaca, bukan
+/// menggantikannya.
+class _Ring extends StatelessWidget {
+  const _Ring({
+    required this.label,
+    required this.fraction,
+    required this.center,
+    required this.detail,
+  });
+
+  final String label;
+  final double fraction;
+  final String center;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final nilai = fraction.clamp(0.0, 1.0);
+    final warna = GaugeColors.of(context, nilai);
+
+    return Column(
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            letterSpacing: 0.8,
+          ),
+        ),
+        const SizedBox(height: 8),
+        // Animasi dijalankan dari nilai LAMA ke nilai baru tiap polling,
+        // bukan dari nol: mulai dari nol tiap 20 detik membuat ketiga
+        // cincin melompat mundur bersamaan dan terbaca seperti kedip.
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: nilai, end: nilai),
+          duration: const Duration(milliseconds: 550),
+          curve: Curves.easeOutCubic,
+          builder: (context, v, _) => SizedBox(
+            width: 84,
+            height: 84,
+            child: CustomPaint(
+              painter: _RingPainter(
+                fraction: v,
+                color: warna,
+                track: theme.colorScheme.surfaceContainerHighest,
+              ),
+              child: Center(
+                child: Text(
+                  center,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          detail,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter({
+    required this.fraction,
+    required this.color,
+    required this.track,
+  });
+
+  final double fraction;
+  final Color color;
+  final Color track;
+
+  static const _stroke = 9.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset(_stroke / 2, _stroke / 2) &
+        Size(size.width - _stroke, size.height - _stroke);
+
+    final dasar = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stroke
+      ..color = track;
+    canvas.drawArc(rect, 0, math.pi * 2, false, dasar);
+
+    if (fraction <= 0) return;
+    final isi = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _stroke
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    // Mulai dari atas (-90°), bukan dari kanan, karena itu titik yang dibaca
+    // orang sebagai "nol" pada sesuatu yang berbentuk jam.
+    canvas.drawArc(rect, -math.pi / 2, math.pi * 2 * fraction, false, isi);
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) =>
+      old.fraction != fraction || old.color != color || old.track != track;
+}
+
+/// Kartu berisi pasangan label–nilai.
+class _InfoCard extends StatelessWidget {
+  const _InfoCard({required this.rows});
+
+  final List<(String, String)> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        child: Column(
+          children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0) const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: 104,
+                      child: Text(
+                        rows[i].$1,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        rows[i].$2.isEmpty ? '—' : rows[i].$2,
+                        style: theme.textTheme.bodyMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _StatusLine extends StatelessWidget {
   const _StatusLine({required this.connection});
@@ -201,93 +395,6 @@ class _Note extends StatelessWidget {
         style: theme.textTheme.bodySmall?.copyWith(
           color: danger ? theme.colorScheme.onErrorContainer : null,
         ),
-      ),
-    );
-  }
-}
-
-class _Gauge extends StatelessWidget {
-  const _Gauge({
-    required this.label,
-    required this.value,
-    required this.fraction,
-    required this.faded,
-    this.detail,
-  });
-
-  final String label;
-  final String value;
-  final String? detail;
-  final double fraction;
-  final bool faded;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Opacity(
-      opacity: faded ? 0.5 : 1,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(label, style: theme.textTheme.labelLarge),
-                const Spacer(),
-                Text(value, style: theme.textTheme.bodyMedium),
-                if (detail != null) ...[
-                  const SizedBox(width: 8),
-                  Text(detail!, style: theme.textTheme.bodySmall),
-                ],
-              ],
-            ),
-            const SizedBox(height: 7),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: fraction.clamp(0.0, 1.0),
-                minHeight: 7,
-                backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value.isEmpty ? '—' : value,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
-        ],
       ),
     );
   }
