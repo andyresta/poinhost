@@ -44,6 +44,23 @@ func (f fakeReader) FileContent(path string) (backend.FileText, error) {
 	return backend.FileText{Path: path, Content: "isi rahasia", Size: 11}, nil
 }
 
+func (f fakeReader) Websites() (backend.WebsiteListing, error) {
+	return backend.WebsiteListing{
+		NginxInstalled: true,
+		NginxActive:    true,
+		Sites:          []backend.WebsiteInfo{{Domain: "contoh.id", Enabled: true}},
+	}, nil
+}
+
+func (f fakeReader) WebsiteSSL(domain string) (backend.WebsiteSSL, error) {
+	return backend.WebsiteSSL{
+		Domain:     domain,
+		SSLEnabled: true,
+		CertExists: true,
+		NotAfter:   "2027-01-01T00:00:00Z",
+	}, nil
+}
+
 // fakeController mencatat aksi yang SAMPAI kepadanya.
 //
 // Yang diuji di sini bukan systemctl-nya — itu milik modul services — tapi
@@ -67,6 +84,11 @@ func (c *fakeController) RenameFile(oldPath, newPath string) error {
 
 func (c *fakeController) DeleteFiles(paths []string) error {
 	c.dipanggil = append(c.dipanggil, "delete "+strings.Join(paths, ","))
+	return nil
+}
+
+func (c *fakeController) SetWebsiteEnabled(domain string, enabled bool) error {
+	c.dipanggil = append(c.dipanggil, fmt.Sprintf("site %s enabled=%v", domain, enabled))
 	return nil
 }
 
@@ -563,5 +585,49 @@ func TestHapusBerkas_DaftarKosongDitolak(t *testing.T) {
 	}
 	if len(ctl.dipanggil) != 0 {
 		t.Fatalf("tetap sampai ke controller: %v", ctl.dipanggil)
+	}
+}
+
+// Daftar situs cukup dengan persetujuan; MENYALAKAN atau mematikannya
+// tidak. Perbedaan itu yang membuat HP pemantau tetap bisa melihat
+// sertifikat yang mau kedaluwarsa tanpa bisa menjatuhkan situsnya.
+func TestWebsite_BacaCukupDisetujui_UbahPerluKendali(t *testing.T) {
+	d, store := contoh(t)
+	ctl := &fakeController{}
+	d.Controller = ctl
+	pub := Handler(d)
+	admin := AdminHandler(AdminDeps{Devices: store})
+
+	id, token := daftar(t, pub, "HP Andy")
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/approve", "", "")
+
+	for _, path := range []string{"/v1/websites", "/v1/websites/contoh.id/ssl"} {
+		if rec := minta(t, pub, http.MethodGet, path, token, ""); rec.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+
+	rec := minta(t, pub, http.MethodPost, "/v1/websites/contoh.id/disable", token, "")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("matikan situs tanpa izin = %d, mau 403", rec.Code)
+	}
+	if len(ctl.dipanggil) != 0 {
+		t.Fatalf("tetap sampai ke controller: %v", ctl.dipanggil)
+	}
+
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/control", "", "")
+	if rec := minta(t, pub, http.MethodPost, "/v1/websites/contoh.id/disable", token, ""); rec.Code != http.StatusOK {
+		t.Fatalf("dengan izin = %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(ctl.dipanggil) != 1 || ctl.dipanggil[0] != "site contoh.id enabled=false" {
+		t.Fatalf("yang sampai = %v", ctl.dipanggil)
+	}
+
+	// Aksi di luar enable/disable ditolak sebelum menyentuh vhost apa pun.
+	if rec := minta(t, pub, http.MethodPost, "/v1/websites/contoh.id/delete", token, ""); rec.Code != http.StatusBadRequest {
+		t.Errorf("aksi asing = %d, mau 400", rec.Code)
+	}
+	if len(ctl.dipanggil) != 1 {
+		t.Errorf("aksi asing tetap sampai: %v", ctl.dipanggil)
 	}
 }

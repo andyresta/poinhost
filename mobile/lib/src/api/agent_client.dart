@@ -149,6 +149,41 @@ class AgentClient {
     );
   }
 
+  /// Seluruh vhost nginx di server.
+  Future<WebsiteListing> websites({required String deviceToken}) async {
+    final json = await _send('GET', '/v1/websites', token: deviceToken);
+    return WebsiteListing.fromJson(json);
+  }
+
+  /// Keadaan sertifikat satu domain.
+  ///
+  /// Dipisah dari daftarnya karena agent harus MEMBACA berkas sertifikat
+  /// untuk menjawabnya — satu round-trip lagi per domain.
+  Future<WebsiteSSL> websiteSSL({
+    required String deviceToken,
+    required String domain,
+  }) async {
+    final json = await _send(
+      'GET',
+      '/v1/websites/${Uri.encodeComponent(domain)}/ssl',
+      token: deviceToken,
+    );
+    return WebsiteSSL.fromJson(json);
+  }
+
+  Future<void> setWebsiteEnabled({
+    required String deviceToken,
+    required String domain,
+    required bool enabled,
+  }) async {
+    await _send(
+      'POST',
+      '/v1/websites/${Uri.encodeComponent(domain)}/'
+          '${enabled ? 'enable' : 'disable'}',
+      token: deviceToken,
+    );
+  }
+
   /// Memeriksa agent hidup, tanpa token.
   ///
   /// Berguna di layar pendaftaran: membedakan "URL-nya salah" dari "token

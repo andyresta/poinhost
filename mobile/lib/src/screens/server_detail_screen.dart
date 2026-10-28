@@ -6,6 +6,7 @@ import '../theme.dart';
 import 'files_screen.dart';
 import 'server_metrics_screen.dart';
 import 'services_screen.dart';
+import 'websites_screen.dart';
 
 /// Modul yang bisa dibuka untuk satu server.
 ///
@@ -14,7 +15,7 @@ import 'services_screen.dart';
 /// rilis — dan tidak memberi tahu apa pun tentang apa yang sedang dibangun.
 enum ServerModule {
   metrik('Metrik', Icons.speed_outlined, siap: true),
-  website('Website', Icons.language_outlined),
+  website('Website', Icons.language_outlined, siap: true),
   files('Files', Icons.folder_outlined, siap: true),
   terminal('Terminal', Icons.terminal_outlined),
   service('Service', Icons.manage_accounts_outlined, siap: true),
@@ -74,6 +75,7 @@ class ServerDetailScreen extends StatelessWidget {
           ServerModule.metrik => ServerMetricsScreen(connection: connection),
           ServerModule.service => ServicesScreen(connection: connection),
           ServerModule.files => FilesScreen(connection: connection),
+          ServerModule.website => WebsitesScreen(connection: connection),
           _ => _BelumAdaScreen(module: module),
         },
       ),

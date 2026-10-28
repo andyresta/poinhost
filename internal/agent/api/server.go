@@ -348,6 +348,83 @@ func Handler(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": len(body.Paths)})
 	})))
 
+	// Daftar situs hanya DIBACA, dan cukup dengan persetujuan — sama seperti
+	// daftar service. Yang bocor dari sini adalah nama domain dan document
+	// root, bukan kredensial; itu setara dengan yang sudah terlihat di
+	// metrik, bukan dengan isi berkas.
+	mux.Handle("GET /v1/websites", d.deviceAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listing, err := d.Reader.Websites()
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		sites := make([]map[string]any, 0, len(listing.Sites))
+		for _, s := range listing.Sites {
+			sites = append(sites, map[string]any{
+				"domain":      s.Domain,
+				"parent":      s.Parent,
+				"isSubdomain": s.IsSubdomain,
+				"root":        s.Root,
+				"enabled":     s.Enabled,
+				"phpVersion":  s.PHPVersion,
+				"phpEnabled":  s.PHPEnabled,
+				"proxyTarget": s.ProxyTarget,
+				"sslEnabled":  s.SSLEnabled,
+			})
+		}
+		dev, _ := d.Devices.Authenticate(bearer(r))
+		writeJSON(w, http.StatusOK, map[string]any{
+			"nginxInstalled": listing.NginxInstalled,
+			"nginxActive":    listing.NginxActive,
+			"nginxVersion":   listing.NginxVersion,
+			"canControl":     dev.CanControl,
+			"sites":          sites,
+		})
+	})))
+
+	mux.Handle("GET /v1/websites/{domain}/ssl", d.deviceAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		st, err := d.Reader.WebsiteSSL(r.PathValue("domain"))
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		out := map[string]any{
+			"domain":      st.Domain,
+			"sslEnabled":  st.SSLEnabled,
+			"autoRenew":   st.AutoRenewEnabled,
+			"certExists":  st.CertExists,
+			"notAfter":    st.NotAfter,
+			"certDomains": st.CertDomains,
+			"missingSans": st.MissingSANs,
+		}
+		// Dihilangkan kalau tanggalnya tidak terbaca, bukan dikirim sebagai
+		// nol — "0 hari lagi" terbaca seperti kedaluwarsa hari ini.
+		if st.ExpiresInDays != nil {
+			out["expiresInDays"] = *st.ExpiresInDays
+		}
+		writeJSON(w, http.StatusOK, out)
+	})))
+
+	mux.Handle("POST /v1/websites/{domain}/{action}", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if d.Controller == nil {
+			writeErr(w, http.StatusServiceUnavailable, "agent ini tidak bisa mengubah situs")
+			return
+		}
+		action := r.PathValue("action")
+		if action != "enable" && action != "disable" {
+			writeErr(w, http.StatusBadRequest, "aksi tidak dikenal: "+action)
+			return
+		}
+		if err := d.Controller.SetWebsiteEnabled(r.PathValue("domain"), action == "enable"); err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"domain":  r.PathValue("domain"),
+			"enabled": action == "enable",
+		})
+	})))
+
 	return mux
 }
 

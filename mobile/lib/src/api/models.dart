@@ -276,6 +276,121 @@ class FileText {
       );
 }
 
+/// Satu vhost nginx di server.
+class WebsiteInfo {
+  const WebsiteInfo({
+    required this.domain,
+    required this.parent,
+    required this.isSubdomain,
+    required this.root,
+    required this.enabled,
+    required this.phpVersion,
+    required this.phpEnabled,
+    required this.proxyTarget,
+    required this.sslEnabled,
+  });
+
+  final String domain;
+  final String parent;
+  final bool isSubdomain;
+  final String root;
+  final bool enabled;
+  final String phpVersion;
+  final bool phpEnabled;
+  final String proxyTarget;
+  final bool sslEnabled;
+
+  static WebsiteInfo fromJson(Map<String, dynamic> json) => WebsiteInfo(
+        domain: _str(json['domain']),
+        parent: _str(json['parent']),
+        isSubdomain: json['isSubdomain'] == true,
+        root: _str(json['root']),
+        enabled: json['enabled'] == true,
+        phpVersion: _str(json['phpVersion']),
+        phpEnabled: json['phpEnabled'] == true,
+        proxyTarget: _str(json['proxyTarget']),
+        sslEnabled: json['sslEnabled'] == true,
+      );
+}
+
+/// Jawaban `GET /v1/websites`.
+class WebsiteListing {
+  const WebsiteListing({
+    required this.sites,
+    required this.nginxInstalled,
+    required this.nginxActive,
+    required this.nginxVersion,
+    required this.canControl,
+  });
+
+  final List<WebsiteInfo> sites;
+  final bool nginxInstalled;
+  final bool nginxActive;
+  final String nginxVersion;
+  final bool canControl;
+
+  static WebsiteListing fromJson(Map<String, dynamic> json) {
+    final raw = json['sites'];
+    return WebsiteListing(
+      sites: raw is List
+          ? raw.whereType<Map<String, dynamic>>().map(WebsiteInfo.fromJson).toList()
+          : const [],
+      nginxInstalled: json['nginxInstalled'] == true,
+      nginxActive: json['nginxActive'] == true,
+      nginxVersion: _str(json['nginxVersion']),
+      canControl: json['canControl'] == true,
+    );
+  }
+}
+
+/// Jawaban `GET /v1/websites/{domain}/ssl`.
+class WebsiteSSL {
+  const WebsiteSSL({
+    required this.domain,
+    required this.sslEnabled,
+    required this.autoRenew,
+    required this.certExists,
+    required this.notAfter,
+    required this.certDomains,
+    required this.missingSans,
+    this.expiresInDays,
+  });
+
+  final String domain;
+  final bool sslEnabled;
+  final bool autoRenew;
+  final bool certExists;
+
+  /// RFC3339 kalau agent bisa menguraikannya, apa adanya kalau tidak.
+  final String notAfter;
+
+  final List<String> certDomains;
+
+  /// Domain yang terdaftar tapi BELUM tercakup sertifikat. Selama ini tidak
+  /// kosong, HTTPS untuk domain itu tidak bekerja walau statusnya aktif.
+  final List<String> missingSans;
+
+  /// null berarti tanggalnya tidak terbaca — BUKAN nol, yang akan tampil
+  /// seperti "kedaluwarsa hari ini".
+  final int? expiresInDays;
+
+  static WebsiteSSL fromJson(Map<String, dynamic> json) => WebsiteSSL(
+        domain: _str(json['domain']),
+        sslEnabled: json['sslEnabled'] == true,
+        autoRenew: json['autoRenew'] == true,
+        certExists: json['certExists'] == true,
+        notAfter: _str(json['notAfter']),
+        certDomains: _daftarTeks(json['certDomains']),
+        missingSans: _daftarTeks(json['missingSans']),
+        expiresInDays: json['expiresInDays'] is num
+            ? (json['expiresInDays'] as num).toInt()
+            : null,
+      );
+}
+
+List<String> _daftarTeks(Object? v) =>
+    v is List ? v.whereType<String>().toList() : const [];
+
 /// Jawaban `POST /v1/devices`: token milik perangkat ini.
 class Enrollment {
   const Enrollment({

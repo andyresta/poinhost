@@ -124,6 +124,56 @@ class _FakeAgent extends AgentClient {
     tulisan.add('delete ${paths.join(',')}');
   }
 
+  /// Izin kendali yang dilaporkan agent palsu ini untuk daftar situs.
+  bool bolehUbah = false;
+
+  @override
+  Future<WebsiteListing> websites({required String deviceToken}) async =>
+      WebsiteListing(
+        nginxInstalled: true,
+        nginxActive: true,
+        nginxVersion: '1.22',
+        canControl: bolehUbah,
+        sites: const [
+          WebsiteInfo(
+            domain: 'contoh.id',
+            parent: '',
+            isSubdomain: false,
+            root: '/var/www/contoh.id',
+            enabled: true,
+            phpVersion: '8.2',
+            phpEnabled: true,
+            proxyTarget: '',
+            sslEnabled: true,
+          ),
+        ],
+      );
+
+  @override
+  Future<WebsiteSSL> websiteSSL({
+    required String deviceToken,
+    required String domain,
+  }) async =>
+      WebsiteSSL(
+        domain: domain,
+        sslEnabled: true,
+        autoRenew: true,
+        certExists: true,
+        notAfter: DateTime.now().add(const Duration(days: 9)).toIso8601String(),
+        certDomains: const ['contoh.id', 'www.contoh.id'],
+        missingSans: const ['toko.contoh.id'],
+        expiresInDays: 9,
+      );
+
+  @override
+  Future<void> setWebsiteEnabled({
+    required String deviceToken,
+    required String domain,
+    required bool enabled,
+  }) async {
+    tulisan.add('site $domain enabled=$enabled');
+  }
+
   @override
   void close() {}
 }
@@ -210,11 +260,13 @@ Future<Workspace> _workspace(
   Future<ServerSnapshot> Function(Uri) reply, {
   ServiceList? services,
   List<_FakeAgent>? agents,
+  bool bolehUbah = false,
 }) async {
   final w = Workspace(
     store: InMemoryCredentialStore(creds),
     clientFor: (url) {
-      final a = _FakeAgent(url, () => reply(url), serviceList: services);
+      final a = _FakeAgent(url, () => reply(url), serviceList: services)
+        ..bolehUbah = bolehUbah;
       agents?.add(a);
       return a;
     },
@@ -665,6 +717,58 @@ void main() {
     w.dispose();
   });
 
+  // Sisa hari ditulis di depan tanggalnya, dan SAN yang belum tercakup
+  // diperingatkan — itu jebakan yang paling mudah terlewat: statusnya "SSL
+  // aktif", tapi HTTPS untuk domain itu tidak bekerja, dan renew tidak
+  // memperbaikinya.
+  testWidgets('detail domain menyebut sisa hari dan SAN yang kurang',
+      (tester) async {
+    final agents = <_FakeAgent>[];
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => _snapshot('produksi'),
+      agents: agents,
+    );
+    await _bukaModul(tester, w, 'Website');
+
+    expect(find.text('contoh.id'), findsOneWidget);
+    expect(find.textContaining('HTTPS'), findsOneWidget);
+
+    await tester.tap(find.text('contoh.id'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('9 hari lagi'), findsOneWidget);
+    expect(find.textContaining('toko.contoh.id'), findsOneWidget);
+    expect(find.textContaining('diterbitkan ulang'), findsOneWidget);
+
+    // Tanpa izin kendali tidak ada sakelar untuk mematikan situs.
+    expect(find.byType(SwitchListTile), findsNothing);
+    w.dispose();
+  });
+
+  testWidgets('mematikan situs minta konfirmasi dulu', (tester) async {
+    final agents = <_FakeAgent>[];
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => _snapshot('produksi'),
+      agents: agents,
+      bolehUbah: true,
+    );
+    await _bukaModul(tester, w, 'Website');
+    await tester.tap(find.text('contoh.id'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('berhenti dilayani'), findsOneWidget);
+    expect(agents.single.tulisan, isEmpty);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Matikan'));
+    await tester.pumpAndSettle();
+    expect(agents.single.tulisan, ['site contoh.id enabled=false']);
+    w.dispose();
+  });
+
   testWidgets('server bermasalah tetap punya panel beserta alasannya',
       (tester) async {
     final w = await _workspace(
@@ -755,5 +859,17 @@ Future<void> _bukaFiles(WidgetTester tester, Workspace w) async {
   await tester.ensureVisible(find.text('Files'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Files'));
+  await tester.pumpAndSettle();
+}
+
+/// Membuka Server -> menu -> satu modul.
+Future<void> _bukaModul(WidgetTester tester, Workspace w, String modul) async {
+  await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('produksi'));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text(modul));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(modul));
   await tester.pumpAndSettle();
 }

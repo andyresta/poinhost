@@ -66,6 +66,55 @@ type FileText struct {
 	Size    int64
 }
 
+// WebsiteInfo satu vhost nginx di mesin ini.
+type WebsiteInfo struct {
+	Domain      string
+	Parent      string
+	IsSubdomain bool
+	Root        string
+	Enabled     bool
+	PHPVersion  string
+	PHPEnabled  bool
+	ProxyTarget string
+	SSLEnabled  bool
+}
+
+// WebsiteListing seluruh vhost beserta keadaan nginx-nya.
+type WebsiteListing struct {
+	NginxInstalled bool
+	NginxActive    bool
+	NginxVersion   string
+	Sites          []WebsiteInfo
+}
+
+// WebsiteSSL keadaan sertifikat satu domain.
+type WebsiteSSL struct {
+	Domain           string
+	SSLEnabled       bool
+	AutoRenewEnabled bool
+	CertExists       bool
+
+	// NotAfter kapan sertifikatnya kedaluwarsa, dalam RFC3339 kalau
+	// formatnya terbaca — apa adanya kalau tidak. Inilah satu-satunya angka
+	// di modul ini yang punya tenggat, dan karena itu satu-satunya yang
+	// benar-benar pantas dilihat dari HP.
+	NotAfter string
+
+	// ExpiresInDays sisa hari, nil kalau tanggalnya tidak terbaca.
+	//
+	// Dihitung di sini, bukan di HP: `openssl -enddate` mengeluarkan format
+	// yang hanya dipahami openssl, dan menyalin penguraiannya ke tiap klien
+	// berarti tiap klien punya kesempatan sendiri untuk salah membacanya.
+	ExpiresInDays *int
+
+	CertDomains []string
+
+	// MissingSANs domain yang terdaftar tapi BELUM tercakup sertifikat.
+	// Selama ini tidak kosong, HTTPS untuk domain itu tidak bekerja walau
+	// statusnya "SSL aktif" — dan `certbot renew` tidak memperbaikinya.
+	MissingSANs []string
+}
+
 // Reader adalah satu-satunya jalan lapisan API menyentuh dunia poinhost.
 //
 // Sengaja berupa interface sempit, bukan *servers.Service langsung: itu
@@ -102,6 +151,15 @@ type Reader interface {
 
 	// FileContent membaca isi satu file teks.
 	FileContent(path string) (FileText, error)
+
+	// Websites adalah seluruh vhost nginx di mesin ini.
+	Websites() (WebsiteListing, error)
+
+	// WebsiteSSL keadaan sertifikat satu domain. Dipisah dari daftarnya
+	// karena ia MEMBACA berkas sertifikat — satu round-trip lagi per
+	// domain, yang akan membuat daftar berisi dua puluh situs jadi dua
+	// puluh kali lebih mahal kalau digabung.
+	WebsiteSSL(domain string) (WebsiteSSL, error)
 }
 
 // Controller adalah satu-satunya permukaan yang MENGUBAH mesin.
@@ -133,4 +191,7 @@ type Controller interface {
 	// DeleteFiles menghapus berkas atau direktori. Direktori dihapus
 	// REKURSIF, mengikuti modul Files di app desktop.
 	DeleteFiles(paths []string) error
+
+	// SetWebsiteEnabled menyalakan atau mematikan satu vhost.
+	SetWebsiteEnabled(domain string, enabled bool) error
 }

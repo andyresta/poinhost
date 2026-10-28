@@ -9,11 +9,13 @@ package backend
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/andyresta/poinhost/internal/modules/files"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 	"github.com/andyresta/poinhost/internal/modules/services"
+	"github.com/andyresta/poinhost/internal/modules/website"
 )
 
 // errBelumKelolaDiri dipakai untuk modul yang butuh koneksi ke mesin ini.
@@ -30,6 +32,7 @@ type Backend struct {
 	collector *servers.Collector
 	services  *services.Service
 	files     *files.Service
+	website   *website.Service
 
 	// selfID adalah server yang mewakili mesin tempat agent berjalan, supaya
 	// bisa ditandai di daftar. Kosong berarti agent belum mendaftarkan
@@ -43,6 +46,7 @@ func New(
 	collector *servers.Collector,
 	servicesSvc *services.Service,
 	filesSvc *files.Service,
+	websiteSvc *website.Service,
 	selfServerID string,
 ) *Backend {
 	return &Backend{
@@ -50,6 +54,7 @@ func New(
 		collector: collector,
 		services:  servicesSvc,
 		files:     filesSvc,
+		website:   websiteSvc,
 		selfID:    selfServerID,
 	}
 }
@@ -255,4 +260,97 @@ func (b *Backend) konteksFile() (context.Context, context.CancelFunc, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	return ctx, cancel, nil
+}
+
+// Websites membaca seluruh vhost nginx di mesin ini.
+func (b *Backend) Websites() (WebsiteListing, error) {
+	if b.selfID == "" || b.website == nil {
+		return WebsiteListing{}, errBelumKelolaDiri
+	}
+	res, err := b.website.List(b.selfID)
+	if err != nil {
+		return WebsiteListing{}, err
+	}
+	out := WebsiteListing{
+		NginxInstalled: res.Nginx.Installed,
+		NginxActive:    res.Nginx.Active,
+		NginxVersion:   res.Nginx.Version,
+	}
+	out.Sites = make([]WebsiteInfo, 0, len(res.Domains))
+	for _, d := range res.Domains {
+		out.Sites = append(out.Sites, WebsiteInfo{
+			Domain:      d.Domain,
+			Parent:      d.Parent,
+			IsSubdomain: d.IsSubdomain,
+			Root:        d.Root,
+			Enabled:     d.Enabled,
+			PHPVersion:  d.PHPVersion,
+			PHPEnabled:  d.PHPEnabled,
+			ProxyTarget: d.ProxyTarget,
+			SSLEnabled:  d.SSLEnabled,
+		})
+	}
+	return out, nil
+}
+
+// WebsiteSSL membaca keadaan sertifikat satu domain.
+func (b *Backend) WebsiteSSL(domain string) (WebsiteSSL, error) {
+	if b.selfID == "" || b.website == nil {
+		return WebsiteSSL{}, errBelumKelolaDiri
+	}
+	st, err := b.website.SSLStatus(b.selfID, domain)
+	if err != nil {
+		return WebsiteSSL{}, err
+	}
+	out := WebsiteSSL{
+		Domain:           st.Domain,
+		SSLEnabled:       st.SSLEnabled,
+		AutoRenewEnabled: st.AutoRenewEnabled,
+		CertExists:       st.Certificate.Exists,
+		NotAfter:         st.Certificate.NotAfter,
+		CertDomains:      st.Certificate.Domains,
+		MissingSANs:      st.MissingSANs,
+	}
+	if t, ok := uraiTanggalSertifikat(st.Certificate.NotAfter); ok {
+		out.NotAfter = t.UTC().Format(time.RFC3339)
+		sisa := int(time.Until(t).Hours() / 24)
+		out.ExpiresInDays = &sisa
+	}
+	return out, nil
+}
+
+// uraiTanggalSertifikat membaca keluaran `openssl x509 -enddate`.
+//
+// Bentuknya "Jan  2 15:04:05 2006 GMT" — format milik openssl, bukan
+// standar mana pun. Diuraikan SEKALI di sini supaya tiap klien tidak punya
+// kesempatan sendiri untuk salah membacanya; yang gagal diurai diteruskan
+// apa adanya, bukan dibuang, karena tanggal yang tidak bisa dihitung tetap
+// lebih berguna daripada tidak ada tanggal.
+func uraiTanggalSertifikat(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range []string{
+		"Jan _2 15:04:05 2006 MST",
+		"Jan _2 15:04:05 2006",
+		time.RFC3339,
+	} {
+		if t, err := time.Parse(layout, raw); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
+}
+
+// SetWebsiteEnabled menyalakan atau mematikan satu vhost.
+func (b *Backend) SetWebsiteEnabled(domain string, enabled bool) error {
+	if b.selfID == "" || b.website == nil {
+		return errBelumKelolaDiri
+	}
+	return b.website.SetEnabled(website.SetEnabledRequest{
+		ServerID: b.selfID,
+		Domain:   domain,
+		Enabled:  enabled,
+	})
 }

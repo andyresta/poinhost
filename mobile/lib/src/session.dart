@@ -162,6 +162,19 @@ class ServerConnection extends ChangeNotifier {
   Future<void> deleteFile(String path) =>
       _client.deleteFiles(deviceToken: credentials.deviceToken, paths: [path]);
 
+  Future<WebsiteListing> websites() =>
+      _client.websites(deviceToken: credentials.deviceToken);
+
+  Future<WebsiteSSL> websiteSSL(String domain) =>
+      _client.websiteSSL(deviceToken: credentials.deviceToken, domain: domain);
+
+  Future<void> setWebsiteEnabled(String domain, bool enabled) =>
+      _client.setWebsiteEnabled(
+        deviceToken: credentials.deviceToken,
+        domain: domain,
+        enabled: enabled,
+      );
+
   void close() => _client.close();
 }
 
