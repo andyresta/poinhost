@@ -175,6 +175,49 @@ class _FakeAgent extends AgentClient {
   }
 
   @override
+  Future<ContainerListing> containers({required String deviceToken}) async =>
+      ContainerListing(
+        dockerOk: true,
+        version: '27.0',
+        canControl: bolehUbah,
+        containers: const [
+          ContainerInfo(
+            id: 'aaa111',
+            name: 'web',
+            image: 'nginx:alpine',
+            status: 'Up 3 days',
+            state: 'running',
+            ports: '0.0.0.0:80->80/tcp',
+          ),
+          ContainerInfo(
+            id: 'bbb222',
+            name: 'worker',
+            image: 'app:latest',
+            status: 'Exited (1) 2 hours ago',
+            state: 'exited',
+            ports: '',
+          ),
+        ],
+      );
+
+  @override
+  Future<String> containerLogs({
+    required String deviceToken,
+    required String id,
+    int lines = 500,
+  }) async =>
+      'panic: something broke';
+
+  @override
+  Future<void> containerAction({
+    required String deviceToken,
+    required String id,
+    required String action,
+  }) async {
+    tulisan.add('container $action $id');
+  }
+
+  @override
   void close() {}
 }
 
@@ -545,10 +588,11 @@ void main() {
       expect(find.text(label), findsOneWidget, reason: 'modul $label');
     }
 
-    // Yang belum ada menjawab, bukan diam.
-    await tester.ensureVisible(find.text('Docker'));
+    // Yang belum ada menjawab, bukan diam. Firewall dipilih karena ia
+    // memang masih redup — Docker dulu dipakai di sini sampai modulnya jadi.
+    await tester.ensureVisible(find.text('Firewall'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Docker'));
+    await tester.tap(find.text('Firewall'));
     await tester.pumpAndSettle();
     expect(find.text('Not available in the mobile app yet.'), findsOneWidget);
 
@@ -766,6 +810,62 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Take offline'));
     await tester.pumpAndSettle();
     expect(agents.single.tulisan, ['site contoh.id enabled=false']);
+    w.dispose();
+  });
+
+  // Yang BERHENTI naik ke atas: container mati adalah satu-satunya alasan
+  // orang membuka layar ini dari HP.
+  testWidgets('Docker menaikkan container yang berhenti, lalu buka lognya',
+      (tester) async {
+    final agents = <_FakeAgent>[];
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => _snapshot('produksi'),
+      agents: agents,
+      bolehUbah: true,
+    );
+    await _bukaModul(tester, w, 'Docker');
+
+    final posisiWorker = tester.getTopLeft(find.text('worker')).dy;
+    final posisiWeb = tester.getTopLeft(find.text('web')).dy;
+    expect(posisiWorker, lessThan(posisiWeb));
+
+    // Seluruh kartu membuka log, bukan satu tombol kecil.
+    await tester.tap(find.text('worker'));
+    await tester.pumpAndSettle();
+    expect(find.text('panic: something broke'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // worker mati, jadi tombolnya Start — dan Start tidak perlu konfirmasi.
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    expect(agents.single.tulisan, ['container start bbb222']);
+    w.dispose();
+  });
+
+  testWidgets('tanpa izin kendali, Docker tidak membuka log atau aksi',
+      (tester) async {
+    final agents = <_FakeAgent>[];
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => _snapshot('produksi'),
+      agents: agents,
+    );
+    await _bukaModul(tester, w, 'Docker');
+
+    expect(find.text('web'), findsOneWidget);
+    expect(find.textContaining('Grant the control permission'), findsOneWidget);
+    for (final label in ['Start', 'Stop', 'Restart']) {
+      expect(find.text(label), findsNothing, reason: 'tombol $label');
+    }
+
+    // Menekan kartunya pun tidak membuka log.
+    await tester.tap(find.text('worker'));
+    await tester.pumpAndSettle();
+    expect(find.text('panic: something broke'), findsNothing);
+    expect(agents.single.tulisan, isEmpty);
     w.dispose();
   });
 

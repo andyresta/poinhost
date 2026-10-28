@@ -175,6 +175,19 @@ class ServerConnection extends ChangeNotifier {
         enabled: enabled,
       );
 
+  Future<ContainerListing> containers() =>
+      _client.containers(deviceToken: credentials.deviceToken);
+
+  Future<String> containerLogs(String id) =>
+      _client.containerLogs(deviceToken: credentials.deviceToken, id: id);
+
+  Future<void> containerAction(String id, String action) =>
+      _client.containerAction(
+        deviceToken: credentials.deviceToken,
+        id: id,
+        action: action,
+      );
+
   void close() => _client.close();
 }
 

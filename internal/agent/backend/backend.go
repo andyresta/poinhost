@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andyresta/poinhost/internal/modules/docker"
 	"github.com/andyresta/poinhost/internal/modules/files"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 	"github.com/andyresta/poinhost/internal/modules/services"
@@ -26,6 +27,10 @@ import (
 // Control.
 var errBelumKelolaDiri = errors.New("the agent does not manage its own machine yet")
 
+// errAksiTidakDikenal adalah jaring untuk aksi yang lolos penyaringan
+// di lapisan API — lihat ContainerAction.
+var errAksiTidakDikenal = errors.New("unknown action")
+
 // Backend mengimplementasikan Reader.
 type Backend struct {
 	svc       *servers.Service
@@ -33,6 +38,7 @@ type Backend struct {
 	services  *services.Service
 	files     *files.Service
 	website   *website.Service
+	docker    *docker.Service
 
 	// selfID adalah server yang mewakili mesin tempat agent berjalan, supaya
 	// bisa ditandai di daftar. Kosong berarti agent belum mendaftarkan
@@ -47,6 +53,7 @@ func New(
 	servicesSvc *services.Service,
 	filesSvc *files.Service,
 	websiteSvc *website.Service,
+	dockerSvc *docker.Service,
 	selfServerID string,
 ) *Backend {
 	return &Backend{
@@ -55,6 +62,7 @@ func New(
 		services:  servicesSvc,
 		files:     filesSvc,
 		website:   websiteSvc,
+		docker:    dockerSvc,
 		selfID:    selfServerID,
 	}
 }

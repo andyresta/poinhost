@@ -184,6 +184,41 @@ class AgentClient {
     );
   }
 
+  /// Seluruh container Docker di server.
+  Future<ContainerListing> containers({required String deviceToken}) async {
+    final json = await _send('GET', '/v1/docker', token: deviceToken);
+    return ContainerListing.fromJson(json);
+  }
+
+  /// Ekor log satu container.
+  ///
+  /// Batas barisnya ditegakkan agent, bukan di sini: `docker logs` tanpa
+  /// batas bisa mengembalikan ratusan megabita.
+  Future<String> containerLogs({
+    required String deviceToken,
+    required String id,
+    int lines = 500,
+  }) async {
+    final json = await _send(
+      'GET',
+      '/v1/docker/${Uri.encodeComponent(id)}/logs?lines=$lines',
+      token: deviceToken,
+    );
+    return json['content'] is String ? json['content'] as String : '';
+  }
+
+  Future<void> containerAction({
+    required String deviceToken,
+    required String id,
+    required String action,
+  }) async {
+    await _send(
+      'POST',
+      '/v1/docker/${Uri.encodeComponent(id)}/$action',
+      token: deviceToken,
+    );
+  }
+
   /// Memeriksa agent hidup, tanpa token.
   ///
   /// Berguna di layar pendaftaran: membedakan "URL-nya salah" dari "token

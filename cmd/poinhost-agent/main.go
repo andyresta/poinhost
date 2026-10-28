@@ -36,6 +36,7 @@ import (
 	"github.com/andyresta/poinhost/internal/core/database"
 	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
+	"github.com/andyresta/poinhost/internal/modules/docker"
 	"github.com/andyresta/poinhost/internal/modules/files"
 	"github.com/andyresta/poinhost/internal/modules/firewall"
 	"github.com/andyresta/poinhost/internal/modules/servers"
@@ -220,6 +221,7 @@ func newStack(acfg *agentcfg.Config, cfgPath string) (*stack, error) {
 	filesSvc := files.NewService(sshpool.NewSFTPClient(pool), executor, serversSvc)
 	firewallSvc := firewall.NewService(serversSvc, executor, mutex)
 	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault, firewallSvc)
+	dockerSvc := docker.NewService(serversSvc, executor, mutex)
 
 	// Bootstrap mendaftarkan semua server tersimpan ke pool. Tanpa ini,
 	// status koneksi akan selalu "offline" sampai ada operasi yang kebetulan
@@ -241,7 +243,7 @@ func newStack(acfg *agentcfg.Config, cfgPath string) (*stack, error) {
 	collector.Start()
 
 	return &stack{
-		backend:   backend.New(serversSvc, collector, servicesSvc, filesSvc, websiteSvc, acfg.SelfServerID),
+		backend:   backend.New(serversSvc, collector, servicesSvc, filesSvc, websiteSvc, dockerSvc, acfg.SelfServerID),
 		collector: collector,
 		closeDB:   db.Close,
 	}, nil

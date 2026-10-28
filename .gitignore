@@ -18,3 +18,7 @@ frontend/dist
 # pola //go:embed gagal saat kompilasi di clone yang bersih.
 internal/agent/dist/bin/*.gz
 internal/agent/dist/bin/version.txt
+
+# Resource Windows yang dihasilkan wails build; bukan sumber, dan ukurannya
+# berubah tiap build. Tanpa baris ini `git add -A` menyapunya diam-diam.
+poinhost-res.syso

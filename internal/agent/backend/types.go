@@ -115,6 +115,24 @@ type WebsiteSSL struct {
 	MissingSANs []string
 }
 
+// ContainerInfo satu container Docker di mesin ini.
+type ContainerInfo struct {
+	ID      string
+	Name    string
+	Image   string
+	Status  string
+	State   string
+	Ports   string
+	Created string
+}
+
+// ContainerListing seluruh container beserta keadaan engine-nya.
+type ContainerListing struct {
+	DockerOK   bool
+	Version    string
+	Containers []ContainerInfo
+}
+
 // Reader adalah satu-satunya jalan lapisan API menyentuh dunia poinhost.
 //
 // Sengaja berupa interface sempit, bukan *servers.Service langsung: itu
@@ -160,6 +178,17 @@ type Reader interface {
 	// domain, yang akan membuat daftar berisi dua puluh situs jadi dua
 	// puluh kali lebih mahal kalau digabung.
 	WebsiteSSL(domain string) (WebsiteSSL, error)
+
+	// Containers adalah seluruh container Docker di mesin ini.
+	Containers() (ContainerListing, error)
+
+	// ContainerLogs membaca ekor log satu container.
+	//
+	// Isinya keluaran aplikasi yang BEBAS: kredensial, token, dan data
+	// orang lain rutin muncul di sana. Jadi ia lebih dekat ke isi berkas
+	// daripada ke daftar container, dan dijaga sekeras itu — lihat
+	// controlAuth di lapisan API.
+	ContainerLogs(id string, lines int) (string, error)
 }
 
 // Controller adalah satu-satunya permukaan yang MENGUBAH mesin.
@@ -194,4 +223,8 @@ type Controller interface {
 
 	// SetWebsiteEnabled menyalakan atau mematikan satu vhost.
 	SetWebsiteEnabled(domain string, enabled bool) error
+
+	// ContainerAction menjalankan satu aksi pada satu container.
+	// Aksi yang diizinkan ditentukan pemanggilnya, bukan di sini.
+	ContainerAction(id, action string) error
 }

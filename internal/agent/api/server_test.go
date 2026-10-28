@@ -52,6 +52,18 @@ func (f fakeReader) Websites() (backend.WebsiteListing, error) {
 	}, nil
 }
 
+func (f fakeReader) Containers() (backend.ContainerListing, error) {
+	return backend.ContainerListing{
+		DockerOK:   true,
+		Version:    "27.0",
+		Containers: []backend.ContainerInfo{{ID: "abc123", Name: "web", State: "running"}},
+	}, nil
+}
+
+func (f fakeReader) ContainerLogs(id string, lines int) (string, error) {
+	return "rahasia di log", nil
+}
+
 func (f fakeReader) WebsiteSSL(domain string) (backend.WebsiteSSL, error) {
 	return backend.WebsiteSSL{
 		Domain:     domain,
@@ -84,6 +96,11 @@ func (c *fakeController) RenameFile(oldPath, newPath string) error {
 
 func (c *fakeController) DeleteFiles(paths []string) error {
 	c.dipanggil = append(c.dipanggil, "delete "+strings.Join(paths, ","))
+	return nil
+}
+
+func (c *fakeController) ContainerAction(id, action string) error {
+	c.dipanggil = append(c.dipanggil, "container "+action+" "+id)
 	return nil
 }
 
@@ -629,5 +646,62 @@ func TestWebsite_BacaCukupDisetujui_UbahPerluKendali(t *testing.T) {
 	}
 	if len(ctl.dipanggil) != 1 {
 		t.Errorf("aksi asing tetap sampai: %v", ctl.dipanggil)
+	}
+}
+
+// Daftar container cukup disetujui; LOG-nya tidak.
+//
+// Log container adalah keluaran aplikasi yang bebas — kredensial, token,
+// dan data orang lain rutin muncul di sana — jadi ia dijaga sekeras isi
+// berkas, bukan sekeras daftar container.
+func TestDocker_DaftarDisetujui_LogDanAksiPerluKendali(t *testing.T) {
+	d, store := contoh(t)
+	ctl := &fakeController{}
+	d.Controller = ctl
+	pub := Handler(d)
+	admin := AdminHandler(AdminDeps{Devices: store})
+
+	id, token := daftar(t, pub, "HP Andy")
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/approve", "", "")
+
+	if rec := minta(t, pub, http.MethodGet, "/v1/docker", token, ""); rec.Code != http.StatusOK {
+		t.Fatalf("daftar container = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec := minta(t, pub, http.MethodGet, "/v1/docker/abc123/logs", token, "")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("log tanpa izin kendali = %d, mau 403", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "rahasia di log") {
+		t.Fatal("isi log ikut terkirim walau ditolak")
+	}
+
+	if rec := minta(t, pub, http.MethodPost, "/v1/docker/abc123/stop", token, ""); rec.Code != http.StatusForbidden {
+		t.Errorf("stop tanpa izin = %d, mau 403", rec.Code)
+	}
+	if len(ctl.dipanggil) != 0 {
+		t.Fatalf("aksi tetap sampai ke controller: %v", ctl.dipanggil)
+	}
+
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/control", "", "")
+	if rec := minta(t, pub, http.MethodGet, "/v1/docker/abc123/logs", token, ""); rec.Code != http.StatusOK {
+		t.Fatalf("log dengan izin = %d", rec.Code)
+	}
+	if rec := minta(t, pub, http.MethodPost, "/v1/docker/abc123/restart", token, ""); rec.Code != http.StatusOK {
+		t.Fatalf("restart dengan izin = %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(ctl.dipanggil) != 1 || ctl.dipanggil[0] != "container restart abc123" {
+		t.Fatalf("yang sampai = %v", ctl.dipanggil)
+	}
+
+	// `docker rm -f` sengaja di luar daftar: menghapus container
+	// menghilangkan apa pun yang tidak ada di volume.
+	for _, aksi := range []string{"rm", "remove", "kill", "pause"} {
+		if rec := minta(t, pub, http.MethodPost, "/v1/docker/abc123/"+aksi, token, ""); rec.Code != http.StatusBadRequest {
+			t.Errorf("aksi %q = %d, mau 400", aksi, rec.Code)
+		}
+	}
+	if len(ctl.dipanggil) != 1 {
+		t.Errorf("aksi di luar daftar tetap sampai: %v", ctl.dipanggil)
 	}
 }

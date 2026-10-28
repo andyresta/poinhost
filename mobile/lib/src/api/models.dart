@@ -391,6 +391,74 @@ class WebsiteSSL {
 List<String> _daftarTeks(Object? v) =>
     v is List ? v.whereType<String>().toList() : const [];
 
+/// Satu container Docker di server.
+class ContainerInfo {
+  const ContainerInfo({
+    required this.id,
+    required this.name,
+    required this.image,
+    required this.status,
+    required this.state,
+    required this.ports,
+  });
+
+  final String id;
+  final String name;
+  final String image;
+
+  /// Teks panjang dari docker, mis. "Up 3 days" atau "Exited (0) 2 hours ago".
+  final String status;
+
+  /// Satu kata: running | exited | paused | restarting | created.
+  final String state;
+
+  final String ports;
+
+  bool get running => state == 'running';
+
+  static ContainerInfo fromJson(Map<String, dynamic> json) => ContainerInfo(
+        id: _str(json['id']),
+        name: _str(json['name']),
+        image: _str(json['image']),
+        status: _str(json['status']),
+        state: _str(json['state']),
+        ports: _str(json['ports']),
+      );
+}
+
+/// Jawaban `GET /v1/docker`.
+class ContainerListing {
+  const ContainerListing({
+    required this.containers,
+    required this.dockerOk,
+    required this.version,
+    required this.canControl,
+  });
+
+  final List<ContainerInfo> containers;
+
+  /// false berarti Docker tidak terpasang atau enginenya mati.
+  final bool dockerOk;
+
+  final String version;
+  final bool canControl;
+
+  static ContainerListing fromJson(Map<String, dynamic> json) {
+    final raw = json['containers'];
+    return ContainerListing(
+      containers: raw is List
+          ? raw
+              .whereType<Map<String, dynamic>>()
+              .map(ContainerInfo.fromJson)
+              .toList()
+          : const [],
+      dockerOk: json['dockerOk'] == true,
+      version: _str(json['version']),
+      canControl: json['canControl'] == true,
+    );
+  }
+}
+
 /// Jawaban `POST /v1/devices`: token milik perangkat ini.
 class Enrollment {
   const Enrollment({

@@ -79,6 +79,17 @@ var aksiServiceDiizinkan = map[string]bool{
 	"restart": true,
 }
 
+// aksiContainerDiizinkan adalah daftar TERTUTUP aksi container dari HP.
+//
+// `docker rm -f` sengaja TIDAK ada walau modulnya mendukungnya: menghapus
+// container menghilangkan apa pun yang tidak ada di volume, dan itu bukan
+// hal yang dikerjakan orang dari layar 6 inci saat sedang buru-buru.
+var aksiContainerDiizinkan = map[string]bool{
+	"start":   true,
+	"stop":    true,
+	"restart": true,
+}
+
 // DeviceStore adalah bagian devices.Store yang disentuh permukaan publik.
 //
 // Sempit dengan sengaja: dari sini perangkat hanya bisa DIBUAT dan DIPERIKSA.
@@ -423,6 +434,71 @@ func Handler(d Deps) http.Handler {
 			"domain":  r.PathValue("domain"),
 			"enabled": action == "enable",
 		})
+	})))
+
+	// Daftar container cukup dengan persetujuan: yang terlihat adalah nama,
+	// image, port, dan keadaan — setara dengan daftar service.
+	mux.Handle("GET /v1/docker", d.deviceAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listing, err := d.Reader.Containers()
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		items := make([]map[string]any, 0, len(listing.Containers))
+		for _, c := range listing.Containers {
+			items = append(items, map[string]any{
+				"id":      c.ID,
+				"name":    c.Name,
+				"image":   c.Image,
+				"status":  c.Status,
+				"state":   c.State,
+				"ports":   c.Ports,
+				"created": c.Created,
+			})
+		}
+		dev, _ := d.Devices.Authenticate(bearer(r))
+		writeJSON(w, http.StatusOK, map[string]any{
+			"dockerOk":   listing.DockerOK,
+			"version":    listing.Version,
+			"canControl": dev.CanControl,
+			"containers": items,
+		})
+	})))
+
+	// Log DIJAGA controlAuth walau ia hanya membaca.
+	//
+	// Isinya keluaran aplikasi yang bebas: kredensial, token, isi request,
+	// dan data orang lain rutin muncul di log container. Itu lebih dekat ke
+	// isi berkas daripada ke daftar container, jadi dijaga sekeras isi
+	// berkas — bukan sekeras daftarnya.
+	mux.Handle("GET /v1/docker/{id}/logs", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lines, _ := strconv.Atoi(r.URL.Query().Get("lines"))
+		out, err := d.Reader.ContainerLogs(r.PathValue("id"), lines)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"id":      r.PathValue("id"),
+			"content": out,
+		})
+	})))
+
+	mux.Handle("POST /v1/docker/{id}/{action}", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if d.Controller == nil {
+			writeErr(w, http.StatusServiceUnavailable, "this agent cannot change containers")
+			return
+		}
+		action := r.PathValue("action")
+		if !aksiContainerDiizinkan[action] {
+			writeErr(w, http.StatusBadRequest, "unknown action: "+action)
+			return
+		}
+		if err := d.Controller.ContainerAction(r.PathValue("id"), action); err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"id": r.PathValue("id"), "action": action})
 	})))
 
 	return mux

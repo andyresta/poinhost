@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../session.dart';
 import '../theme.dart';
+import 'docker_screen.dart';
 import 'files_screen.dart';
 import 'server_metrics_screen.dart';
 import 'services_screen.dart';
@@ -20,7 +21,7 @@ enum ServerModule {
   terminal('Terminal', Icons.terminal_outlined),
   service('Services', Icons.manage_accounts_outlined, siap: true),
   firewall('Firewall', Icons.shield_outlined),
-  docker('Docker', Icons.inventory_2_outlined);
+  docker('Docker', Icons.inventory_2_outlined, siap: true);
 
   const ServerModule(this.label, this.icon, {this.siap = false});
 
@@ -76,6 +77,7 @@ class ServerDetailScreen extends StatelessWidget {
           ServerModule.service => ServicesScreen(connection: connection),
           ServerModule.files => FilesScreen(connection: connection),
           ServerModule.website => WebsitesScreen(connection: connection),
+          ServerModule.docker => DockerScreen(connection: connection),
           _ => _BelumAdaScreen(module: module),
         },
       ),
