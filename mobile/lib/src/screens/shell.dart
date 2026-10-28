@@ -204,7 +204,7 @@ class _SidebarContent extends StatelessWidget {
                   IconButton(
                     onPressed: onClose,
                     icon: const Icon(Icons.close),
-                    tooltip: 'Tutup menu',
+                    tooltip: 'Close menu',
                     visualDensity: VisualDensity.compact,
                   ),
               ],
@@ -225,7 +225,7 @@ class _SidebarContent extends StatelessWidget {
             padding: const EdgeInsets.all(8),
             child: IconButton(
               onPressed: onToggle,
-              tooltip: expanded ? 'Sembunyikan menu' : 'Tampilkan menu',
+              tooltip: expanded ? 'Hide menu' : 'Show menu',
               icon: Icon(
                 expanded ? Icons.chevron_left : Icons.chevron_right,
               ),
@@ -331,7 +331,7 @@ class _ThemeControl extends StatelessWidget {
         return Padding(
           padding: EdgeInsets.symmetric(horizontal: expanded ? 12 : 8),
           child: PopupMenuButton<ThemeMode>(
-            tooltip: 'Tampilan: ${current.label}',
+            tooltip: 'Theme: ${current.label}',
             initialValue: current,
             onSelected: settings.setMode,
             position: PopupMenuPosition.under,

@@ -51,7 +51,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
       // Jaring terakhir: layar yang diam setelah dibuka tidak memberi
       // pemiliknya satu pun petunjuk.
       if (!mounted) return;
-      setState(() => _error = 'Gagal membaca service: $e');
+      setState(() => _error = 'Could not read services: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -83,27 +83,27 @@ class _ServicesScreenState extends State<ServicesScreen> {
     } on AgentException catch (e) {
       _pesan(e.message);
     } catch (e) {
-      _pesan('Gagal: $e');
+      _pesan('Failed: $e');
     } finally {
       if (mounted) setState(() => _busy = null);
     }
   }
 
   Future<bool?> _konfirmasi(ServiceInfo svc, String action) {
-    final kata = action == 'stop' ? 'Hentikan' : 'Restart';
+    final kata = action == 'stop' ? 'Stop' : 'Restart';
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('$kata ${svc.name}?'),
         content: Text(
           action == 'stop'
-              ? 'Layanan yang bergantung padanya ikut berhenti.'
-              : 'Layanan ini berhenti sesaat sebelum jalan lagi.',
+              ? 'Anything depending on it stops too.'
+              : 'It goes down for a moment before coming back.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Batal'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -146,7 +146,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Service'),
+        title: const Text('Services'),
         actions: [
           IconButton(
             onPressed: _loading ? null : _muat,
@@ -157,7 +157,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh),
-            tooltip: 'Segarkan',
+            tooltip: 'Refresh',
           ),
           const SizedBox(width: 4),
         ],
@@ -167,11 +167,11 @@ class _ServicesScreenState extends State<ServicesScreen> {
           if (_error != null)
             _Banner(text: _error!, danger: true)
           else if (list != null && !list.systemdAvailable)
-            const _Banner(text: 'Server ini tidak memakai systemd.')
+            const _Banner(text: 'This server does not use systemd.')
           else if (list != null && !list.canControl)
             const _Banner(
-              text: 'Hanya bisa melihat. Beri izin kendali dari poinhost di '
-                  'desktop untuk start, stop, dan restart.',
+              text: 'View only. Grant the control permission from poinhost '
+                  'on the desktop to start, stop and restart.',
             ),
 
           if (list != null && list.systemdAvailable)
@@ -180,7 +180,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
               child: TextField(
                 onChanged: (v) => setState(() => _cari = v),
                 decoration: const InputDecoration(
-                  hintText: 'Cari service',
+                  hintText: 'Search services',
                   prefixIcon: Icon(Icons.search, size: 18),
                 ),
               ),
@@ -214,7 +214,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
             Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
-                'Tidak ada yang cocok.',
+                'Nothing matches.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -279,10 +279,10 @@ class _ServiceTile extends StatelessWidget {
                 // laki-laki, dan ini layar yang gunanya menyampaikan status.
                 Text(
                   service.failed
-                      ? 'gagal'
+                      ? 'failed'
                       : service.running
-                          ? 'jalan'
-                          : 'mati',
+                          ? 'running'
+                          : 'stopped',
                   style: theme.textTheme.labelSmall?.copyWith(color: warna),
                 ),
               ],

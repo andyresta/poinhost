@@ -66,7 +66,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
       // tertangkap membuat tombol Daftar tampak tidak melakukan apa-apa,
       // dan tidak ada cara bagi pemiliknya untuk menebak apa yang salah.
       // Lebih baik menampilkan pesan yang kasar daripada diam.
-      if (mounted) setState(() => _error = 'Pendaftaran gagal: $e');
+      if (mounted) setState(() => _error = 'Registration failed: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -77,7 +77,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Tambah server')),
+      appBar: AppBar(title: const Text('Add server')),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -92,9 +92,9 @@ class _AddServerScreenState extends State<AddServerScreen> {
                 padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
                 children: [
                   Text(
-                    'Token pendaftaran ada di panel Mobile Control, di '
-                    'poinhost desktop. Server baru muncul di grid setelah '
-                    'kamu menyetujui perangkat ini dari sana.',
+                    'The enrollment token is in the Mobile Control panel '
+                    'in poinhost on the desktop. The server appears in the '
+                    'grid once you approve this device there.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                       height: 1.45,
@@ -102,30 +102,32 @@ class _AddServerScreenState extends State<AddServerScreen> {
                   ),
                   const SizedBox(height: 20),
                   LabeledField(
-                    label: 'Alamat agent',
+                    label: 'Agent address',
                     controller: _urlController,
                     hint: 'agent.example.com',
                     keyboardType: TextInputType.url,
                     textInputAction: TextInputAction.next,
                     validator: (v) => (v == null || v.trim().isEmpty)
-                        ? 'Isi alamat agent'
+                        ? 'Enter the agent address'
                         : null,
                   ),
                   LabeledField(
-                    label: 'Token pendaftaran',
+                    label: 'Enrollment token',
                     controller: _tokenController,
                     textInputAction: TextInputAction.next,
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'Isi token' : null,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Enter the token'
+                        : null,
                   ),
                   LabeledField(
-                    label: 'Nama perangkat ini',
+                    label: 'Device name',
                     controller: _labelController,
-                    helper: 'Supaya kamu mengenalinya saat menyetujui',
+                    helper: 'So you recognise it when approving',
                     textInputAction: TextInputAction.done,
                     onSubmitted: (_) => _busy ? null : _submit(),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'Isi nama' : null,
+                    validator: (v) => (v == null || v.trim().isEmpty)
+                        ? 'Enter a name'
+                        : null,
                   ),
                   const SizedBox(height: 10),
                   FilledButton(
@@ -136,7 +138,7 @@ class _AddServerScreenState extends State<AddServerScreen> {
                             width: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text('Daftar'),
+                        : const Text('Register'),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 16),

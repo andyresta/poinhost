@@ -117,7 +117,7 @@ class ServerConnection extends ChangeNotifier {
       // AgentClient tidak boleh membuat kartunya diam. Di sini akibatnya
       // lebih halus dan lebih lama — kartu itu akan tertinggal di "Memuat…"
       // selamanya, karena polling berikutnya gagal dengan cara yang sama.
-      message = 'Gagal membaca server: $e';
+      message = 'Could not read the server: $e';
       phase = ServerPhase.unreachable;
     } finally {
       _inFlight = false;

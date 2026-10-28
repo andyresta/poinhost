@@ -14,11 +14,11 @@ import 'websites_screen.dart';
 /// Menyembunyikan yang belum jadi akan membuat menunya berubah bentuk tiap
 /// rilis — dan tidak memberi tahu apa pun tentang apa yang sedang dibangun.
 enum ServerModule {
-  metrik('Metrik', Icons.speed_outlined, siap: true),
+  metrics('Metrics', Icons.speed_outlined, siap: true),
   website('Website', Icons.language_outlined, siap: true),
   files('Files', Icons.folder_outlined, siap: true),
   terminal('Terminal', Icons.terminal_outlined),
-  service('Service', Icons.manage_accounts_outlined, siap: true),
+  service('Services', Icons.manage_accounts_outlined, siap: true),
   firewall('Firewall', Icons.shield_outlined),
   docker('Docker', Icons.inventory_2_outlined);
 
@@ -46,19 +46,19 @@ class ServerDetailScreen extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Hapus server ini?'),
+        title: const Text('Remove this server?'),
         content: const Text(
-          'Hanya dihapus dari HP ini. Perangkatnya tetap terdaftar di server '
-          'sampai kamu mencabutnya dari panel Mobile Control.',
+          'Only removed from this phone. The device stays registered on the '
+          'server until you revoke it from the Mobile Control panel.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Batal'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Hapus'),
+            child: const Text('Remove'),
           ),
         ],
       ),
@@ -72,7 +72,7 @@ class ServerDetailScreen extends StatelessWidget {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => switch (module) {
-          ServerModule.metrik => ServerMetricsScreen(connection: connection),
+          ServerModule.metrics => ServerMetricsScreen(connection: connection),
           ServerModule.service => ServicesScreen(connection: connection),
           ServerModule.files => FilesScreen(connection: connection),
           ServerModule.website => WebsitesScreen(connection: connection),
@@ -94,7 +94,7 @@ class ServerDetailScreen extends StatelessWidget {
               IconButton(
                 onPressed: () => _remove(context),
                 icon: const Icon(Icons.delete_outline),
-                tooltip: 'Hapus dari HP ini',
+                tooltip: 'Remove from this phone',
               ),
               const SizedBox(width: 4),
             ],
@@ -190,7 +190,7 @@ class _BelumAdaScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                'Belum tersedia di aplikasi mobile.',
+                'Not available in the mobile app yet.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -215,17 +215,17 @@ class _StatusLine extends StatelessWidget {
     final theme = Theme.of(context);
     final conn = connection.snapshot?.metrics?.connection;
     final label = switch (connection.phase) {
-      ServerPhase.loading => 'Memuat…',
-      ServerPhase.awaitingApproval => 'Menunggu persetujuan',
-      ServerPhase.revoked => 'Akses dicabut',
-      ServerPhase.rejected => 'Perangkat dihapus di server',
-      ServerPhase.unreachable => 'Tidak bisa dihubungi',
-      ServerPhase.notReady => 'Agent belum siap',
+      ServerPhase.loading => 'Loading…',
+      ServerPhase.awaitingApproval => 'Waiting for approval',
+      ServerPhase.revoked => 'Access revoked',
+      ServerPhase.rejected => 'Device removed on the server',
+      ServerPhase.unreachable => 'Cannot be reached',
+      ServerPhase.notReady => 'Agent not ready',
       ServerPhase.ready => switch (conn) {
-          AgentConnection.online => 'Terhubung',
-          AgentConnection.reconnecting => 'Menyambung ulang',
-          AgentConnection.offline => 'Terputus',
-          _ => 'Belum diperiksa',
+          AgentConnection.online => 'Connected',
+          AgentConnection.reconnecting => 'Reconnecting',
+          AgentConnection.offline => 'Disconnected',
+          _ => 'Not checked yet',
         },
     };
 

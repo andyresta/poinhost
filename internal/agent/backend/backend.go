@@ -24,7 +24,7 @@ import (
 // mesinnya, dan menyebutnya "gagal" akan mengirim pemiliknya mencari
 // masalah jaringan — padahal yang kurang satu tombol di panel Mobile
 // Control.
-var errBelumKelolaDiri = errors.New("agent belum mengelola mesinnya sendiri")
+var errBelumKelolaDiri = errors.New("the agent does not manage its own machine yet")
 
 // Backend mengimplementasikan Reader.
 type Backend struct {

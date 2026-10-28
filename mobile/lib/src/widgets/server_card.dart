@@ -154,14 +154,14 @@ class _StateNote extends StatelessWidget {
     final galat = connection.snapshot?.metrics?.error;
 
     final (text, danger) = switch (connection.phase) {
-      ServerPhase.loading => ('Memuat…', false),
-      ServerPhase.awaitingApproval => ('Menunggu persetujuan', false),
-      ServerPhase.revoked => ('Akses dicabut', true),
-      ServerPhase.rejected => ('Perangkat dihapus', true),
-      ServerPhase.unreachable => ('Tidak bisa dihubungi', true),
-      ServerPhase.notReady => ('Agent belum siap', true),
+      ServerPhase.loading => ('Loading…', false),
+      ServerPhase.awaitingApproval => ('Waiting for approval', false),
+      ServerPhase.revoked => ('Access revoked', true),
+      ServerPhase.rejected => ('Device removed', true),
+      ServerPhase.unreachable => ('Cannot be reached', true),
+      ServerPhase.notReady => ('Agent not ready', true),
       ServerPhase.ready when galat != null => (galat, true),
-      ServerPhase.ready => ('Metrik belum terbaca', false),
+      ServerPhase.ready => ('No metrics read yet', false),
     };
 
     return Align(

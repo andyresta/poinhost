@@ -51,30 +51,34 @@ class AboutScreen extends StatelessWidget {
           ),
           const SizedBox(height: 28),
           _Section(
-            title: 'Satu agent, satu server',
-            body: 'Mobile Control dipasang di tiap server yang ingin dikelola. '
-                'Agent itu hanya mengurus mesinnya sendiri dan tidak menyimpan '
-                'kredensial server lain — aplikasi ini yang menampung '
-                'beberapa agent sekaligus, satu panel untuk masing-masing.',
+            title: 'One agent, one server',
+            body: 'Mobile Control is installed on each server you want to '
+                'manage. An agent only looks after its own machine and holds '
+                'no credentials for any other — this app is what holds '
+                'several agents at once, one panel each.',
           ),
           _Section(
-            title: 'Perangkat harus disetujui',
-            body: 'Token yang kamu tempel saat menambahkan server bukan '
-                'kredensial akses. Menukarnya hanya mendaftarkan HP ini ke '
-                'antrean; yang membuka akses adalah persetujuan dari panel '
-                'Mobile Control di poinhost desktop.',
+            title: 'Devices must be approved',
+            body: 'The token you paste when adding a server is not an access '
+                'credential. Exchanging it only puts this phone in the queue; '
+                'what opens access is approval from the Mobile Control panel '
+                'in poinhost on the desktop.',
+          ),
+          // Dulu berjudul "Hanya baca", dan itu sudah TIDAK benar sejak
+          // Service, Files, dan Website bisa mengubah server. Menerjemahkan
+          // kalimat yang salah hanya akan mengawetkan kesalahannya.
+          _Section(
+            title: 'Two separate permissions',
+            body: 'Approving a device lets it watch. Changing anything — '
+                'restarting a service, editing a file, taking a site offline '
+                '— needs the separate control permission, granted per device '
+                'from the same panel.',
           ),
           _Section(
-            title: 'Hanya baca',
-            body: 'Aplikasi ini menampilkan keadaan server, tidak mengubahnya. '
-                'Tidak ada SSH, kriptografi, atau orkestrasi di HP — semuanya '
-                'tinggal di agent.',
-          ),
-          _Section(
-            title: 'Mencabut akses',
-            body: 'Menghapus server dari sini hanya melupakannya di HP ini. '
-                'Untuk benar-benar mencabut, cabut perangkatnya dari panel '
-                'Mobile Control di server yang bersangkutan.',
+            title: 'Revoking access',
+            body: 'Removing a server here only forgets it on this phone. To '
+                'revoke it for real, revoke the device from the Mobile '
+                'Control panel on that server.',
           ),
         ],
       ),

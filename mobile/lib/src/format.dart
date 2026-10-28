@@ -32,12 +32,12 @@ String formatUptime(int seconds, {bool long = false}) {
   final h = (seconds % 86400) ~/ 3600;
   final m = (seconds % 3600) ~/ 60;
   if (long) {
-    if (d > 0) return '$d hari $h jam';
-    if (h > 0) return '$h jam $m menit';
-    return '$m menit';
+    if (d > 0) return '$d days $h hours';
+    if (h > 0) return '$h hours $m minutes';
+    return '$m minutes';
   }
-  if (d > 0) return '${d}h ${h}j';
-  if (h > 0) return '${h}j ${m}m';
+  if (d > 0) return '${d}d ${h}h';
+  if (h > 0) return '${h}h ${m}m';
   return '${m}m';
 }
 

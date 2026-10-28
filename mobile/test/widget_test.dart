@@ -23,8 +23,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(workspace.restored, isTrue);
-    expect(find.text('Belum ada server'), findsOneWidget);
-    expect(find.text('Tambah server'), findsOneWidget);
+    expect(find.text('No servers yet'), findsOneWidget);
+    expect(find.text('Add server'), findsOneWidget);
   });
 
   // Alamat tanpa skema harus jadi https, bukan http: agent diterbitkan

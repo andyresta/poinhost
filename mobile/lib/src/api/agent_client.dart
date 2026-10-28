@@ -229,12 +229,12 @@ class AgentClient {
     } on TimeoutException {
       throw AgentException(
         AgentFailure.unreachable,
-        'Agent tidak menjawab dalam ${_timeout.inSeconds} detik.',
+        'The agent did not answer within ${_timeout.inSeconds} seconds.',
       );
     } on SocketException catch (e) {
       throw AgentException(
         AgentFailure.unreachable,
-        'Tidak bisa menghubungi agent: ${e.message}',
+        'Could not reach the agent: ${e.message}',
       );
     } on HandshakeException {
       // Dipisah dari SocketException: sertifikat yang belum terbit adalah
@@ -243,7 +243,7 @@ class AgentClient {
       // pemiliknya memeriksa jaringan, bukan sertifikatnya.
       throw AgentException(
         AgentFailure.unreachable,
-        'Sertifikat HTTPS agent tidak bisa diverifikasi.',
+        'The agent\'s HTTPS certificate could not be verified.',
       );
     } on http.ClientException catch (e) {
       // Ketiga catch di atas semuanya tipe dart:io, dan di web TIDAK ADA
@@ -256,7 +256,7 @@ class AgentClient {
       // sampai ke sini, bukan ke SocketException.
       throw AgentException(
         AgentFailure.unreachable,
-        'Tidak bisa menghubungi agent di ${baseUrl.host}: ${e.message}',
+        'Could not reach the agent at ${baseUrl.host}: ${e.message}',
       );
     }
 
@@ -272,8 +272,8 @@ class AgentClient {
     if (response.statusCode == 404) {
       throw AgentException(
         AgentFailure.moduleMissing,
-        'Modul ini belum ada di agent versi ini — perbarui agent dari '
-        'poinhost di desktop.',
+        'This module is missing from this agent version — update the '
+        'agent from poinhost on the desktop.',
         statusCode: 404,
       );
     }
@@ -289,7 +289,7 @@ class AgentClient {
         // lain. Disebut apa adanya supaya tidak terbaca sebagai masalah token.
         throw AgentException(
           AgentFailure.unexpected,
-          'Jawaban dari ${baseUrl.host} bukan dari agent poinhost.',
+          'The answer from ${baseUrl.host} did not come from a poinhost agent.',
           statusCode: response.statusCode,
         );
       }
@@ -301,7 +301,7 @@ class AgentClient {
 
     final message = json['error'] is String
         ? json['error'] as String
-        : 'Agent menjawab ${response.statusCode}.';
+        : 'The agent answered ${response.statusCode}.';
 
     switch (response.statusCode) {
       case 401:

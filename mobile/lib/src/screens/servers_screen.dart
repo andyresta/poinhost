@@ -48,7 +48,7 @@ class ServersScreen extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.refresh),
-                tooltip: 'Segarkan',
+                tooltip: 'Refresh',
               ),
               const SizedBox(width: 4),
             ],
@@ -138,11 +138,11 @@ class _Empty extends StatelessWidget {
             children: [
               const BrandMark(size: 56),
               const SizedBox(height: 20),
-              Text('Belum ada server', style: theme.textTheme.titleMedium),
+              Text('No servers yet', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               Text(
-                'Pasang Mobile Control di server lewat poinhost di desktop, '
-                'lalu tambahkan dengan token pendaftarannya.',
+                'Install Mobile Control on a server from poinhost on the '
+                'desktop, then add it with its enrollment token.',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
@@ -152,7 +152,7 @@ class _Empty extends StatelessWidget {
               FilledButton.icon(
                 onPressed: onAdd,
                 icon: const Icon(Icons.add),
-                label: const Text('Tambah server'),
+                label: const Text('Add server'),
               ),
             ],
           ),

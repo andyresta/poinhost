@@ -296,8 +296,8 @@ void main() {
     await tester.tap(find.text('About'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Satu agent, satu server'), findsOneWidget);
-    expect(find.text('Perangkat harus disetujui'), findsOneWidget);
+    expect(find.text('One agent, one server'), findsOneWidget);
+    expect(find.text('Devices must be approved'), findsOneWidget);
     w.dispose();
   });
 
@@ -317,7 +317,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('About'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Tutup menu'));
+    await tester.tap(find.byTooltip('Close menu'));
     await tester.pumpAndSettle();
 
     // Menunya tertutup, dan layarnya tidak berpindah ke mana-mana.
@@ -340,13 +340,13 @@ void main() {
     expect(find.byTooltip('Menu'), findsNothing);
     expect(find.text('About'), findsOneWidget);
 
-    await tester.tap(find.byTooltip('Sembunyikan menu'));
+    await tester.tap(find.byTooltip('Hide menu'));
     await tester.pumpAndSettle();
 
     // Disempitkan: labelnya hilang, tapi menunya masih ada lewat ikon.
     expect(find.text('About'), findsNothing);
-    expect(find.byTooltip('Tampilkan menu'), findsOneWidget);
-    expect(find.byTooltip('Tutup menu'), findsNothing);
+    expect(find.byTooltip('Show menu'), findsOneWidget);
+    expect(find.byTooltip('Close menu'), findsNothing);
     w.dispose();
   });
 
@@ -363,15 +363,15 @@ void main() {
     await tester.pumpWidget(PoinhostApp(workspace: w, settings: settings));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byTooltip('Tampilan: Ikut sistem'));
+    await tester.tap(find.byTooltip('Theme: Follow system'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Gelap').last);
+    await tester.tap(find.text('Dark').last);
     await tester.pumpAndSettle();
     expect(settings.mode, ThemeMode.dark);
 
-    await tester.tap(find.byTooltip('Tampilan: Gelap'));
+    await tester.tap(find.byTooltip('Theme: Dark'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Ikut sistem').last);
+    await tester.tap(find.text('Follow system').last);
     await tester.pumpAndSettle();
     expect(settings.mode, ThemeMode.system);
 
@@ -403,10 +403,10 @@ void main() {
     await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Tambah server'));
+    await tester.tap(find.text('Add server'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Alamat agent'), findsOneWidget);
+    expect(find.text('Agent address'), findsOneWidget);
     // Sengaja BUKAN teks petunjuknya: petunjuk tetap ada di pohon widget,
     // jadi mengetik ulang kalimat yang sama membuat test cocok dua kali dan
     // tidak membuktikan apa pun.
@@ -414,13 +414,13 @@ void main() {
     await tester.pumpAndSettle();
 
     // Label masih ada DI SAMPING isinya, bukan tergantikan olehnya.
-    expect(find.text('Alamat agent'), findsOneWidget);
+    expect(find.text('Agent address'), findsOneWidget);
     expect(find.text('prod.contoh.id'), findsOneWidget);
 
     // Keterangan panjang tidak dipotong satu baris: `helperText` bawaan
     // memotongnya dengan elipsis.
     expect(
-      find.text('Supaya kamu mengenalinya saat menyetujui'),
+      find.text('So you recognise it when approving'),
       findsOneWidget,
     );
     w.dispose();
@@ -440,7 +440,7 @@ void main() {
 
     expect(find.text('produksi'), findsOneWidget);
     expect(find.text('staging'), findsOneWidget);
-    expect(find.text('Belum ada server'), findsNothing);
+    expect(find.text('No servers yet'), findsNothing);
     w.dispose();
   });
 
@@ -457,7 +457,7 @@ void main() {
       expect(find.text(label), findsOneWidget, reason: 'label $label');
     }
     expect(find.text('25%'), findsOneWidget); // RAM 2048/8192
-    expect(find.text('2j 0m'), findsOneWidget); // uptime 7200 detik
+    expect(find.text('2h 0m'), findsOneWidget); // uptime 7200 detik
     w.dispose();
   });
 
@@ -475,7 +475,7 @@ void main() {
     await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Metrik belum terbaca'), findsOneWidget);
+    expect(find.text('No metrics read yet'), findsOneWidget);
     expect(find.text('0%'), findsNothing);
     expect(find.text('CPU'), findsNothing);
     w.dispose();
@@ -514,7 +514,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('SSH_HOST_KEY_MISMATCH'), findsOneWidget);
-    expect(find.text('Metrik belum terbaca'), findsNothing);
+    expect(find.text('No metrics read yet'), findsNothing);
     w.dispose();
   });
 
@@ -534,11 +534,11 @@ void main() {
     await tester.pumpAndSettle();
 
     for (final label in [
-      'Metrik',
+      'Metrics',
       'Website',
       'Files',
       'Terminal',
-      'Service',
+      'Services',
       'Firewall',
       'Docker',
     ]) {
@@ -550,15 +550,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Docker'));
     await tester.pumpAndSettle();
-    expect(find.text('Belum tersedia di aplikasi mobile.'), findsOneWidget);
+    expect(find.text('Not available in the mobile app yet.'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();
 
     // Dan Metrik membuka angkanya.
-    await tester.ensureVisible(find.text('Metrik'));
+    await tester.ensureVisible(find.text('Metrics'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Metrik'));
+    await tester.tap(find.text('Metrics'));
     await tester.pumpAndSettle();
     expect(find.text('Hostname'), findsOneWidget);
     expect(find.text('prod'), findsOneWidget);
@@ -582,7 +582,7 @@ void main() {
 
     expect(find.text('nginx'), findsOneWidget);
     expect(find.text('mysql'), findsOneWidget);
-    expect(find.textContaining('Beri izin kendali'), findsOneWidget);
+    expect(find.textContaining('Grant the control permission'), findsOneWidget);
     for (final label in ['Start', 'Stop', 'Restart']) {
       expect(find.text(label), findsNothing, reason: 'tombol $label');
     }
@@ -670,23 +670,23 @@ void main() {
 
     await tester.tap(find.byIcon(Icons.more_vert).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Hapus'));
+    await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
 
     // Dialognya muncul, dan belum ada apa pun yang dikirim.
-    expect(find.textContaining('Seluruh isinya ikut terhapus'), findsOneWidget);
+    expect(find.textContaining('Everything inside goes with it'), findsOneWidget);
     expect(agents.single.tulisan, isEmpty);
 
-    await tester.tap(find.widgetWithText(TextButton, 'Batal'));
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
     await tester.pumpAndSettle();
     expect(agents.single.tulisan, isEmpty);
 
     // Kali kedua, disetujui.
     await tester.tap(find.byIcon(Icons.more_vert).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Hapus'));
+    await tester.tap(find.text('Delete'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Hapus'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
     await tester.pumpAndSettle();
     expect(agents.single.tulisan, ['delete /etc']);
     w.dispose();
@@ -737,9 +737,9 @@ void main() {
     await tester.tap(find.text('contoh.id'));
     await tester.pumpAndSettle();
 
-    expect(find.text('9 hari lagi'), findsOneWidget);
+    expect(find.text('9 days left'), findsOneWidget);
     expect(find.textContaining('toko.contoh.id'), findsOneWidget);
-    expect(find.textContaining('diterbitkan ulang'), findsOneWidget);
+    expect(find.textContaining('reissued'), findsOneWidget);
 
     // Tanpa izin kendali tidak ada sakelar untuk mematikan situs.
     expect(find.byType(SwitchListTile), findsNothing);
@@ -760,10 +760,10 @@ void main() {
 
     await tester.tap(find.byType(SwitchListTile));
     await tester.pumpAndSettle();
-    expect(find.textContaining('berhenti dilayani'), findsOneWidget);
+    expect(find.textContaining('stops being served'), findsOneWidget);
     expect(agents.single.tulisan, isEmpty);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Matikan'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Take offline'));
     await tester.pumpAndSettle();
     expect(agents.single.tulisan, ['site contoh.id enabled=false']);
     w.dispose();
@@ -787,8 +787,8 @@ void main() {
     await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Menunggu persetujuan'), findsOneWidget);
-    expect(find.text('Tidak bisa dihubungi'), findsOneWidget);
+    expect(find.text('Waiting for approval'), findsOneWidget);
+    expect(find.text('Cannot be reached'), findsOneWidget);
     // Labelnya tetap dipakai selama agent belum menyebut nama servernya.
     expect(find.text('Menunggu'), findsOneWidget);
     expect(find.text('Mati'), findsOneWidget);
@@ -812,8 +812,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(w.connections.single.phase, ServerPhase.notReady);
-    expect(find.text('Agent belum siap'), findsOneWidget);
-    expect(find.text('Tidak bisa dihubungi'), findsNothing);
+    expect(find.text('Agent not ready'), findsOneWidget);
+    expect(find.text('Cannot be reached'), findsNothing);
     w.dispose();
   });
 
@@ -844,9 +844,9 @@ Future<void> _bukaService(WidgetTester tester, Workspace w) async {
   await tester.pumpAndSettle();
   await tester.tap(find.text('produksi'));
   await tester.pumpAndSettle();
-  await tester.ensureVisible(find.text('Service'));
+  await tester.ensureVisible(find.text('Services'));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('Service'));
+  await tester.tap(find.text('Services'));
   await tester.pumpAndSettle();
 }
 

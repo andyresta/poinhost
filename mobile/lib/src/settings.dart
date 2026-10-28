@@ -81,9 +81,9 @@ class AppSettings extends ChangeNotifier {
 /// Label tiap pilihan, dalam bahasa yang dipakai layar.
 extension ThemeModeLabel on ThemeMode {
   String get label => switch (this) {
-        ThemeMode.system => 'Ikut sistem',
-        ThemeMode.light => 'Terang',
-        ThemeMode.dark => 'Gelap',
+        ThemeMode.system => 'Follow system',
+        ThemeMode.light => 'Light',
+        ThemeMode.dark => 'Dark',
       };
 
   IconData get icon => switch (this) {

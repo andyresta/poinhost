@@ -51,7 +51,7 @@ class _FilesScreenState extends State<FilesScreen> {
       setState(() => _error = e.message);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Gagal membaca folder: $e');
+      setState(() => _error = 'Could not read this folder: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -80,7 +80,7 @@ class _FilesScreenState extends State<FilesScreen> {
     } on AgentException catch (e) {
       _pesan(e.message);
     } catch (e) {
-      _pesan('Gagal: $e');
+      _pesan('Failed: $e');
     } finally {
       if (mounted) setState(() => _busy = null);
     }
@@ -96,21 +96,21 @@ class _FilesScreenState extends State<FilesScreen> {
     final nama = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Ganti nama'),
+        title: const Text('Rename'),
         content: TextField(
           controller: c,
           autofocus: true,
-          decoration: const InputDecoration(hintText: 'Nama baru'),
+          decoration: const InputDecoration(hintText: 'New name'),
           onSubmitted: (v) => Navigator.of(ctx).pop(v),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Batal'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(c.text),
-            child: const Text('Ganti'),
+            child: const Text('Rename'),
           ),
         ],
       ),
@@ -118,7 +118,7 @@ class _FilesScreenState extends State<FilesScreen> {
     final baru = nama?.trim();
     if (baru == null || baru.isEmpty || baru == e.name) return;
     if (baru.contains('/')) {
-      _pesan('Nama tidak boleh mengandung "/".');
+      _pesan('A name cannot contain a slash.');
       return;
     }
     await _jalankan(
@@ -131,19 +131,19 @@ class _FilesScreenState extends State<FilesScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Hapus ${e.name}?'),
+        title: Text('Delete ${e.name}?'),
         // Konsekuensinya ditulis di dialog, bukan sebagai peringatan tetap
         // di layar: direktori dihapus REKURSIF, dan itu satu-satunya hal
         // yang perlu diketahui tepat sebelum menekan Hapus.
         content: Text(
           e.isDir
-              ? 'Seluruh isinya ikut terhapus, dan tidak bisa dibatalkan.'
-              : 'Tidak bisa dibatalkan.',
+              ? 'Everything inside goes with it, and this cannot be undone.'
+              : 'This cannot be undone.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Batal'),
+            child: const Text('Cancel'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
@@ -151,7 +151,7 @@ class _FilesScreenState extends State<FilesScreen> {
               foregroundColor: Theme.of(ctx).colorScheme.onError,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Hapus'),
+            child: const Text('Delete'),
           ),
         ],
       ),
@@ -180,16 +180,16 @@ class _FilesScreenState extends State<FilesScreen> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('Timpa ${berkas.name}?'),
-          content: const Text('Berkas dengan nama itu sudah ada di sini.'),
+          title: Text('Overwrite ${berkas.name}?'),
+          content: const Text('A file with that name is already here.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Batal'),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Timpa'),
+              child: const Text('Overwrite'),
             ),
           ],
         ),
@@ -223,7 +223,7 @@ class _FilesScreenState extends State<FilesScreen> {
             IconButton(
               onPressed: _busy != null ? null : _unggah,
               icon: const Icon(Icons.upload_file_outlined),
-              tooltip: 'Unggah ke folder ini',
+              tooltip: 'Upload to this folder',
             ),
           IconButton(
             onPressed: _loading ? null : _muat,
@@ -234,7 +234,7 @@ class _FilesScreenState extends State<FilesScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh),
-            tooltip: 'Segarkan',
+            tooltip: 'Refresh',
           ),
           const SizedBox(width: 4),
         ],
@@ -244,7 +244,7 @@ class _FilesScreenState extends State<FilesScreen> {
           : listing == null
               ? const Center(child: CircularProgressIndicator())
               : listing.entries.isEmpty
-                  ? const _Pesan(text: 'Folder ini kosong.')
+                  ? const _Pesan(text: 'This folder is empty.')
                   : RefreshIndicator(
                       onRefresh: _muat,
                       child: ListView.separated(
@@ -321,11 +321,11 @@ class _MenuEntri extends StatelessWidget {
       icon: const Icon(Icons.more_vert, size: 20),
       onSelected: (v) => v == 'rename' ? onRename() : onDelete(),
       itemBuilder: (_) => [
-        const PopupMenuItem(value: 'rename', child: Text('Ganti nama')),
+        const PopupMenuItem(value: 'rename', child: Text('Rename')),
         PopupMenuItem(
           value: 'delete',
           child: Text(
-            'Hapus',
+            'Delete',
             style: TextStyle(color: theme.colorScheme.error),
           ),
         ),
@@ -385,7 +385,7 @@ class _FileViewScreenState extends State<_FileViewScreen> {
       setState(() => _error = e.message);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Gagal membaca berkas: $e');
+      setState(() => _error = 'Could not read this file: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -404,12 +404,12 @@ class _FileViewScreenState extends State<_FileViewScreen> {
         _menyunting = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tersimpan.')),
+        const SnackBar(content: Text('Saved.')),
       );
     } on AgentException catch (e) {
       _pesan(e.message);
     } catch (e) {
-      _pesan('Gagal menyimpan: $e');
+      _pesan('Could not save: $e');
     } finally {
       if (mounted) setState(() => _menyimpan = false);
     }
@@ -428,16 +428,16 @@ class _FileViewScreenState extends State<_FileViewScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Buang perubahan?'),
-        content: const Text('Suntingan yang belum disimpan akan hilang.'),
+        title: const Text('Discard changes?'),
+        content: const Text('Unsaved edits will be lost.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Lanjut menyunting'),
+            child: const Text('Keep editing'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Buang'),
+            child: const Text('Discard'),
           ),
         ],
       ),
@@ -463,7 +463,7 @@ class _FileViewScreenState extends State<_FileViewScreen> {
             ? IconButton(
                 onPressed: _menyimpan ? null : _batal,
                 icon: const Icon(Icons.close),
-                tooltip: 'Batal',
+                tooltip: 'Cancel',
               )
             : null,
         title: Text(
@@ -483,12 +483,12 @@ class _FileViewScreenState extends State<_FileViewScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.check),
-                    tooltip: 'Simpan',
+                    tooltip: 'Save',
                   )
                 : IconButton(
                     onPressed: () => setState(() => _menyunting = true),
                     icon: const Icon(Icons.edit_outlined),
-                    tooltip: 'Sunting',
+                    tooltip: 'Edit',
                   ),
           const SizedBox(width: 4),
         ],
@@ -560,7 +560,7 @@ class _Pesan extends StatelessWidget {
             ),
             if (onRetry != null) ...[
               const SizedBox(height: 16),
-              OutlinedButton(onPressed: onRetry, child: const Text('Coba lagi')),
+              OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
             ],
           ],
         ),

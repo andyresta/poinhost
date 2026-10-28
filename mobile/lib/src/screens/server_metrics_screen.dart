@@ -29,7 +29,7 @@ class ServerMetricsScreen extends StatelessWidget {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Metrik'),
+            title: const Text('Metrics'),
             actions: [
               // Ikon berganti jadi spinner selama permintaannya berjalan.
               // Tanpa itu menekan Segarkan tidak mengubah apa pun di layar
@@ -44,7 +44,7 @@ class ServerMetricsScreen extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.refresh),
-                tooltip: 'Segarkan',
+                tooltip: 'Refresh',
               ),
               const SizedBox(width: 4),
             ],
@@ -64,10 +64,10 @@ class ServerMetricsScreen extends StatelessWidget {
                   _Note(text: connection.message!, danger: _danger(connection)),
 
                 if (!terbaca)
-                  const _Note(text: 'Metrik belum terbaca.')
+                  const _Note(text: 'No metrics read yet.')
                 else ...[
                   if (metrics.stale)
-                    const _Note(text: 'Angka terakhir, belum diperbarui.'),
+                    const _Note(text: 'Last known figures, not refreshed.'),
                   if (metrics.error != null)
                     _Note(text: metrics.error!, danger: true),
                   Opacity(
@@ -125,7 +125,7 @@ class ServerMetricsScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 _InfoCard(
                   rows: [
-                    ('Alamat', connection.credentials.baseUrl.host),
+                    ('Address', connection.credentials.baseUrl.host),
                     ('Agent', snapshot?.agentVersion ?? '—'),
                     if (snapshot != null)
                       (
@@ -135,9 +135,12 @@ class ServerMetricsScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 18),
+                // Dulu berbunyi "Hanya baca", dan itu sudah TIDAK benar
+                // sejak Service, Files, dan Website bisa mengubah server.
+                // Menerjemahkan kalimat yang salah hanya mengawetkannya.
                 Text(
-                  'Hanya baca. Aplikasi ini menampilkan keadaan server, tidak '
-                  'mengubahnya.',
+                  'Read from the agent every '
+                  '${Workspace.refreshInterval.inSeconds} seconds.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -335,17 +338,17 @@ class _StatusLine extends StatelessWidget {
     final theme = Theme.of(context);
     final conn = connection.snapshot?.metrics?.connection;
     final label = switch (connection.phase) {
-      ServerPhase.loading => 'Memuat…',
-      ServerPhase.awaitingApproval => 'Menunggu persetujuan',
-      ServerPhase.revoked => 'Akses dicabut',
-      ServerPhase.rejected => 'Perangkat dihapus di server',
-      ServerPhase.unreachable => 'Tidak bisa dihubungi',
-      ServerPhase.notReady => 'Agent belum siap',
+      ServerPhase.loading => 'Loading…',
+      ServerPhase.awaitingApproval => 'Waiting for approval',
+      ServerPhase.revoked => 'Access revoked',
+      ServerPhase.rejected => 'Device removed on the server',
+      ServerPhase.unreachable => 'Cannot be reached',
+      ServerPhase.notReady => 'Agent not ready',
       ServerPhase.ready => switch (conn) {
-          AgentConnection.online => 'Terhubung',
-          AgentConnection.reconnecting => 'Menyambung ulang',
-          AgentConnection.offline => 'Terputus',
-          _ => 'Belum diperiksa',
+          AgentConnection.online => 'Connected',
+          AgentConnection.reconnecting => 'Reconnecting',
+          AgentConnection.offline => 'Disconnected',
+          _ => 'Not checked yet',
         },
     };
 

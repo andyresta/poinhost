@@ -117,15 +117,15 @@ func Handler(d Deps) http.Handler {
 	// handshake yang perlu ditulis di sisi HP.
 	mux.HandleFunc("POST /v1/devices", func(w http.ResponseWriter, r *http.Request) {
 		if d.EnrollToken == "" {
-			writeErr(w, http.StatusServiceUnavailable, "pendaftaran belum dibuka — buat token di app poinhost")
+			writeErr(w, http.StatusServiceUnavailable, "registration is closed — create a token in the poinhost app")
 			return
 		}
 		if !tokenCocok(r, d.EnrollToken) {
-			writeErr(w, http.StatusUnauthorized, "token pendaftaran tidak cocok")
+			writeErr(w, http.StatusUnauthorized, "enrollment token does not match")
 			return
 		}
 		if d.Devices == nil {
-			writeErr(w, http.StatusServiceUnavailable, "daftar perangkat tidak tersedia")
+			writeErr(w, http.StatusServiceUnavailable, "device list unavailable")
 			return
 		}
 
@@ -166,7 +166,7 @@ func Handler(d Deps) http.Handler {
 			// Agent terpasang tanpa kunci pengelolaan-diri, atau kuncinya
 			// rusak. Dibedakan dari "metrik belum ada" karena perbaikannya
 			// berbeda: yang ini ditekan dari panel Mobile Control.
-			writeErr(w, http.StatusServiceUnavailable, "agent belum mengelola mesinnya sendiri")
+			writeErr(w, http.StatusServiceUnavailable, "the agent does not manage its own machine yet")
 			return
 		}
 		out := map[string]any{
@@ -211,12 +211,12 @@ func Handler(d Deps) http.Handler {
 	// deviceAuth — perbedaannya harus terbaca di baris ini.
 	mux.Handle("POST /v1/services/{name}/{action}", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if d.Controller == nil {
-			writeErr(w, http.StatusServiceUnavailable, "agent ini tidak bisa mengubah service")
+			writeErr(w, http.StatusServiceUnavailable, "this agent cannot change services")
 			return
 		}
 		action := r.PathValue("action")
 		if !aksiServiceDiizinkan[action] {
-			writeErr(w, http.StatusBadRequest, "aksi tidak dikenal: "+action)
+			writeErr(w, http.StatusBadRequest, "unknown action: "+action)
 			return
 		}
 		info, err := d.Controller.ServiceAction(r.PathValue("name"), action)
@@ -280,12 +280,12 @@ func Handler(d Deps) http.Handler {
 	// satu pun pesan galat.
 	mux.Handle("PUT /v1/files/content", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if d.Controller == nil {
-			writeErr(w, http.StatusServiceUnavailable, "agent ini tidak bisa mengubah berkas")
+			writeErr(w, http.StatusServiceUnavailable, "this agent cannot change files")
 			return
 		}
 		path := r.URL.Query().Get("path")
 		if strings.TrimSpace(path) == "" {
-			writeErr(w, http.StatusBadRequest, "path wajib diisi")
+			writeErr(w, http.StatusBadRequest, "path is required")
 			return
 		}
 		body := http.MaxBytesReader(w, r.Body, maxUnggahBytes)
@@ -295,7 +295,7 @@ func Handler(d Deps) http.Handler {
 			// terlampaui; disebut apa adanya supaya yang di HP tahu
 			// berkasnya kebesaran, bukan mengira jaringannya putus.
 			writeErr(w, http.StatusRequestEntityTooLarge,
-				"berkas terlalu besar — batasnya "+strconv.Itoa(maxUnggahBytes/1024/1024)+" MB")
+				"file too large — the limit is "+strconv.Itoa(maxUnggahBytes/1024/1024)+" MB")
 			return
 		}
 		if err := d.Controller.WriteFile(path, data); err != nil {
@@ -307,7 +307,7 @@ func Handler(d Deps) http.Handler {
 
 	mux.Handle("POST /v1/files/rename", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if d.Controller == nil {
-			writeErr(w, http.StatusServiceUnavailable, "agent ini tidak bisa mengubah berkas")
+			writeErr(w, http.StatusServiceUnavailable, "this agent cannot change files")
 			return
 		}
 		var body struct {
@@ -315,7 +315,7 @@ func Handler(d Deps) http.Handler {
 			NewPath string `json:"newPath"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-			writeErr(w, http.StatusBadRequest, "body tidak valid")
+			writeErr(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
 		if err := d.Controller.RenameFile(body.OldPath, body.NewPath); err != nil {
@@ -327,18 +327,18 @@ func Handler(d Deps) http.Handler {
 
 	mux.Handle("POST /v1/files/delete", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if d.Controller == nil {
-			writeErr(w, http.StatusServiceUnavailable, "agent ini tidak bisa mengubah berkas")
+			writeErr(w, http.StatusServiceUnavailable, "this agent cannot change files")
 			return
 		}
 		var body struct {
 			Paths []string `json:"paths"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
-			writeErr(w, http.StatusBadRequest, "body tidak valid")
+			writeErr(w, http.StatusBadRequest, "invalid request body")
 			return
 		}
 		if len(body.Paths) == 0 {
-			writeErr(w, http.StatusBadRequest, "tidak ada yang dihapus")
+			writeErr(w, http.StatusBadRequest, "nothing to delete")
 			return
 		}
 		if err := d.Controller.DeleteFiles(body.Paths); err != nil {
@@ -407,12 +407,12 @@ func Handler(d Deps) http.Handler {
 
 	mux.Handle("POST /v1/websites/{domain}/{action}", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if d.Controller == nil {
-			writeErr(w, http.StatusServiceUnavailable, "agent ini tidak bisa mengubah situs")
+			writeErr(w, http.StatusServiceUnavailable, "this agent cannot change sites")
 			return
 		}
 		action := r.PathValue("action")
 		if action != "enable" && action != "disable" {
-			writeErr(w, http.StatusBadRequest, "aksi tidak dikenal: "+action)
+			writeErr(w, http.StatusBadRequest, "unknown action: "+action)
 			return
 		}
 		if err := d.Controller.SetWebsiteEnabled(r.PathValue("domain"), action == "enable"); err != nil {
@@ -454,14 +454,14 @@ func (d Deps) controlAuth(next http.Handler) http.Handler {
 	return d.deviceAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dev, ok := d.Devices.Authenticate(bearer(r))
 		if !ok {
-			writeErr(w, http.StatusUnauthorized, "token perangkat tidak dikenal")
+			writeErr(w, http.StatusUnauthorized, "unknown device token")
 			return
 		}
 		if !dev.CanControl {
 			writeStatusErr(
 				w,
 				http.StatusForbidden,
-				"perangkat ini hanya boleh melihat — beri izin kendali dari app poinhost",
+				"this device may only watch — grant the control permission from the poinhost app",
 				"readOnly",
 			)
 			return
@@ -479,21 +479,21 @@ func (d Deps) controlAuth(next http.Handler) http.Handler {
 func (d Deps) deviceAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if d.Devices == nil {
-			writeErr(w, http.StatusServiceUnavailable, "daftar perangkat tidak tersedia")
+			writeErr(w, http.StatusServiceUnavailable, "device list unavailable")
 			return
 		}
 		dev, ok := d.Devices.Authenticate(bearer(r))
 		if !ok {
-			writeErr(w, http.StatusUnauthorized, "token perangkat tidak dikenal")
+			writeErr(w, http.StatusUnauthorized, "unknown device token")
 			return
 		}
 		switch dev.Status {
 		case devices.StatusApproved:
 			next.ServeHTTP(w, r)
 		case devices.StatusPending:
-			writeStatusErr(w, http.StatusForbidden, "menunggu persetujuan di app poinhost", dev.Status)
+			writeStatusErr(w, http.StatusForbidden, "waiting for approval in the poinhost app", dev.Status)
 		default:
-			writeStatusErr(w, http.StatusForbidden, "akses perangkat ini sudah dicabut", dev.Status)
+			writeStatusErr(w, http.StatusForbidden, "this device's access has been revoked", dev.Status)
 		}
 	})
 }

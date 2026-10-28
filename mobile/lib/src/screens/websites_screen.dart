@@ -39,7 +39,7 @@ class _WebsitesScreenState extends State<WebsitesScreen> {
       setState(() => _error = e.message);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Gagal membaca daftar situs: $e');
+      setState(() => _error = 'Could not read the site list: $e');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -63,7 +63,7 @@ class _WebsitesScreenState extends State<WebsitesScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.refresh),
-            tooltip: 'Segarkan',
+            tooltip: 'Refresh',
           ),
           const SizedBox(width: 4),
         ],
@@ -73,15 +73,15 @@ class _WebsitesScreenState extends State<WebsitesScreen> {
           if (_error != null)
             _Banner(text: _error!, danger: true)
           else if (listing != null && !listing.nginxInstalled)
-            const _Banner(text: 'Nginx belum terpasang di server ini.')
+            const _Banner(text: 'Nginx is not installed on this server.')
           else if (listing != null && !listing.nginxActive)
-            const _Banner(text: 'Nginx terpasang tapi tidak berjalan.', danger: true),
+            const _Banner(text: 'Nginx is installed but not running.', danger: true),
 
           Expanded(
             child: _loading && listing == null
                 ? const Center(child: CircularProgressIndicator())
                 : listing == null || listing.sites.isEmpty
-                    ? const Center(child: Text('Belum ada situs.'))
+                    ? const Center(child: Text('No sites yet.'))
                     : RefreshIndicator(
                         onRefresh: _muat,
                         child: ListView.separated(
@@ -140,14 +140,14 @@ class _WebsitesScreenState extends State<WebsitesScreen> {
 /// Satu baris keterangan: apa yang melayani domain ini, dan apakah HTTPS.
 String _ringkasan(WebsiteInfo s) {
   final bagian = <String>[
-    if (!s.enabled) 'mati',
-    s.sslEnabled ? 'HTTPS' : 'HTTP saja',
+    if (!s.enabled) 'off',
+    s.sslEnabled ? 'HTTPS' : 'HTTP only',
     if (s.proxyTarget.isNotEmpty)
       'proxy ${s.proxyTarget}'
     else if (s.phpEnabled && s.phpVersion.isNotEmpty)
       'PHP ${s.phpVersion}'
     else
-      'statis',
+      'static',
   ];
   return bagian.join(' · ');
 }
@@ -197,7 +197,7 @@ class _DomainScreenState extends State<_DomainScreen> {
       setState(() => _sslError = e.message);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _sslError = 'Gagal membaca sertifikat: $e');
+      setState(() => _sslError = 'Could not read the certificate: $e');
     } finally {
       if (mounted) setState(() => _memuatSSL = false);
     }
@@ -208,12 +208,14 @@ class _DomainScreenState extends State<_DomainScreen> {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text('Matikan ${widget.site.domain}?'),
-          content: const Text('Situsnya berhenti dilayani sampai dinyalakan lagi.'),
+          title: Text('Take ${widget.site.domain} offline?'),
+          content: const Text(
+            'It stops being served until you turn it back on.',
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Batal'),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               style: FilledButton.styleFrom(
@@ -221,7 +223,7 @@ class _DomainScreenState extends State<_DomainScreen> {
                 foregroundColor: Theme.of(ctx).colorScheme.onError,
               ),
               onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Matikan'),
+              child: const Text('Take offline'),
             ),
           ],
         ),
@@ -238,7 +240,7 @@ class _DomainScreenState extends State<_DomainScreen> {
     } on AgentException catch (e) {
       _pesan(e.message);
     } catch (e) {
-      _pesan('Gagal: $e');
+      _pesan('Failed: $e');
     } finally {
       if (mounted) setState(() => _mengubah = false);
     }
@@ -265,9 +267,9 @@ class _DomainScreenState extends State<_DomainScreen> {
           if (widget.canControl)
             Card(
               child: SwitchListTile(
-                title: const Text('Dilayani'),
+                title: const Text('Served'),
                 subtitle: Text(
-                  _enabled ? 'Situs ini aktif' : 'Situs ini dimatikan',
+                  _enabled ? 'This site is live' : 'This site is offline',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -278,25 +280,25 @@ class _DomainScreenState extends State<_DomainScreen> {
             )
           else
             _Baris(
-              label: 'Dilayani',
-              value: _enabled ? 'Ya' : 'Tidak',
+              label: 'Served',
+              value: _enabled ? 'Yes' : 'No',
             ),
 
           const SizedBox(height: 12),
           _Kartu(
             rows: [
               ('Document root', s.root),
-              if (s.proxyTarget.isNotEmpty) ('Proxy ke', s.proxyTarget),
+              if (s.proxyTarget.isNotEmpty) ('Proxies to', s.proxyTarget),
               (
                 'PHP',
-                s.phpEnabled && s.phpVersion.isNotEmpty ? s.phpVersion : 'Tidak',
+                s.phpEnabled && s.phpVersion.isNotEmpty ? s.phpVersion : 'No',
               ),
-              if (s.isSubdomain) ('Subdomain dari', s.parent),
+              if (s.isSubdomain) ('Subdomain of', s.parent),
             ],
           ),
 
           const SizedBox(height: 18),
-          Text('Sertifikat', style: theme.textTheme.labelLarge),
+          Text('Certificate', style: theme.textTheme.labelLarge),
           const SizedBox(height: 8),
 
           if (_memuatSSL)
@@ -307,7 +309,7 @@ class _DomainScreenState extends State<_DomainScreen> {
           else if (_sslError != null)
             _Banner(text: _sslError!, danger: true)
           else if (ssl == null || !ssl.certExists)
-            const _Banner(text: 'Belum ada sertifikat untuk domain ini.')
+            const _Banner(text: 'No certificate for this domain yet.')
           else ...[
             // Sisa hari ditulis di depan tanggalnya: yang ingin dijawab
             // layar ini adalah "masih aman atau tidak", bukan "tanggal
@@ -322,16 +324,17 @@ class _DomainScreenState extends State<_DomainScreen> {
               // pernah mengubah daftar domain di sertifikat.
               _Banner(
                 danger: true,
-                text: 'Belum tercakup sertifikat: ${ssl.missingSans.join(", ")}. '
-                    'Harus diterbitkan ulang, bukan diperpanjang.',
+                text: 'Not covered by the certificate: '
+                    '${ssl.missingSans.join(", ")}. It has to be reissued, '
+                    'not renewed.',
               ),
             ],
             const SizedBox(height: 10),
             _Kartu(
               rows: [
-                ('Perpanjang otomatis', ssl.autoRenew ? 'Ya' : 'Tidak'),
+                ('Auto-renew', ssl.autoRenew ? 'Yes' : 'No'),
                 if (ssl.certDomains.isNotEmpty)
-                  ('Mencakup', ssl.certDomains.join(', ')),
+                  ('Covers', ssl.certDomains.join(', ')),
               ],
             ),
           ],
@@ -353,10 +356,10 @@ class _Kadaluarsa extends StatelessWidget {
 
     final (teks, warna) = switch (sisa) {
       null => (ssl.notAfter, theme.colorScheme.onSurfaceVariant),
-      < 0 => ('Kedaluwarsa', theme.colorScheme.error),
-      < 14 => ('$sisa hari lagi', theme.colorScheme.error),
-      < 30 => ('$sisa hari lagi', const Color(0xFFD98A00)),
-      _ => ('$sisa hari lagi', const Color(0xFF2E9E5B)),
+      < 0 => ('Expired', theme.colorScheme.error),
+      < 14 => (_sisaHari(sisa), theme.colorScheme.error),
+      < 30 => (_sisaHari(sisa), const Color(0xFFD98A00)),
+      _ => (_sisaHari(sisa), const Color(0xFF2E9E5B)),
     };
 
     return Card(
@@ -380,7 +383,7 @@ class _Kadaluarsa extends StatelessWidget {
                   if (sisa != null && ssl.notAfter.isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(
-                      'Sampai ${_tanggal(ssl.notAfter)}',
+                      'Until ${_tanggal(ssl.notAfter)}',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
@@ -396,12 +399,14 @@ class _Kadaluarsa extends StatelessWidget {
   }
 }
 
+String _sisaHari(int hari) => hari == 1 ? '1 day left' : '$hari days left';
+
 String _tanggal(String rfc3339) {
   final t = DateTime.tryParse(rfc3339)?.toLocal();
   if (t == null) return rfc3339;
   const bulan = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
   ];
   return '${t.day} ${bulan[t.month - 1]} ${t.year}';
 }
