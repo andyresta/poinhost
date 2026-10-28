@@ -217,6 +217,50 @@ func Handler(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, serviceJSON(info))
 	})))
 
+	// Files dijaga controlAuth, bukan deviceAuth, walau ia hanya MEMBACA.
+	//
+	// Path-nya tidak dibatasi — itu keputusan pemilik proyek — jadi yang
+	// bisa memanggilnya bisa membaca apa pun yang bisa dibaca root: kunci
+	// SSH, /etc/shadow, devices.json milik agent ini sendiri. Membiarkannya
+	// di deviceAuth berarti "setujui HP ini supaya bisa lihat CPU" diam-diam
+	// berubah arti, termasuk untuk perangkat yang sudah disetujui kemarin.
+	mux.Handle("GET /v1/files", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listing, err := d.Reader.Files(r.URL.Query().Get("path"))
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		entries := make([]map[string]any, 0, len(listing.Entries))
+		for _, e := range listing.Entries {
+			entries = append(entries, map[string]any{
+				"name":    e.Name,
+				"path":    e.Path,
+				"size":    e.Size,
+				"isDir":   e.IsDir,
+				"mode":    e.Mode,
+				"modTime": e.ModTime,
+			})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"path":    listing.Path,
+			"parent":  listing.Parent,
+			"entries": entries,
+		})
+	})))
+
+	mux.Handle("GET /v1/files/content", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		file, err := d.Reader.FileContent(r.URL.Query().Get("path"))
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"path":    file.Path,
+			"content": file.Content,
+			"size":    file.Size,
+		})
+	})))
+
 	return mux
 }
 

@@ -45,6 +45,54 @@ class _FakeAgent extends AgentClient {
     );
   }
 
+  /// Path yang diminta, berurutan.
+  final List<String> dibuka = [];
+
+  @override
+  Future<FileListing> files({
+    required String deviceToken,
+    required String path,
+  }) async {
+    dibuka.add(path);
+    if (path == '/') {
+      return const FileListing(
+        path: '/',
+        parent: '/',
+        entries: [
+          FileEntry(
+            name: 'etc',
+            path: '/etc',
+            size: 0,
+            isDir: true,
+            mode: 'drwxr-xr-x',
+            modTime: '',
+          ),
+        ],
+      );
+    }
+    return const FileListing(
+      path: '/etc',
+      parent: '/',
+      entries: [
+        FileEntry(
+          name: 'hosts',
+          path: '/etc/hosts',
+          size: 221,
+          isDir: false,
+          mode: '-rw-r--r--',
+          modTime: '',
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<FileText> fileContent({
+    required String deviceToken,
+    required String path,
+  }) async =>
+      FileText(path: path, content: '127.0.0.1 localhost', size: 19);
+
   @override
   void close() {}
 }
@@ -487,6 +535,45 @@ void main() {
   // Server yang BELUM bisa dibaca tetap menempati kartunya dengan alasannya
   // tertulis. Menyembunyikannya sampai sehat berarti server yang mati
   // menghilang dari layar, justru saat paling perlu terlihat.
+  testWidgets('Files menelusuri folder lalu membuka isi berkas',
+      (tester) async {
+    final agents = <_FakeAgent>[];
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => _snapshot('produksi'),
+      agents: agents,
+    );
+
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('produksi'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Files'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Files'));
+    await tester.pumpAndSettle();
+
+    expect(agents.single.dibuka, ['/']);
+    expect(find.text('etc'), findsOneWidget);
+
+    // Folder membuka LAYAR BARU, bukan mengganti isi layar yang sama: itu
+    // yang membuat tombol kembali membawa ke folder induk, bukan keluar
+    // dari Files sama sekali.
+    await tester.tap(find.text('etc'));
+    await tester.pumpAndSettle();
+    expect(agents.single.dibuka, ['/', '/etc']);
+    expect(find.text('hosts'), findsOneWidget);
+
+    await tester.tap(find.text('hosts'));
+    await tester.pumpAndSettle();
+    expect(find.text('127.0.0.1 localhost'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('hosts'), findsOneWidget);
+    w.dispose();
+  });
+
   testWidgets('server bermasalah tetap punya panel beserta alasannya',
       (tester) async {
     final w = await _workspace(

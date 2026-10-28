@@ -31,6 +31,18 @@ func (f fakeReader) Services() ([]backend.ServiceInfo, bool, error) {
 	return f.services, true, nil
 }
 
+func (f fakeReader) Files(path string) (backend.FileListing, error) {
+	return backend.FileListing{
+		Path:    path,
+		Parent:  "/",
+		Entries: []backend.FileEntry{{Name: "nginx.conf", Path: path + "/nginx.conf"}},
+	}, nil
+}
+
+func (f fakeReader) FileContent(path string) (backend.FileText, error) {
+	return backend.FileText{Path: path, Content: "isi rahasia", Size: 11}, nil
+}
+
 // fakeController mencatat aksi yang SAMPAI kepadanya.
 //
 // Yang diuji di sini bukan systemctl-nya — itu milik modul services — tapi
@@ -433,5 +445,36 @@ func TestAksiService_DiLuarDaftarDitolak(t *testing.T) {
 	}
 	if len(ctl.dipanggil) != 0 {
 		t.Fatalf("aksi di luar daftar tetap sampai: %v", ctl.dipanggil)
+	}
+}
+
+// Files hanya MEMBACA, tapi tetap di balik izin kendali.
+//
+// Path-nya tidak dibatasi, jadi yang bisa memanggilnya bisa membaca apa pun
+// yang bisa dibaca root — termasuk devices.json milik agent ini sendiri,
+// yang berarti satu perangkat bisa membaca hash token perangkat lain.
+// Membiarkannya di deviceAuth akan mengubah arti tombol Approve secara
+// surut, untuk perangkat yang sudah disetujui sebelum fitur ini ada.
+func TestFiles_PerluIzinKendali(t *testing.T) {
+	d, store := contoh(t)
+	pub := Handler(d)
+	admin := AdminHandler(AdminDeps{Devices: store})
+
+	id, token := daftar(t, pub, "HP Andy")
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/approve", "", "")
+
+	for _, path := range []string{"/v1/files?path=/etc", "/v1/files/content?path=/etc/shadow"} {
+		rec := minta(t, pub, http.MethodGet, path, token, "")
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("%s tanpa izin kendali = %d, mau 403: %s", path, rec.Code, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), "isi rahasia") {
+			t.Fatalf("%s membocorkan isi file", path)
+		}
+	}
+
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/control", "", "")
+	if rec := minta(t, pub, http.MethodGet, "/v1/files?path=/etc", token, ""); rec.Code != http.StatusOK {
+		t.Fatalf("dengan izin kendali = %d: %s", rec.Code, rec.Body.String())
 	}
 }

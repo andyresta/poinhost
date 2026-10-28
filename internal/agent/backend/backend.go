@@ -7,8 +7,11 @@
 package backend
 
 import (
+	"context"
 	"errors"
+	"time"
 
+	"github.com/andyresta/poinhost/internal/modules/files"
 	"github.com/andyresta/poinhost/internal/modules/servers"
 	"github.com/andyresta/poinhost/internal/modules/services"
 )
@@ -26,6 +29,7 @@ type Backend struct {
 	svc       *servers.Service
 	collector *servers.Collector
 	services  *services.Service
+	files     *files.Service
 
 	// selfID adalah server yang mewakili mesin tempat agent berjalan, supaya
 	// bisa ditandai di daftar. Kosong berarti agent belum mendaftarkan
@@ -38,12 +42,14 @@ func New(
 	svc *servers.Service,
 	collector *servers.Collector,
 	servicesSvc *services.Service,
+	filesSvc *files.Service,
 	selfServerID string,
 ) *Backend {
 	return &Backend{
 		svc:       svc,
 		collector: collector,
 		services:  servicesSvc,
+		files:     filesSvc,
 		selfID:    selfServerID,
 	}
 }
@@ -147,4 +153,51 @@ func toStatus(st servers.ServerStatus) Status {
 		Stale:         st.MetricsStale,
 		Error:         st.MetricsError,
 	}
+}
+
+// Files membaca isi satu direktori di mesin ini.
+//
+// asUser dikosongkan: agent berjalan sebagai root, dan tidak ada user lain
+// untuk dipilih dari HP. Mengirimkannya dari jaringan justru akan menambah
+// satu nilai lagi yang harus divalidasi tanpa menambah satu pun kemampuan.
+func (b *Backend) Files(path string) (FileListing, error) {
+	if b.selfID == "" || b.files == nil {
+		return FileListing{}, errBelumKelolaDiri
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := b.files.List(ctx, b.selfID, path, "")
+	if err != nil {
+		return FileListing{}, err
+	}
+	out := FileListing{Path: res.Path, Parent: res.Parent}
+	out.Entries = make([]FileEntry, 0, len(res.Entries))
+	for _, e := range res.Entries {
+		out.Entries = append(out.Entries, FileEntry{
+			Name:    e.Name,
+			Path:    e.Path,
+			Size:    e.Size,
+			IsDir:   e.IsDir,
+			Mode:    e.Mode,
+			ModTime: e.ModTime,
+		})
+	}
+	return out, nil
+}
+
+// FileContent membaca isi satu file teks.
+//
+// Batas ukurannya ditegakkan modul Files, bukan di sini — satu tempat saja
+// yang boleh memutuskan berapa besar yang masih masuk akal dibaca.
+func (b *Backend) FileContent(path string) (FileText, error) {
+	if b.selfID == "" || b.files == nil {
+		return FileText{}, errBelumKelolaDiri
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	res, err := b.files.ReadFile(ctx, b.selfID, path, "")
+	if err != nil {
+		return FileText{}, err
+	}
+	return FileText{Path: res.Path, Content: res.Content, Size: res.Size}, nil
 }

@@ -81,6 +81,32 @@ class AgentClient {
     return ServiceInfo.fromJson(json);
   }
 
+  /// Isi satu direktori di server.
+  Future<FileListing> files({
+    required String deviceToken,
+    required String path,
+  }) async {
+    final json = await _send(
+      'GET',
+      '/v1/files?path=${Uri.encodeQueryComponent(path)}',
+      token: deviceToken,
+    );
+    return FileListing.fromJson(json);
+  }
+
+  /// Isi satu file teks.
+  Future<FileText> fileContent({
+    required String deviceToken,
+    required String path,
+  }) async {
+    final json = await _send(
+      'GET',
+      '/v1/files/content?path=${Uri.encodeQueryComponent(path)}',
+      token: deviceToken,
+    );
+    return FileText.fromJson(json);
+  }
+
   /// Memeriksa agent hidup, tanpa token.
   ///
   /// Berguna di layar pendaftaran: membedakan "URL-nya salah" dari "token

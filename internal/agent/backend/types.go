@@ -42,6 +42,30 @@ type ServiceInfo struct {
 	CanEnable     bool
 }
 
+// FileEntry satu entri direktori di mesin ini.
+type FileEntry struct {
+	Name    string
+	Path    string
+	Size    int64
+	IsDir   bool
+	Mode    string
+	ModTime string
+}
+
+// FileListing isi satu direktori.
+type FileListing struct {
+	Path    string
+	Parent  string
+	Entries []FileEntry
+}
+
+// FileText isi satu file teks.
+type FileText struct {
+	Path    string
+	Content string
+	Size    int64
+}
+
 // Reader adalah satu-satunya jalan lapisan API menyentuh dunia poinhost.
 //
 // Sengaja berupa interface sempit, bukan *servers.Service langsung: itu
@@ -65,6 +89,19 @@ type Reader interface {
 	// melaporkan apakah mesinnya memakai systemd sama sekali — server tanpa
 	// systemd bukan kegagalan, cuma tidak punya modul ini.
 	Services() ([]ServiceInfo, bool, error)
+
+	// Files membaca isi satu direktori di mesin ini.
+	//
+	// Path-nya TIDAK dibatasi ke folder tertentu, mengikuti modul Files di
+	// app desktop. Itu keputusan pemilik proyek, diambil setelah akibatnya
+	// disebutkan: perangkat yang bisa memanggil ini bisa membaca apa pun
+	// yang bisa dibaca root, termasuk kunci SSH dan devices.json milik agent
+	// sendiri. Yang membatasinya bukan path, melainkan SIAPA yang boleh
+	// memanggil — lihat controlAuth di lapisan API.
+	Files(path string) (FileListing, error)
+
+	// FileContent membaca isi satu file teks.
+	FileContent(path string) (FileText, error)
 }
 
 // Controller adalah satu-satunya permukaan yang MENGUBAH mesin.

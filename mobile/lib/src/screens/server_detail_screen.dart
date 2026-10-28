@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../session.dart';
 import '../theme.dart';
+import 'files_screen.dart';
 import 'server_metrics_screen.dart';
 import 'services_screen.dart';
 
@@ -14,7 +15,7 @@ import 'services_screen.dart';
 enum ServerModule {
   metrik('Metrik', Icons.speed_outlined, siap: true),
   website('Website', Icons.language_outlined),
-  files('Files', Icons.folder_outlined),
+  files('Files', Icons.folder_outlined, siap: true),
   terminal('Terminal', Icons.terminal_outlined),
   service('Service', Icons.manage_accounts_outlined, siap: true),
   firewall('Firewall', Icons.shield_outlined),
@@ -72,6 +73,7 @@ class ServerDetailScreen extends StatelessWidget {
         builder: (_) => switch (module) {
           ServerModule.metrik => ServerMetricsScreen(connection: connection),
           ServerModule.service => ServicesScreen(connection: connection),
+          ServerModule.files => FilesScreen(connection: connection),
           _ => _BelumAdaScreen(module: module),
         },
       ),

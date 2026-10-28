@@ -40,3 +40,20 @@ String formatUptime(int seconds, {bool long = false}) {
   if (h > 0) return '${h}j ${m}m';
   return '${m}m';
 }
+
+/// Ukuran berkas dalam satuan terbesar yang masih di bawah empat digit.
+String formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  const satuan = ['KB', 'MB', 'GB', 'TB'];
+  var nilai = bytes / 1024;
+  var i = 0;
+  while (nilai >= 1024 && i < satuan.length - 1) {
+    nilai /= 1024;
+    i++;
+  }
+  // Satu desimal di bawah 10, tidak sama sekali di atasnya: "1,4 MB" berguna,
+  // "847,3 MB" cuma lebih panjang.
+  return nilai < 10
+      ? '${nilai.toStringAsFixed(1)} ${satuan[i]}'
+      : '${nilai.toStringAsFixed(0)} ${satuan[i]}';
+}

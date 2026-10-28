@@ -139,6 +139,12 @@ class ServerConnection extends ChangeNotifier {
         action: action,
       );
 
+  Future<FileListing> files(String path) =>
+      _client.files(deviceToken: credentials.deviceToken, path: path);
+
+  Future<FileText> fileContent(String path) =>
+      _client.fileContent(deviceToken: credentials.deviceToken, path: path);
+
   void close() => _client.close();
 }
 

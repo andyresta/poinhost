@@ -209,6 +209,73 @@ class ServiceList {
   }
 }
 
+/// Satu entri direktori di server.
+class FileEntry {
+  const FileEntry({
+    required this.name,
+    required this.path,
+    required this.size,
+    required this.isDir,
+    required this.mode,
+    required this.modTime,
+  });
+
+  final String name;
+  final String path;
+  final int size;
+  final bool isDir;
+  final String mode;
+  final String modTime;
+
+  static FileEntry fromJson(Map<String, dynamic> json) => FileEntry(
+        name: _str(json['name']),
+        path: _str(json['path']),
+        size: _int(json['size']),
+        isDir: json['isDir'] == true,
+        mode: _str(json['mode']),
+        modTime: _str(json['modTime']),
+      );
+}
+
+/// Jawaban `GET /v1/files`.
+class FileListing {
+  const FileListing({
+    required this.path,
+    required this.parent,
+    required this.entries,
+  });
+
+  final String path;
+  final String parent;
+  final List<FileEntry> entries;
+
+  static FileListing fromJson(Map<String, dynamic> json) {
+    final raw = json['entries'];
+    return FileListing(
+      path: _str(json['path']),
+      parent: _str(json['parent']),
+      entries: raw is List
+          ? raw.whereType<Map<String, dynamic>>().map(FileEntry.fromJson).toList()
+          : const [],
+    );
+  }
+}
+
+/// Jawaban `GET /v1/files/content`.
+class FileText {
+  const FileText({required this.path, required this.content, required this.size});
+
+  final String path;
+  final String content;
+  final int size;
+
+  static FileText fromJson(Map<String, dynamic> json) => FileText(
+        path: _str(json['path']),
+        content: _str(json['content']),
+        size: _int(json['size']),
+      );
+}
+
 /// Jawaban `POST /v1/devices`: token milik perangkat ini.
 class Enrollment {
   const Enrollment({
