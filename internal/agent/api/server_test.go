@@ -14,9 +14,10 @@ import (
 )
 
 type fakeReader struct {
-	self   backend.ServerInfo
-	ada    bool
-	status map[string]backend.Status
+	self     backend.ServerInfo
+	ada      bool
+	status   map[string]backend.Status
+	services []backend.ServiceInfo
 }
 
 func (f fakeReader) Self() (backend.ServerInfo, bool) { return f.self, f.ada }
@@ -24,6 +25,21 @@ func (f fakeReader) Self() (backend.ServerInfo, bool) { return f.self, f.ada }
 func (f fakeReader) Status(id string) (backend.Status, bool) {
 	st, ok := f.status[id]
 	return st, ok
+}
+
+func (f fakeReader) Services() ([]backend.ServiceInfo, bool, error) {
+	return f.services, true, nil
+}
+
+// fakeController mencatat aksi yang SAMPAI kepadanya.
+//
+// Yang diuji di sini bukan systemctl-nya — itu milik modul services — tapi
+// apakah permintaan yang seharusnya ditolak benar-benar tidak pernah tiba.
+type fakeController struct{ dipanggil []string }
+
+func (c *fakeController) ServiceAction(name, action string) (backend.ServiceInfo, error) {
+	c.dipanggil = append(c.dipanggil, action+" "+name)
+	return backend.ServiceInfo{Name: name, ActiveState: "active", Running: true}, nil
 }
 
 func contoh(t *testing.T) (Deps, *devices.Store) {
@@ -37,9 +53,10 @@ func contoh(t *testing.T) (Deps, *devices.Store) {
 		StartedAt:   time.Now().Add(-time.Minute),
 		EnrollToken: "token-daftar",
 		Reader: fakeReader{
-			self:   backend.ServerInfo{ID: "s1", Name: "web", Host: "10.0.0.1"},
-			ada:    true,
-			status: map[string]backend.Status{"s1": {Connection: "ok", CPUCores: 2}},
+			self:     backend.ServerInfo{ID: "s1", Name: "web", Host: "10.0.0.1"},
+			ada:      true,
+			status:   map[string]backend.Status{"s1": {Connection: "ok", CPUCores: 2}},
+			services: []backend.ServiceInfo{{Name: "nginx", Running: true}},
 		},
 		Devices: store,
 	}, store
@@ -328,5 +345,93 @@ func TestStatusJSONMempertahankanNamaField(t *testing.T) {
 	// membuat HP mengira ada masalah.
 	if _, ada := got["error"]; ada {
 		t.Errorf("error ikut terkirim walau kosong: %v", got)
+	}
+}
+
+// Menyetujui HP TIDAK memberinya izin mengubah apa pun.
+//
+// Ini jaminan utama dari dipisahnya kedua sakelar: HP yang disetujui untuk
+// memantau — lalu hilang di jalan — tidak bisa menghentikan layanan apa pun.
+// Yang diperiksa bukan sekadar kode responsnya, tapi bahwa permintaannya
+// TIDAK PERNAH sampai ke controller.
+func TestAksiService_PerluIzinKendaliTerpisah(t *testing.T) {
+	d, store := contoh(t)
+	ctl := &fakeController{}
+	d.Controller = ctl
+	pub := Handler(d)
+	admin := AdminHandler(AdminDeps{Devices: store})
+
+	id, token := daftar(t, pub, "HP Andy")
+	if rec := minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/approve", "", ""); rec.Code != http.StatusOK {
+		t.Fatalf("approve = %d", rec.Code)
+	}
+
+	// Disetujui, jadi boleh MELIHAT.
+	if rec := minta(t, pub, http.MethodGet, "/v1/services", token, ""); rec.Code != http.StatusOK {
+		t.Fatalf("lihat service = %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Tapi belum boleh MENGUBAH.
+	rec := minta(t, pub, http.MethodPost, "/v1/services/nginx/restart", token, "")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("tanpa izin kendali = %d, mau 403: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	// Dibedakan dari "dicabut": yang harus dilakukan pemiliknya berbeda.
+	if body["status"] != "readOnly" {
+		t.Errorf("status = %q, mau readOnly", body["status"])
+	}
+	if len(ctl.dipanggil) != 0 {
+		t.Fatalf("aksi tetap sampai ke controller: %v", ctl.dipanggil)
+	}
+
+	// Setelah izinnya diberi, baru jalan.
+	if rec := minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/control", "", ""); rec.Code != http.StatusOK {
+		t.Fatalf("beri izin = %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := minta(t, pub, http.MethodPost, "/v1/services/nginx/restart", token, ""); rec.Code != http.StatusOK {
+		t.Fatalf("dengan izin = %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(ctl.dipanggil) != 1 || ctl.dipanggil[0] != "restart nginx" {
+		t.Fatalf("yang sampai ke controller = %v", ctl.dipanggil)
+	}
+
+	// Dan izinnya bisa diambil lagi tanpa mencabut aksesnya.
+	if rec := minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/readonly", "", ""); rec.Code != http.StatusOK {
+		t.Fatalf("cabut izin = %d", rec.Code)
+	}
+	if rec := minta(t, pub, http.MethodPost, "/v1/services/nginx/stop", token, ""); rec.Code != http.StatusForbidden {
+		t.Errorf("setelah izin dicabut = %d, mau 403", rec.Code)
+	}
+	if rec := minta(t, pub, http.MethodGet, "/v1/services", token, ""); rec.Code != http.StatusOK {
+		t.Errorf("melihat ikut hilang saat kendali dicabut = %d", rec.Code)
+	}
+	if len(ctl.dipanggil) != 1 {
+		t.Errorf("controller dipanggil lagi: %v", ctl.dipanggil)
+	}
+}
+
+// Aksi di luar daftar tertutup ditolak SEBELUM menyentuh apa pun. Tanpa ini
+// daftar aksinya cuma sebaik modul yang menerimanya.
+func TestAksiService_DiLuarDaftarDitolak(t *testing.T) {
+	d, store := contoh(t)
+	ctl := &fakeController{}
+	d.Controller = ctl
+	pub := Handler(d)
+	admin := AdminHandler(AdminDeps{Devices: store})
+
+	id, token := daftar(t, pub, "HP Andy")
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/approve", "", "")
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/control", "", "")
+
+	for _, aksi := range []string{"enable", "disable", "mask", "daemon-reexec"} {
+		rec := minta(t, pub, http.MethodPost, "/v1/services/nginx/"+aksi, token, "")
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("aksi %q = %d, mau 400", aksi, rec.Code)
+		}
+	}
+	if len(ctl.dipanggil) != 0 {
+		t.Fatalf("aksi di luar daftar tetap sampai: %v", ctl.dipanggil)
 	}
 }

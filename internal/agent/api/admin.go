@@ -16,6 +16,7 @@ type AdminDeps struct {
 type AdminDeviceStore interface {
 	List() []devices.Device
 	SetStatus(id, status string) (devices.Device, error)
+	SetControl(id string, allowed bool) (devices.Device, error)
 	Delete(id string) error
 }
 
@@ -56,6 +57,17 @@ func AdminHandler(d AdminDeps) http.Handler {
 		d.setStatus(w, r.PathValue("id"), devices.StatusRevoked)
 	})
 
+	// Izin kendali terpisah dari persetujuan, dan tombolnya pun terpisah:
+	// menyetujui HP supaya bisa memantau adalah keputusan yang berbeda dari
+	// mengizinkannya menghentikan layanan.
+	mux.HandleFunc("POST /admin/devices/{id}/control", func(w http.ResponseWriter, r *http.Request) {
+		d.setControl(w, r.PathValue("id"), true)
+	})
+
+	mux.HandleFunc("POST /admin/devices/{id}/readonly", func(w http.ResponseWriter, r *http.Request) {
+		d.setControl(w, r.PathValue("id"), false)
+	})
+
 	mux.HandleFunc("DELETE /admin/devices/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if err := d.Devices.Delete(r.PathValue("id")); err != nil {
 			writeErr(w, kode(err), err.Error())
@@ -75,6 +87,14 @@ func (d AdminDeps) setStatus(w http.ResponseWriter, id, status string) {
 	// Seluruh daftar dikembalikan, bukan satu perangkat yang berubah: panel
 	// desktop menggambar ulang dari jawaban ini, jadi daftar utuh menutup
 	// kemungkinan layar menampilkan keadaan setengah lama.
+	writeJSON(w, http.StatusOK, map[string]any{"devices": sanitize(d.Devices.List())})
+}
+
+func (d AdminDeps) setControl(w http.ResponseWriter, id string, allowed bool) {
+	if _, err := d.Devices.SetControl(id, allowed); err != nil {
+		writeErr(w, kode(err), err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"devices": sanitize(d.Devices.List())})
 }
 

@@ -6,8 +6,14 @@
 // dan firewall, dan yang sudah dikelola poinhost. Agent tidak perlu tahu apa
 // pun soal itu.
 //
-// Seluruh endpoint data di sini BACA saja. Tidak ada satu pun yang mengubah
-// server, sesuai tahap pertama Mobile Control.
+// Hampir seluruh endpoint di sini BACA saja. Yang TIDAK: aksi service
+// (start/stop/restart), yang dijaga dua lapis sekaligus — perangkatnya harus
+// sudah disetujui, DAN diberi izin kendali satu per satu dari app desktop.
+// Menyetujui HP supaya bisa memantau tidak memberinya izin mengubah apa pun.
+//
+// Yang bisa diubah adalah daftar tertutup, bukan shell: agent tidak pernah
+// menjalankan perintah yang datang dari jaringan, ia hanya memetakan beberapa
+// aksi yang sudah dikenalnya ke modul poinhost yang sudah ada.
 //
 // Bentuknya TUNGGAL, bukan daftar. Satu agent hanya mengurus mesinnya
 // sendiri, jadi endpoint daftar server hanya akan mengembalikan satu baris
@@ -45,6 +51,22 @@ type Deps struct {
 
 	Reader  backend.Reader
 	Devices DeviceStore
+
+	// Controller boleh nil. Nil berarti agent ini tidak bisa mengubah apa
+	// pun, dan endpoint aksinya menjawab begitu — bukan panic.
+	Controller backend.Controller
+}
+
+// aksiServiceDiizinkan adalah daftar TERTUTUP aksi yang boleh datang dari HP.
+//
+// Lebih sempit daripada yang didukung modul services: enable/disable
+// mengubah perilaku saat boot, yang bukan hal yang dikerjakan orang dari
+// layar 6 inci saat sedang buru-buru — dan tiap aksi yang ada di sini adalah
+// satu hal lagi yang bisa dilakukan HP yang hilang.
+var aksiServiceDiizinkan = map[string]bool{
+	"start":   true,
+	"stop":    true,
+	"restart": true,
 }
 
 // DeviceStore adalah bagian devices.Store yang disentuh permukaan publik.
@@ -153,7 +175,85 @@ func Handler(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, out)
 	})))
 
+	mux.Handle("GET /v1/services", d.deviceAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		list, adaSystemd, err := d.Reader.Services()
+		if err != nil {
+			writeErr(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		out := make([]map[string]any, 0, len(list))
+		for _, s := range list {
+			out = append(out, serviceJSON(s))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"systemdAvailable": adaSystemd,
+			"services":         out,
+		})
+	})))
+
+	// SATU-SATUNYA endpoint yang mengubah mesin. Dijaga controlAuth, bukan
+	// deviceAuth — perbedaannya harus terbaca di baris ini.
+	mux.Handle("POST /v1/services/{name}/{action}", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if d.Controller == nil {
+			writeErr(w, http.StatusServiceUnavailable, "agent ini tidak bisa mengubah service")
+			return
+		}
+		action := r.PathValue("action")
+		if !aksiServiceDiizinkan[action] {
+			writeErr(w, http.StatusBadRequest, "aksi tidak dikenal: "+action)
+			return
+		}
+		info, err := d.Controller.ServiceAction(r.PathValue("name"), action)
+		if err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, serviceJSON(info))
+	})))
+
 	return mux
+}
+
+func serviceJSON(s backend.ServiceInfo) map[string]any {
+	return map[string]any{
+		"name":          s.Name,
+		"description":   s.Description,
+		"activeState":   s.ActiveState,
+		"subState":      s.SubState,
+		"unitFileState": s.UnitFileState,
+		"running":       s.Running,
+		"enabled":       s.Enabled,
+		"canEnable":     s.CanEnable,
+	}
+}
+
+// controlAuth menuntut perangkat yang disetujui DAN diberi izin kendali.
+//
+// Dibangun di atas deviceAuth, bukan menggantikannya: urutan jawabannya
+// tetap sama untuk token yang tidak dikenal, menunggu, atau dicabut, dan
+// yang ditambahkan hanya satu syarat terakhir.
+//
+// Jawabannya dibedakan dari "dicabut" lewat field status, karena yang harus
+// dilakukan pemiliknya berbeda: yang ini bukan minta disetujui ulang,
+// melainkan minta satu izin yang memang belum pernah diberikan.
+func (d Deps) controlAuth(next http.Handler) http.Handler {
+	return d.deviceAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dev, ok := d.Devices.Authenticate(bearer(r))
+		if !ok {
+			writeErr(w, http.StatusUnauthorized, "token perangkat tidak dikenal")
+			return
+		}
+		if !dev.CanControl {
+			writeStatusErr(
+				w,
+				http.StatusForbidden,
+				"perangkat ini hanya boleh melihat — beri izin kendali dari app poinhost",
+				"readOnly",
+			)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}))
 }
 
 // deviceAuth menuntut token milik perangkat yang SUDAH disetujui.

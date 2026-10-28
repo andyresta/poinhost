@@ -42,10 +42,23 @@ var ErrNotFound = errors.New("perangkat tidak ditemukan")
 // backup mana pun yang menyentuh direktori data agent; menyimpan token apa
 // adanya berarti setiap salinan berkas ini adalah kunci yang masih hidup.
 type Device struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Platform   string    `json:"platform,omitempty"`
-	Status     string    `json:"status"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Platform string `json:"platform,omitempty"`
+	Status   string `json:"status"`
+
+	// CanControl memisahkan "boleh melihat" dari "boleh mengubah".
+	//
+	// Dua keputusan yang berbeda, jadi dua sakelar yang berbeda. Menyetujui
+	// HP supaya bisa memantau tidak sama dengan mengizinkannya mematikan
+	// database — dan kalau HP itu hilang, bedanya adalah antara "ada yang
+	// melihat metrik saya" dan "ada yang bisa menghentikan layanan saya".
+	//
+	// Default false, termasuk untuk perangkat yang sudah terdaftar sebelum
+	// field ini ada: JSON tanpa field ini terbaca sebagai false, jadi
+	// memperbarui agent tidak pernah diam-diam memberi izin baru.
+	CanControl bool `json:"canControl,omitempty"`
+
 	TokenHash  string    `json:"tokenHash"`
 	CreatedAt  time.Time `json:"createdAt"`
 	ApprovedAt time.Time `json:"approvedAt,omitempty"`
@@ -162,6 +175,29 @@ func (s *Store) List() []Device {
 }
 
 // SetStatus menyetujui atau mencabut satu perangkat.
+// SetControl memberi atau mencabut izin mengubah mesin.
+//
+// Terpisah dari SetStatus: mencabut akses dan mencabut kendali adalah dua
+// tindakan berbeda, dan menggabungkannya berarti satu tombol di panel
+// melakukan hal yang tidak diminta.
+func (s *Store) SetControl(id string, allowed bool) (Device, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.list {
+		if s.list[i].ID != id {
+			continue
+		}
+		sebelum := s.list[i]
+		s.list[i].CanControl = allowed
+		if err := s.simpanLocked(); err != nil {
+			s.list[i] = sebelum
+			return Device{}, err
+		}
+		return s.list[i], nil
+	}
+	return Device{}, ErrNotFound
+}
+
 func (s *Store) SetStatus(id, status string) (Device, error) {
 	if status != StatusApproved && status != StatusRevoked {
 		return Device{}, fmt.Errorf("status %q tidak dikenal", status)

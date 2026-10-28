@@ -37,6 +37,7 @@ import (
 	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/andyresta/poinhost/internal/modules/servers"
+	"github.com/andyresta/poinhost/internal/modules/services"
 )
 
 // Version diisi saat build lewat -ldflags "-X main.Version=...".
@@ -209,6 +210,10 @@ func newStack(acfg *agentcfg.Config, cfgPath string) (*stack, error) {
 
 	serversSvc := servers.NewService(servers.NewRepository(db), pool, executor, vault)
 	collector := servers.NewCollector(serversSvc)
+	// Modul services yang SAMA dengan yang dipakai app desktop: validasi nama
+	// unit, daftar aksi yang sah, dan penyusunan perintah systemctl hanya ada
+	// di satu tempat.
+	servicesSvc := services.NewService(serversSvc, executor, mutex)
 
 	// Bootstrap mendaftarkan semua server tersimpan ke pool. Tanpa ini,
 	// status koneksi akan selalu "offline" sampai ada operasi yang kebetulan
@@ -230,7 +235,7 @@ func newStack(acfg *agentcfg.Config, cfgPath string) (*stack, error) {
 	collector.Start()
 
 	return &stack{
-		backend:   backend.New(serversSvc, collector, acfg.SelfServerID),
+		backend:   backend.New(serversSvc, collector, servicesSvc, acfg.SelfServerID),
 		collector: collector,
 		closeDB:   db.Close,
 	}, nil

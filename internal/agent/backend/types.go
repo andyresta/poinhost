@@ -30,6 +30,18 @@ type Status struct {
 	Error         string
 }
 
+// ServiceInfo satu unit systemd, seperti dilihat lapisan API.
+type ServiceInfo struct {
+	Name          string
+	Description   string
+	ActiveState   string
+	SubState      string
+	UnitFileState string
+	Running       bool
+	Enabled       bool
+	CanEnable     bool
+}
+
 // Reader adalah satu-satunya jalan lapisan API menyentuh dunia poinhost.
 //
 // Sengaja berupa interface sempit, bukan *servers.Service langsung: itu
@@ -48,4 +60,25 @@ type Reader interface {
 	// (atau gagal) mendaftarkan dirinya sendiri.
 	Self() (ServerInfo, bool)
 	Status(id string) (Status, bool)
+
+	// Services adalah daftar unit systemd di mesin ini. Bool keduanya
+	// melaporkan apakah mesinnya memakai systemd sama sekali — server tanpa
+	// systemd bukan kegagalan, cuma tidak punya modul ini.
+	Services() ([]ServiceInfo, bool, error)
+}
+
+// Controller adalah satu-satunya permukaan yang MENGUBAH mesin.
+//
+// Dipisah dari Reader dengan sengaja, dan bukan sekadar demi kerapian: Mobile
+// Control dimulai sebagai baca-saja, dan satu-satunya cara agar penambahan
+// kemampuan mengubah tetap terlihat — di tipe, di baris mux, di review — adalah
+// membuatnya mustahil tersembunyi di balik nama "Reader".
+//
+// Yang ada di sini DAFTAR TERTUTUP, bukan shell. Agent tidak pernah
+// menjalankan perintah yang datang dari jaringan; ia hanya memetakan beberapa
+// aksi yang sudah dikenalnya ke modul poinhost yang sudah ada.
+type Controller interface {
+	// ServiceAction menjalankan satu aksi pada satu unit di mesin ini.
+	// Aksi yang diizinkan ditentukan pemanggilnya, bukan di sini.
+	ServiceAction(name, action string) (ServiceInfo, error)
 }

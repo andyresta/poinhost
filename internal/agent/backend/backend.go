@@ -6,12 +6,26 @@
 // implementasi yang lama-lama berbeda jawabannya.
 package backend
 
-import "github.com/andyresta/poinhost/internal/modules/servers"
+import (
+	"errors"
+
+	"github.com/andyresta/poinhost/internal/modules/servers"
+	"github.com/andyresta/poinhost/internal/modules/services"
+)
+
+// errBelumKelolaDiri dipakai untuk modul yang butuh koneksi ke mesin ini.
+//
+// Tanpa pengelolaan-diri agent tidak punya satu pun jalan menyentuh
+// mesinnya, dan menyebutnya "gagal" akan mengirim pemiliknya mencari
+// masalah jaringan — padahal yang kurang satu tombol di panel Mobile
+// Control.
+var errBelumKelolaDiri = errors.New("agent belum mengelola mesinnya sendiri")
 
 // Backend mengimplementasikan Reader.
 type Backend struct {
 	svc       *servers.Service
 	collector *servers.Collector
+	services  *services.Service
 
 	// selfID adalah server yang mewakili mesin tempat agent berjalan, supaya
 	// bisa ditandai di daftar. Kosong berarti agent belum mendaftarkan
@@ -20,8 +34,68 @@ type Backend struct {
 }
 
 // New membuat backend.
-func New(svc *servers.Service, collector *servers.Collector, selfServerID string) *Backend {
-	return &Backend{svc: svc, collector: collector, selfID: selfServerID}
+func New(
+	svc *servers.Service,
+	collector *servers.Collector,
+	servicesSvc *services.Service,
+	selfServerID string,
+) *Backend {
+	return &Backend{
+		svc:       svc,
+		collector: collector,
+		services:  servicesSvc,
+		selfID:    selfServerID,
+	}
+}
+
+// Services membaca unit systemd di mesin ini.
+//
+// Selalu selfID, tidak pernah id dari permintaan: itu yang membuat satu
+// agent mustahil dipakai mengintip — atau mengubah — mesin lain yang
+// kebetulan masih tersimpan di database-nya dari versi lama.
+func (b *Backend) Services() ([]ServiceInfo, bool, error) {
+	if b.selfID == "" || b.services == nil {
+		return nil, false, errBelumKelolaDiri
+	}
+	res, err := b.services.ListServices(b.selfID)
+	if err != nil {
+		return nil, false, err
+	}
+	out := make([]ServiceInfo, 0, len(res.Services))
+	for _, s := range res.Services {
+		out = append(out, toServiceInfo(s))
+	}
+	return out, res.SystemdAvailable, nil
+}
+
+// ServiceAction menjalankan aksi systemctl di mesin ini.
+//
+// Validasi nama unit dan daftar aksi yang sah ada di modul services, yang
+// sama persis dengan yang dipakai app desktop — bukan disalin ke sini.
+// Satu-satunya tempat yang boleh tahu cara menyusun perintah systemctl
+// adalah modul itu.
+func (b *Backend) ServiceAction(name, action string) (ServiceInfo, error) {
+	if b.selfID == "" || b.services == nil {
+		return ServiceInfo{}, errBelumKelolaDiri
+	}
+	info, err := b.services.ServiceAction(b.selfID, name, action)
+	if err != nil {
+		return ServiceInfo{}, err
+	}
+	return toServiceInfo(*info), nil
+}
+
+func toServiceInfo(s services.ServiceInfo) ServiceInfo {
+	return ServiceInfo{
+		Name:          s.Name,
+		Description:   s.Description,
+		ActiveState:   s.ActiveState,
+		SubState:      s.SubState,
+		UnitFileState: s.UnitFileState,
+		Running:       s.Running,
+		Enabled:       s.Enabled,
+		CanEnable:     s.CanEnable,
+	}
 }
 
 // Self mengembalikan mesin tempat agent berjalan.
