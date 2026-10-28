@@ -10,16 +10,67 @@ import 'package:poinhost_mobile/src/storage/credential_store.dart';
 
 /// Agent palsu, supaya layar bisa diuji tanpa jaringan.
 class _FakeAgent extends AgentClient {
-  _FakeAgent(Uri baseUrl, this._reply) : super(baseUrl: baseUrl);
+  _FakeAgent(Uri baseUrl, this._reply, {this.serviceList})
+      : super(baseUrl: baseUrl);
 
   final Future<ServerSnapshot> Function() _reply;
+  final ServiceList? serviceList;
+
+  /// Aksi yang SAMPAI ke agent. Yang diuji di layar Service bukan
+  /// systemctl-nya, melainkan aksi mana yang bisa dikirim sama sekali.
+  final List<String> aksi = [];
 
   @override
   Future<ServerSnapshot> server({required String deviceToken}) => _reply();
 
   @override
+  Future<ServiceList> services({required String deviceToken}) async =>
+      serviceList ??
+      const ServiceList(services: [], systemdAvailable: true, canControl: false);
+
+  @override
+  Future<ServiceInfo> serviceAction({
+    required String deviceToken,
+    required String name,
+    required String action,
+  }) async {
+    aksi.add('$action $name');
+    return ServiceInfo(
+      name: name,
+      description: '',
+      activeState: action == 'stop' ? 'inactive' : 'active',
+      subState: '',
+      running: action != 'stop',
+      enabled: true,
+    );
+  }
+
+  @override
   void close() {}
 }
+
+ServiceList _services({required bool canControl}) => ServiceList(
+      systemdAvailable: true,
+      canControl: canControl,
+      services: const [
+        ServiceInfo(
+          name: 'nginx',
+          description: 'A high performance web server',
+          activeState: 'active',
+          subState: 'running',
+          running: true,
+          enabled: true,
+        ),
+        ServiceInfo(
+          name: 'mysql',
+          description: 'MySQL Community Server',
+          activeState: 'failed',
+          subState: 'dead',
+          running: false,
+          enabled: true,
+        ),
+      ],
+    );
 
 ServerSnapshot _snapshot(String name) => ServerSnapshot(
       id: 's1',
@@ -77,11 +128,17 @@ Credentials _creds(String id, String label) => Credentials(
 
 Future<Workspace> _workspace(
   List<Credentials> creds,
-  Future<ServerSnapshot> Function(Uri) reply,
-) async {
+  Future<ServerSnapshot> Function(Uri) reply, {
+  ServiceList? services,
+  List<_FakeAgent>? agents,
+}) async {
   final w = Workspace(
     store: InMemoryCredentialStore(creds),
-    clientFor: (url) => _FakeAgent(url, () => reply(url)),
+    clientFor: (url) {
+      final a = _FakeAgent(url, () => reply(url), serviceList: services);
+      agents?.add(a);
+      return a;
+    },
   );
   await w.restore();
   return w;
@@ -377,6 +434,56 @@ void main() {
     w.dispose();
   });
 
+  // Perangkat yang disetujui TAPI belum diberi izin kendali tidak boleh
+  // melihat satu pun tombol aksi. Tombol yang pasti ditolak membuat
+  // pemiliknya menyalahkan aplikasi, bukan izin yang memang belum diberikan.
+  testWidgets('tanpa izin kendali, layar Service tidak punya tombol aksi',
+      (tester) async {
+    final agents = <_FakeAgent>[];
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => _snapshot('produksi'),
+      services: _services(canControl: false),
+      agents: agents,
+    );
+
+    await _bukaService(tester, w);
+
+    expect(find.text('nginx'), findsOneWidget);
+    expect(find.text('mysql'), findsOneWidget);
+    expect(find.textContaining('Beri izin kendali'), findsOneWidget);
+    for (final label in ['Start', 'Stop', 'Restart']) {
+      expect(find.text(label), findsNothing, reason: 'tombol $label');
+    }
+    expect(agents.single.aksi, isEmpty);
+    w.dispose();
+  });
+
+  testWidgets('dengan izin kendali, Start terkirim ke agent', (tester) async {
+    final agents = <_FakeAgent>[];
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => _snapshot('produksi'),
+      services: _services(canControl: true),
+      agents: agents,
+    );
+
+    await _bukaService(tester, w);
+
+    // Yang gagal naik ke atas: daftar systemd itu panjang, dan yang dicari
+    // orang saat membukanya dari HP hampir selalu ada di kelompok itu.
+    final posisiMysql = tester.getTopLeft(find.text('mysql')).dy;
+    final posisiNginx = tester.getTopLeft(find.text('nginx')).dy;
+    expect(posisiMysql, lessThan(posisiNginx));
+
+    // mysql mati, jadi tombolnya Start — dan Start tidak perlu konfirmasi.
+    await tester.tap(find.text('Start'));
+    await tester.pumpAndSettle();
+    expect(agents.single.aksi, ['start mysql']);
+    w.dispose();
+  });
+
+  // Server yang BELUM bisa dibaca tetap menempati kartunya dengan alasannya
   // Server yang BELUM bisa dibaca tetap menempati kartunya dengan alasannya
   // tertulis. Menyembunyikannya sampai sehat berarti server yang mati
   // menghilang dari layar, justru saat paling perlu terlihat.
@@ -448,3 +555,15 @@ void main() {
 }
 
 AppSettings _settings() => AppSettings(store: InMemorySettingsStore());
+
+/// Membuka Server -> menu -> Service.
+Future<void> _bukaService(WidgetTester tester, Workspace w) async {
+  await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('produksi'));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text('Service'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Service'));
+  await tester.pumpAndSettle();
+}

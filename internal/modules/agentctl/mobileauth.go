@@ -30,6 +30,7 @@ type Device struct {
 	Name       string    `json:"name"`
 	Platform   string    `json:"platform,omitempty"`
 	Status     string    `json:"status"`
+	CanControl bool      `json:"canControl"`
 	CreatedAt  time.Time `json:"createdAt"`
 	ApprovedAt time.Time `json:"approvedAt,omitempty"`
 }
@@ -117,6 +118,20 @@ func (s *Service) ApproveDevice(ctx context.Context, serverID, deviceID string) 
 // HP-nya tahu aksesnya diambil, bukan sekadar gagal.
 func (s *Service) RevokeDevice(ctx context.Context, serverID, deviceID string) ([]Device, error) {
 	return s.deviceAction(ctx, serverID, "POST", "/admin/devices/"+deviceID+"/revoke")
+}
+
+// SetDeviceControl memberi atau mencabut izin perangkat mengubah server.
+//
+// Terpisah dari persetujuan: menyetujui HP supaya bisa memantau bukan
+// keputusan yang sama dengan mengizinkannya menghentikan layanan, dan
+// menggabungkan keduanya berarti satu tombol melakukan hal yang tidak
+// diminta.
+func (s *Service) SetDeviceControl(ctx context.Context, serverID, deviceID string, allowed bool) ([]Device, error) {
+	aksi := "readonly"
+	if allowed {
+		aksi = "control"
+	}
+	return s.deviceAction(ctx, serverID, "POST", "/admin/devices/"+deviceID+"/"+aksi)
 }
 
 // DeleteDevice menghapus perangkat sepenuhnya.

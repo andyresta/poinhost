@@ -5,6 +5,7 @@ export namespace agentctl {
 	    name: string;
 	    platform?: string;
 	    status: string;
+	    canControl: boolean;
 	    // Go type: time
 	    createdAt: any;
 	    // Go type: time
@@ -20,6 +21,7 @@ export namespace agentctl {
 	        this.name = source["name"];
 	        this.platform = source["platform"];
 	        this.status = source["status"];
+	        this.canControl = source["canControl"];
 	        this.createdAt = this.convertValues(source["createdAt"], null);
 	        this.approvedAt = this.convertValues(source["approvedAt"], null);
 	    }

@@ -99,6 +99,15 @@ class ServerConnection extends ChangeNotifier {
         AgentFailure.accessRevoked => ServerPhase.revoked,
         AgentFailure.tokenRejected => ServerPhase.rejected,
         AgentFailure.agentNotReady => ServerPhase.notReady,
+        // Agent MENJAWAB, hanya versinya tertinggal. Lebih dekat ke "belum
+        // siap" daripada ke "tidak terjangkau", dan pesannya menyebut
+        // perbaikannya.
+        AgentFailure.moduleMissing => ServerPhase.notReady,
+        // controlNotAllowed tidak pernah datang dari /v1/server — endpoint
+        // itu tidak memeriksa izin kendali sama sekali. Kalau toh muncul,
+        // artinya agent menjawab sesuatu yang versi app ini tidak pahami,
+        // dan itu persis arti unexpected. Pesannya tetap dari agent.
+        AgentFailure.controlNotAllowed ||
         AgentFailure.unreachable ||
         AgentFailure.unexpected =>
           ServerPhase.unreachable,
@@ -115,6 +124,20 @@ class ServerConnection extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// Daftar service di server ini.
+  ///
+  /// Token perangkat tidak pernah keluar dari kelas ini — layar cukup
+  /// memanggil, tidak perlu memegang kredensialnya.
+  Future<ServiceList> services() =>
+      _client.services(deviceToken: credentials.deviceToken);
+
+  Future<ServiceInfo> serviceAction(String name, String action) =>
+      _client.serviceAction(
+        deviceToken: credentials.deviceToken,
+        name: name,
+        action: action,
+      );
 
   void close() => _client.close();
 }

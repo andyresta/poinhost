@@ -88,6 +88,15 @@ void main() {
     expect(await _gagalnya(c), AgentFailure.unreachable);
   });
 
+  // Agent yang lebih tua membalas 404 teks polos dari mux-nya. Tanpa
+  // penanganan khusus ia jatuh ke cabang "bukan JSON" dan terbaca sebagai
+  // "ini bukan agent poinhost" — menuduh alamatnya salah, padahal yang
+  // kurang cuma satu kali Update agent.
+  test('404 berarti agent perlu diperbarui, bukan alamat yang salah', () async {
+    final f = await _gagalnya(_clientYangMembalas(404, '404 page not found'));
+    expect(f, AgentFailure.moduleMissing);
+  });
+
   test('200 terbaca sebagai snapshot', () async {
     final c = _clientYangMembalas(
       200,

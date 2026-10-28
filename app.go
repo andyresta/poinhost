@@ -1689,6 +1689,14 @@ func (a *App) ApproveMobileControlDevice(serverID, deviceID string) ([]agentctl.
 	return a.agentSvc.ApproveDevice(ctx, serverID, deviceID)
 }
 
+// SetMobileControlDeviceControl memberi atau mencabut izin satu perangkat
+// mengubah server — terpisah dari persetujuan aksesnya.
+func (a *App) SetMobileControlDeviceControl(serverID, deviceID string, allowed bool) ([]agentctl.Device, error) {
+	ctx, cancel := context.WithTimeout(a.ctx, 60*time.Second)
+	defer cancel()
+	return a.agentSvc.SetDeviceControl(ctx, serverID, deviceID, allowed)
+}
+
 // RevokeMobileControlDevice mencabut akses satu perangkat tanpa menghapusnya,
 // sehingga HP-nya tahu aksesnya diambil.
 func (a *App) RevokeMobileControlDevice(serverID, deviceID string) ([]agentctl.Device, error) {

@@ -185,8 +185,14 @@ func Handler(d Deps) http.Handler {
 		for _, s := range list {
 			out = append(out, serviceJSON(s))
 		}
+		// Izin kendali ikut dikirim supaya HP tahu SEBELUM mencoba.
+		// Tanpa ini layarnya menampilkan tombol yang pasti ditolak, dan
+		// pemiliknya baru tahu setelah menekannya — lalu menyalahkan
+		// aplikasi, bukan izin yang memang belum diberikan.
+		dev, _ := d.Devices.Authenticate(bearer(r))
 		writeJSON(w, http.StatusOK, map[string]any{
 			"systemdAvailable": adaSystemd,
+			"canControl":       dev.CanControl,
 			"services":         out,
 		})
 	})))

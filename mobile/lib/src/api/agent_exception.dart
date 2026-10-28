@@ -16,8 +16,20 @@ enum AgentFailure {
   /// Perangkat dicabut dari app desktop (403, status revoked).
   accessRevoked,
 
+  /// Disetujui untuk MELIHAT, tapi belum diberi izin mengubah (403,
+  /// status readOnly). Bukan masalah akses — izinnya memang terpisah.
+  controlNotAllowed,
+
   /// Pendaftaran belum dibuka, atau agent belum siap (503).
   agentNotReady,
+
+  /// Agent menjawab, tapi versinya belum punya endpoint ini (404).
+  ///
+  /// Dibedakan dari [unexpected] karena jawabannya pasti dan bisa
+  /// ditindaklanjuti: perbarui agent. Tanpa pembedaan ini, agent lama
+  /// terbaca sebagai "yang menjawab bukan agent poinhost" — menuduh
+  /// domainnya salah, padahal domainnya benar.
+  moduleMissing,
 
   /// Tidak sampai ke agent sama sekali: DNS, jaringan seluler putus, TLS.
   unreachable,

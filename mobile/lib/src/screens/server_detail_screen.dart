@@ -4,6 +4,7 @@ import '../api/models.dart';
 import '../session.dart';
 import '../theme.dart';
 import 'server_metrics_screen.dart';
+import 'services_screen.dart';
 
 /// Modul yang bisa dibuka untuk satu server.
 ///
@@ -15,7 +16,7 @@ enum ServerModule {
   website('Website', Icons.language_outlined),
   files('Files', Icons.folder_outlined),
   terminal('Terminal', Icons.terminal_outlined),
-  service('Service', Icons.manage_accounts_outlined),
+  service('Service', Icons.manage_accounts_outlined, siap: true),
   firewall('Firewall', Icons.shield_outlined),
   docker('Docker', Icons.inventory_2_outlined);
 
@@ -68,9 +69,11 @@ class ServerDetailScreen extends StatelessWidget {
   void _open(BuildContext context, ServerModule module) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => module == ServerModule.metrik
-            ? ServerMetricsScreen(connection: connection)
-            : _BelumAdaScreen(module: module),
+        builder: (_) => switch (module) {
+          ServerModule.metrik => ServerMetricsScreen(connection: connection),
+          ServerModule.service => ServicesScreen(connection: connection),
+          _ => _BelumAdaScreen(module: module),
+        },
       ),
     );
   }

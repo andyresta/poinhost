@@ -2598,6 +2598,12 @@ button svg {
   margin-left: 8px;
   color: var(--neutral);
 }
+/* Tombol sekecil badge, untuk keadaan yang sekaligus bisa ditekan. */
+.btn--chip {
+  padding: 2px 9px;
+  font-size: 11px;
+  border-radius: 999px;
+}
 /* Tombol salin yang baru berhasil. Warnanya kembali sendiri setelah 1,6
    detik, jadi transisinya dipasang di dua arah. */
 .btn--copied,

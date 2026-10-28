@@ -290,6 +290,8 @@ export function SearchFiles(arg1:files.SearchRequest):Promise<files.SearchResult
 
 export function SetFirewallEnabled(arg1:string,arg2:boolean):Promise<firewall.ListResponse>;
 
+export function SetMobileControlDeviceControl(arg1:string,arg2:string,arg3:boolean):Promise<Array<agentctl.Device>>;
+
 export function SetTabActiveModule(arg1:string,arg2:string):Promise<void>;
 
 export function SetWebsiteDatabaseGrants(arg1:website.DBGrantsRequest):Promise<void>;

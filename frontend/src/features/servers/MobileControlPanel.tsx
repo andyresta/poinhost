@@ -14,6 +14,7 @@ import {
   Power,
   RotateCw,
   ServerCog,
+  ShieldCheck,
   Smartphone,
   Trash2,
   TriangleAlert,
@@ -31,6 +32,7 @@ import {
   MobileControlReachability,
   MobileControlDevices,
   ApproveMobileControlDevice,
+  SetMobileControlDeviceControl,
   RevokeMobileControlDevice,
   DeleteMobileControlDevice,
 } from '../../../wailsjs/go/main/App';
@@ -294,6 +296,29 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
     void act(`revoke:${dev.id}`, () => RevokeMobileControlDevice(serverId, dev.id), (list) => setDevices(list));
   }
 
+  // Memberi izin DITANYA, mencabutnya tidak.
+  //
+  // Memberi adalah yang melebarkan apa yang bisa dilakukan HP itu, dan
+  // konsekuensinya ada di dialognya — bukan sebagai paragraf di panel.
+  // Mencabut hanya mempersempit, jadi menghalanginya dengan dialog cuma
+  // memperlambat orang yang sedang buru-buru mengamankan HP yang hilang.
+  async function handleToggleControl(dev: agentctl.Device) {
+    if (!dev.canControl) {
+      const ok = await confirm({
+        title: t('mobile.grantControl'),
+        message: t('mobile.grantConfirm', { name: dev.name }),
+        detail: t('mobile.grantDetail'),
+        confirmLabel: t('mobile.grantControl'),
+      });
+      if (!ok) return;
+    }
+    void act(
+      `control:${dev.id}`,
+      () => SetMobileControlDeviceControl(serverId, dev.id, !dev.canControl),
+      (list) => setDevices(list),
+    );
+  }
+
   async function handleRemoveDevice(dev: agentctl.Device) {
     const ok = await confirm({
       title: t('mobile.removeDevice'),
@@ -538,6 +563,7 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
                     <th>{t('common.name')}</th>
                     <th>{t('mobile.colWhen')}</th>
                     <th>{t('common.status')}</th>
+                    <th>{t('mobile.colControl')}</th>
                     <th>{t('common.actions')}</th>
                   </tr>
                 </thead>
@@ -556,6 +582,31 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
                         <span className={`docker-badge ${deviceBadge(dev.status)}`}>
                           {t(deviceStatusKey(dev.status))}
                         </span>
+                      </td>
+                      {/* Kendali punya kolomnya sendiri, bukan ikon keempat di
+                          kolom aksi: ini keadaan yang perlu terbaca sekilas
+                          untuk SETIAP perangkat, bukan tombol yang dicari
+                          saat mau menekannya. */}
+                      <td>
+                        {dev.status === 'approved' ? (
+                          <button
+                            className={`btn btn--chip${dev.canControl ? ' btn--copied' : ''}`}
+                            disabled={anyBusy}
+                            onClick={() => void handleToggleControl(dev)}
+                            title={t('mobile.controlHint')}
+                          >
+                            {busy === `control:${dev.id}` ? (
+                              <span className="spinner" />
+                            ) : dev.canControl ? (
+                              <ShieldCheck size={12} />
+                            ) : (
+                              <Eye size={12} />
+                            )}{' '}
+                            {dev.canControl ? t('mobile.controlOn') : t('mobile.controlOff')}
+                          </button>
+                        ) : (
+                          <span className="agent-users__date">—</span>
+                        )}
                       </td>
                       <td className="files-panel__row-actions">
                         {/* Yang menunggu dan yang dicabut sama-sama bisa

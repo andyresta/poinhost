@@ -138,6 +138,77 @@ class ServerSnapshot {
   }
 }
 
+/// Satu unit systemd di server.
+class ServiceInfo {
+  const ServiceInfo({
+    required this.name,
+    required this.description,
+    required this.activeState,
+    required this.subState,
+    required this.running,
+    required this.enabled,
+  });
+
+  final String name;
+  final String description;
+
+  /// "active" | "inactive" | "failed" | "activating" | dst.
+  final String activeState;
+  final String subState;
+
+  /// Sedang berjalan SEKARANG.
+  final bool running;
+
+  /// Ikut jalan saat boot. Dimensi yang BERBEDA dari [running]: service bisa
+  /// aktif sekarang tapi tidak autostart, atau sebaliknya.
+  final bool enabled;
+
+  bool get failed => activeState == 'failed';
+
+  static ServiceInfo fromJson(Map<String, dynamic> json) {
+    return ServiceInfo(
+      name: _str(json['name']),
+      description: _str(json['description']),
+      activeState: _str(json['activeState']),
+      subState: _str(json['subState']),
+      running: json['running'] == true,
+      enabled: json['enabled'] == true,
+    );
+  }
+}
+
+/// Jawaban `GET /v1/services`.
+class ServiceList {
+  const ServiceList({
+    required this.services,
+    required this.systemdAvailable,
+    required this.canControl,
+  });
+
+  final List<ServiceInfo> services;
+
+  /// Server tanpa systemd bukan kegagalan — modul ini cuma tidak berlaku.
+  final bool systemdAvailable;
+
+  /// Apakah perangkat INI boleh mengubah. Dikirim agent supaya layarnya tidak
+  /// menampilkan tombol yang pasti ditolak.
+  final bool canControl;
+
+  static ServiceList fromJson(Map<String, dynamic> json) {
+    final raw = json['services'];
+    return ServiceList(
+      services: raw is List
+          ? raw
+              .whereType<Map<String, dynamic>>()
+              .map(ServiceInfo.fromJson)
+              .toList()
+          : const [],
+      systemdAvailable: json['systemdAvailable'] == true,
+      canControl: json['canControl'] == true,
+    );
+  }
+}
+
 /// Jawaban `POST /v1/devices`: token milik perangkat ini.
 class Enrollment {
   const Enrollment({

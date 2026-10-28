@@ -554,6 +554,10 @@ export function SetFirewallEnabled(arg1, arg2) {
   return window['go']['main']['App']['SetFirewallEnabled'](arg1, arg2);
 }
 
+export function SetMobileControlDeviceControl(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SetMobileControlDeviceControl'](arg1, arg2, arg3);
+}
+
 export function SetTabActiveModule(arg1, arg2) {
   return window['go']['main']['App']['SetTabActiveModule'](arg1, arg2);
 }
