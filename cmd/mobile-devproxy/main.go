@@ -28,6 +28,7 @@ package main
 
 import (
 	"flag"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -64,6 +65,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/healthz", rp)
 	mux.Handle("/v1/", rp)
+	mux.HandleFunc("/flutter_service_worker.js", serviceWorkerPembersih)
 	mux.Handle("/", noStore(http.FileServer(http.Dir(*webDir))))
 
 	log.Printf("mobile-devproxy: %s → web %s, agent %s", *addr, *webDir, target)
@@ -88,6 +90,35 @@ func noStore(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-store, must-revalidate")
 		next.ServeHTTP(w, r)
 	})
+}
+
+// swPembersih menggantikan service worker bawaan Flutter dengan satu yang
+// MEMBUANG dirinya sendiri.
+//
+// `flutter build web` menghasilkan service worker yang menyajikan app dari
+// cache lebih dulu. Untuk app yang sudah terbit itu memang gunanya; untuk
+// alat ini ia berarti setiap build baru tidak terpakai, dan yang terlihat
+// adalah perubahan kode yang "tidak berpengaruh" — persis jebakan yang sudah
+// beberapa kali menghabiskan waktu di proyek ini, dan yang selama ini
+// dihindari diam-diam dengan menambahkan ?v=... ke URL.
+//
+// Membangun tanpa service worker saja TIDAK cukup: yang sudah terlanjur
+// terdaftar di browser tetap melayani dari cache-nya, dan tidak ada build
+// baru yang bisa menyentuhnya. Maka penggantinya dibuat aktif membersihkan —
+// menghapus seluruh cache, mencabut pendaftarannya, lalu memuat ulang tab
+// yang sedang terbuka.
+const swPembersih = `self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil((async () => {
+  for (const k of await caches.keys()) await caches.delete(k);
+  await self.registration.unregister();
+  for (const c of await self.clients.matchAll({type: 'window'})) c.navigate(c.url);
+})()));
+`
+
+func serviceWorkerPembersih(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store, must-revalidate")
+	_, _ = io.WriteString(w, swPembersih)
 }
 
 // logging mencatat tiap permintaan yang diteruskan ke agent.
