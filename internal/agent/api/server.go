@@ -30,7 +30,9 @@ package api
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -63,6 +65,14 @@ type Deps struct {
 // mengubah perilaku saat boot, yang bukan hal yang dikerjakan orang dari
 // layar 6 inci saat sedang buru-buru — dan tiap aksi yang ada di sini adalah
 // satu hal lagi yang bisa dilakukan HP yang hilang.
+// maxUnggahBytes membatasi satu penulisan berkas.
+//
+// Isinya dibaca ke memori sebelum dikirim lewat SFTP, jadi batas ini yang
+// menentukan berapa banyak memori yang bisa diminta satu permintaan dari
+// agent — yang berjalan di server produksi, berdampingan dengan layanan
+// yang sedang melayani orang.
+const maxUnggahBytes = 16 << 20
+
 var aksiServiceDiizinkan = map[string]bool{
 	"start":   true,
 	"stop":    true,
@@ -259,6 +269,83 @@ func Handler(d Deps) http.Handler {
 			"content": file.Content,
 			"size":    file.Size,
 		})
+	})))
+
+	// Menulis berkas: menyimpan hasil edit DAN mengunggah berkas baru.
+	//
+	// Satu endpoint untuk keduanya karena keduanya operasi yang sama —
+	// "tulis byte ini ke path ini" — dan badannya mentah, bukan JSON:
+	// berkas yang diunggah bisa biner, dan string JSON harus UTF-8 yang
+	// sah. Membungkusnya jadi JSON akan merusak gambar dan arsip tanpa
+	// satu pun pesan galat.
+	mux.Handle("PUT /v1/files/content", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if d.Controller == nil {
+			writeErr(w, http.StatusServiceUnavailable, "agent ini tidak bisa mengubah berkas")
+			return
+		}
+		path := r.URL.Query().Get("path")
+		if strings.TrimSpace(path) == "" {
+			writeErr(w, http.StatusBadRequest, "path wajib diisi")
+			return
+		}
+		body := http.MaxBytesReader(w, r.Body, maxUnggahBytes)
+		data, err := io.ReadAll(body)
+		if err != nil {
+			// MaxBytesReader memutus dengan galatnya sendiri saat batas
+			// terlampaui; disebut apa adanya supaya yang di HP tahu
+			// berkasnya kebesaran, bukan mengira jaringannya putus.
+			writeErr(w, http.StatusRequestEntityTooLarge,
+				"berkas terlalu besar — batasnya "+strconv.Itoa(maxUnggahBytes/1024/1024)+" MB")
+			return
+		}
+		if err := d.Controller.WriteFile(path, data); err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"path": path, "size": len(data)})
+	})))
+
+	mux.Handle("POST /v1/files/rename", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if d.Controller == nil {
+			writeErr(w, http.StatusServiceUnavailable, "agent ini tidak bisa mengubah berkas")
+			return
+		}
+		var body struct {
+			OldPath string `json:"oldPath"`
+			NewPath string `json:"newPath"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "body tidak valid")
+			return
+		}
+		if err := d.Controller.RenameFile(body.OldPath, body.NewPath); err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"path": body.NewPath})
+	})))
+
+	mux.Handle("POST /v1/files/delete", d.controlAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if d.Controller == nil {
+			writeErr(w, http.StatusServiceUnavailable, "agent ini tidak bisa mengubah berkas")
+			return
+		}
+		var body struct {
+			Paths []string `json:"paths"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "body tidak valid")
+			return
+		}
+		if len(body.Paths) == 0 {
+			writeErr(w, http.StatusBadRequest, "tidak ada yang dihapus")
+			return
+		}
+		if err := d.Controller.DeleteFiles(body.Paths); err != nil {
+			writeErr(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": len(body.Paths)})
 	})))
 
 	return mux

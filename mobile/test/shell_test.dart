@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:poinhost_mobile/src/api/agent_client.dart';
@@ -92,6 +94,35 @@ class _FakeAgent extends AgentClient {
     required String path,
   }) async =>
       FileText(path: path, content: '127.0.0.1 localhost', size: 19);
+
+  /// Perubahan berkas yang SAMPAI ke agent.
+  final List<String> tulisan = [];
+
+  @override
+  Future<void> writeFile({
+    required String deviceToken,
+    required String path,
+    required List<int> bytes,
+  }) async {
+    tulisan.add('write $path = ${utf8.decode(bytes)}');
+  }
+
+  @override
+  Future<void> renameFile({
+    required String deviceToken,
+    required String oldPath,
+    required String newPath,
+  }) async {
+    tulisan.add('rename $oldPath -> $newPath');
+  }
+
+  @override
+  Future<void> deleteFiles({
+    required String deviceToken,
+    required List<String> paths,
+  }) async {
+    tulisan.add('delete ${paths.join(',')}');
+  }
 
   @override
   void close() {}
@@ -574,6 +605,66 @@ void main() {
     w.dispose();
   });
 
+  // Menghapus HARUS lewat konfirmasi. Direktori dihapus rekursif, jadi satu
+  // salah tekan di layar sempit bisa menghapus banyak sekaligus.
+  testWidgets('hapus berkas minta konfirmasi dulu', (tester) async {
+    final agents = <_FakeAgent>[];
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => _snapshot('produksi'),
+      agents: agents,
+    );
+    await _bukaFiles(tester, w);
+
+    await tester.tap(find.byIcon(Icons.more_vert).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hapus'));
+    await tester.pumpAndSettle();
+
+    // Dialognya muncul, dan belum ada apa pun yang dikirim.
+    expect(find.textContaining('Seluruh isinya ikut terhapus'), findsOneWidget);
+    expect(agents.single.tulisan, isEmpty);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Batal'));
+    await tester.pumpAndSettle();
+    expect(agents.single.tulisan, isEmpty);
+
+    // Kali kedua, disetujui.
+    await tester.tap(find.byIcon(Icons.more_vert).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hapus'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Hapus'));
+    await tester.pumpAndSettle();
+    expect(agents.single.tulisan, ['delete /etc']);
+    w.dispose();
+  });
+
+  testWidgets('suntingan tersimpan sebagai isi baru berkas', (tester) async {
+    final agents = <_FakeAgent>[];
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => _snapshot('produksi'),
+      agents: agents,
+    );
+    await _bukaFiles(tester, w);
+
+    await tester.tap(find.text('etc'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('hosts'));
+    await tester.pumpAndSettle();
+    expect(find.text('127.0.0.1 localhost'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '10.0.0.1 baru');
+    await tester.tap(find.byIcon(Icons.check));
+    await tester.pumpAndSettle();
+
+    expect(agents.single.tulisan, ['write /etc/hosts = 10.0.0.1 baru']);
+    w.dispose();
+  });
+
   testWidgets('server bermasalah tetap punya panel beserta alasannya',
       (tester) async {
     final w = await _workspace(
@@ -652,5 +743,17 @@ Future<void> _bukaService(WidgetTester tester, Workspace w) async {
   await tester.ensureVisible(find.text('Service'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Service'));
+  await tester.pumpAndSettle();
+}
+
+/// Membuka Server -> menu -> Files.
+Future<void> _bukaFiles(WidgetTester tester, Workspace w) async {
+  await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('produksi'));
+  await tester.pumpAndSettle();
+  await tester.ensureVisible(find.text('Files'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Files'));
   await tester.pumpAndSettle();
 }

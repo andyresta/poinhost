@@ -201,3 +201,58 @@ func (b *Backend) FileContent(path string) (FileText, error) {
 	}
 	return FileText{Path: res.Path, Content: res.Content, Size: res.Size}, nil
 }
+
+// WriteFile menimpa isi satu berkas di mesin ini.
+func (b *Backend) WriteFile(path string, data []byte) error {
+	ctx, cancel, err := b.konteksFile()
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	return b.files.WriteFile(ctx, files.WriteFileRequest{
+		ServerID: b.selfID,
+		Path:     path,
+		Content:  string(data),
+	})
+}
+
+// RenameFile memindahkan satu berkas atau direktori.
+func (b *Backend) RenameFile(oldPath, newPath string) error {
+	ctx, cancel, err := b.konteksFile()
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	return b.files.Rename(ctx, files.RenameRequest{
+		ServerID: b.selfID,
+		OldPath:  oldPath,
+		NewPath:  newPath,
+	})
+}
+
+// DeleteFiles menghapus berkas atau direktori.
+func (b *Backend) DeleteFiles(paths []string) error {
+	ctx, cancel, err := b.konteksFile()
+	if err != nil {
+		return err
+	}
+	defer cancel()
+	return b.files.Delete(ctx, files.DeleteRequest{
+		ServerID: b.selfID,
+		Paths:    paths,
+	})
+}
+
+// konteksFile menyiapkan konteks bertenggat untuk satu operasi berkas, dan
+// menolak lebih dulu kalau agent belum mengelola mesinnya sendiri.
+//
+// Tenggatnya lebih longgar daripada operasi baca: menghapus direktori besar
+// dan mengunggah berkas lewat SFTP sama-sama bisa makan waktu, dan memutus
+// di tengah penulisan justru meninggalkan berkas setengah jadi.
+func (b *Backend) konteksFile() (context.Context, context.CancelFunc, error) {
+	if b.selfID == "" || b.files == nil {
+		return nil, nil, errBelumKelolaDiri
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	return ctx, cancel, nil
+}

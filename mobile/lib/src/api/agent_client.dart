@@ -107,6 +107,48 @@ class AgentClient {
     return FileText.fromJson(json);
   }
 
+  /// Menimpa isi satu berkas, membuatnya kalau belum ada.
+  ///
+  /// Dipakai untuk menyimpan hasil edit DAN untuk mengunggah: keduanya
+  /// operasi yang sama, "tulis bita ini ke path ini".
+  Future<void> writeFile({
+    required String deviceToken,
+    required String path,
+    required List<int> bytes,
+  }) async {
+    await _send(
+      'PUT',
+      '/v1/files/content?path=${Uri.encodeQueryComponent(path)}',
+      token: deviceToken,
+      rawBody: bytes,
+    );
+  }
+
+  Future<void> renameFile({
+    required String deviceToken,
+    required String oldPath,
+    required String newPath,
+  }) async {
+    await _send(
+      'POST',
+      '/v1/files/rename',
+      token: deviceToken,
+      body: {'oldPath': oldPath, 'newPath': newPath},
+    );
+  }
+
+  Future<void> deleteFiles({
+    required String deviceToken,
+    required List<String> paths,
+  }) async {
+    await _send(
+      'POST',
+      '/v1/files/delete',
+      token: deviceToken,
+      body: {'paths': paths},
+    );
+  }
+
   /// Memeriksa agent hidup, tanpa token.
   ///
   /// Berguna di layar pendaftaran: membedakan "URL-nya salah" dari "token
@@ -127,6 +169,7 @@ class AgentClient {
     String path, {
     String? token,
     Map<String, Object?>? body,
+    List<int>? rawBody,
   }) async {
     final request = http.Request(method, baseUrl.resolve(path));
     if (token != null && token.isNotEmpty) {
@@ -135,6 +178,13 @@ class AgentClient {
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';
       request.body = jsonEncode(body);
+    }
+    // Bita mentah, bukan JSON: berkas yang diunggah bisa biner, dan string
+    // JSON harus UTF-8 yang sah — membungkusnya akan merusak gambar dan
+    // arsip tanpa satu pun pesan galat.
+    if (rawBody != null) {
+      request.headers['Content-Type'] = 'application/octet-stream';
+      request.bodyBytes = rawBody;
     }
 
     http.Response response;

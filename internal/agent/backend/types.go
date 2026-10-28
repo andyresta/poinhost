@@ -118,4 +118,19 @@ type Controller interface {
 	// ServiceAction menjalankan satu aksi pada satu unit di mesin ini.
 	// Aksi yang diizinkan ditentukan pemanggilnya, bukan di sini.
 	ServiceAction(name, action string) (ServiceInfo, error)
+
+	// WriteFile menimpa isi satu berkas, membuatnya kalau belum ada.
+	//
+	// Satu operasi untuk dua hal yang di layar terasa berbeda: menyimpan
+	// hasil edit dan mengunggah berkas baru sama-sama "tulis byte ini ke
+	// path ini". Memisahkannya jadi dua jalur hanya akan menghasilkan dua
+	// tempat yang bisa berbeda perlakuannya terhadap berkas yang sudah ada.
+	WriteFile(path string, data []byte) error
+
+	// RenameFile memindahkan satu berkas atau direktori.
+	RenameFile(oldPath, newPath string) error
+
+	// DeleteFiles menghapus berkas atau direktori. Direktori dihapus
+	// REKURSIF, mengikuti modul Files di app desktop.
+	DeleteFiles(paths []string) error
 }

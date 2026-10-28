@@ -145,6 +145,23 @@ class ServerConnection extends ChangeNotifier {
   Future<FileText> fileContent(String path) =>
       _client.fileContent(deviceToken: credentials.deviceToken, path: path);
 
+  Future<void> writeFile(String path, List<int> bytes) =>
+      _client.writeFile(
+        deviceToken: credentials.deviceToken,
+        path: path,
+        bytes: bytes,
+      );
+
+  Future<void> renameFile(String oldPath, String newPath) =>
+      _client.renameFile(
+        deviceToken: credentials.deviceToken,
+        oldPath: oldPath,
+        newPath: newPath,
+      );
+
+  Future<void> deleteFile(String path) =>
+      _client.deleteFiles(deviceToken: credentials.deviceToken, paths: [path]);
+
   void close() => _client.close();
 }
 

@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -52,6 +53,21 @@ type fakeController struct{ dipanggil []string }
 func (c *fakeController) ServiceAction(name, action string) (backend.ServiceInfo, error) {
 	c.dipanggil = append(c.dipanggil, action+" "+name)
 	return backend.ServiceInfo{Name: name, ActiveState: "active", Running: true}, nil
+}
+
+func (c *fakeController) WriteFile(path string, data []byte) error {
+	c.dipanggil = append(c.dipanggil, fmt.Sprintf("write %s (%d bita)", path, len(data)))
+	return nil
+}
+
+func (c *fakeController) RenameFile(oldPath, newPath string) error {
+	c.dipanggil = append(c.dipanggil, "rename "+oldPath+" -> "+newPath)
+	return nil
+}
+
+func (c *fakeController) DeleteFiles(paths []string) error {
+	c.dipanggil = append(c.dipanggil, "delete "+strings.Join(paths, ","))
+	return nil
 }
 
 func contoh(t *testing.T) (Deps, *devices.Store) {
@@ -476,5 +492,76 @@ func TestFiles_PerluIzinKendali(t *testing.T) {
 	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/control", "", "")
 	if rec := minta(t, pub, http.MethodGet, "/v1/files?path=/etc", token, ""); rec.Code != http.StatusOK {
 		t.Fatalf("dengan izin kendali = %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Menulis, memindahkan, dan menghapus berkas SEMUANYA di balik izin
+// kendali — dan yang diperiksa bukan kode responsnya, melainkan bahwa
+// permintaannya tidak pernah sampai ke controller.
+func TestTulisBerkas_PerluIzinKendali(t *testing.T) {
+	d, store := contoh(t)
+	ctl := &fakeController{}
+	d.Controller = ctl
+	pub := Handler(d)
+	admin := AdminHandler(AdminDeps{Devices: store})
+
+	id, token := daftar(t, pub, "HP Andy")
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/approve", "", "")
+
+	type kasus struct {
+		metode, path, body string
+	}
+	semua := []kasus{
+		{http.MethodPut, "/v1/files/content?path=/etc/passwd", "x"},
+		{http.MethodPost, "/v1/files/rename", `{"oldPath":"/a","newPath":"/b"}`},
+		{http.MethodPost, "/v1/files/delete", `{"paths":["/etc"]}`},
+	}
+
+	for _, k := range semua {
+		rec := minta(t, pub, k.metode, k.path, token, k.body)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("%s %s tanpa izin = %d, mau 403", k.metode, k.path, rec.Code)
+		}
+	}
+	if len(ctl.dipanggil) != 0 {
+		t.Fatalf("permintaan tetap sampai ke controller: %v", ctl.dipanggil)
+	}
+
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/control", "", "")
+	for _, k := range semua {
+		if rec := minta(t, pub, k.metode, k.path, token, k.body); rec.Code != http.StatusOK {
+			t.Errorf("%s %s dengan izin = %d: %s", k.metode, k.path, rec.Code, rec.Body.String())
+		}
+	}
+	if len(ctl.dipanggil) != 3 {
+		t.Fatalf("yang sampai ke controller = %v", ctl.dipanggil)
+	}
+	// Badan permintaan dikirim MENTAH, bukan dibungkus JSON: berkas yang
+	// diunggah bisa biner, dan string JSON harus UTF-8 yang sah.
+	if ctl.dipanggil[0] != "write /etc/passwd (1 bita)" {
+		t.Errorf("penulisan = %q", ctl.dipanggil[0])
+	}
+}
+
+// Menghapus tanpa menyebut apa pun ditolak sebelum menyentuh berkas.
+// Daftar kosong yang lolos ke modul Files adalah cara paling sunyi untuk
+// menjalankan perintah hapus dengan argumen yang tidak diduga.
+func TestHapusBerkas_DaftarKosongDitolak(t *testing.T) {
+	d, store := contoh(t)
+	ctl := &fakeController{}
+	d.Controller = ctl
+	pub := Handler(d)
+	admin := AdminHandler(AdminDeps{Devices: store})
+
+	id, token := daftar(t, pub, "HP Andy")
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/approve", "", "")
+	minta(t, admin, http.MethodPost, "/admin/devices/"+id+"/control", "", "")
+
+	rec := minta(t, pub, http.MethodPost, "/v1/files/delete", token, `{"paths":[]}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("daftar kosong = %d, mau 400", rec.Code)
+	}
+	if len(ctl.dipanggil) != 0 {
+		t.Fatalf("tetap sampai ke controller: %v", ctl.dipanggil)
 	}
 }

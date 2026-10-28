@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../api/agent_exception.dart';
@@ -5,11 +8,11 @@ import '../api/models.dart';
 import '../format.dart';
 import '../session.dart';
 
-/// Menjelajah berkas di server.
+/// Menjelajah berkas di server, dan mengubahnya.
 ///
-/// Hanya baca untuk saat ini. Jangkauannya TIDAK dibatasi ke folder tertentu,
-/// mengikuti modul Files di app desktop — yang membatasinya adalah izin
-/// kendali di sisi agent, bukan layar ini.
+/// Jangkauannya TIDAK dibatasi ke folder tertentu, mengikuti modul Files di
+/// app desktop — yang membatasinya adalah izin kendali di sisi agent, bukan
+/// layar ini.
 class FilesScreen extends StatefulWidget {
   const FilesScreen({super.key, required this.connection, this.path = '/'});
 
@@ -24,6 +27,9 @@ class _FilesScreenState extends State<FilesScreen> {
   FileListing? _listing;
   String? _error;
   bool _loading = true;
+
+  /// Path yang operasinya sedang berjalan, kalau ada.
+  String? _busy;
 
   @override
   void initState() {
@@ -61,10 +67,144 @@ class _FilesScreenState extends State<FilesScreen> {
     );
   }
 
+  /// Menjalankan satu operasi, lalu memuat ulang folder.
+  ///
+  /// Dimuat ulang dari server, bukan ditebak di sisi HP: nama yang bentrok,
+  /// izin yang menolak, dan berkas yang ternyata sudah berubah hanya
+  /// terlihat dari jawaban server.
+  Future<void> _jalankan(String path, Future<void> Function() op) async {
+    setState(() => _busy = path);
+    try {
+      await op();
+      await _muat();
+    } on AgentException catch (e) {
+      _pesan(e.message);
+    } catch (e) {
+      _pesan('Gagal: $e');
+    } finally {
+      if (mounted) setState(() => _busy = null);
+    }
+  }
+
+  void _pesan(String teks) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(teks)));
+  }
+
+  Future<void> _rename(FileEntry e) async {
+    final c = TextEditingController(text: e.name);
+    final nama = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Ganti nama'),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Nama baru'),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(c.text),
+            child: const Text('Ganti'),
+          ),
+        ],
+      ),
+    );
+    final baru = nama?.trim();
+    if (baru == null || baru.isEmpty || baru == e.name) return;
+    if (baru.contains('/')) {
+      _pesan('Nama tidak boleh mengandung "/".');
+      return;
+    }
+    await _jalankan(
+      e.path,
+      () => widget.connection.renameFile(e.path, _gabung(widget.path, baru)),
+    );
+  }
+
+  Future<void> _hapus(FileEntry e) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Hapus ${e.name}?'),
+        // Konsekuensinya ditulis di dialog, bukan sebagai peringatan tetap
+        // di layar: direktori dihapus REKURSIF, dan itu satu-satunya hal
+        // yang perlu diketahui tepat sebelum menekan Hapus.
+        content: Text(
+          e.isDir
+              ? 'Seluruh isinya ikut terhapus, dan tidak bisa dibatalkan.'
+              : 'Tidak bisa dibatalkan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _jalankan(e.path, () => widget.connection.deleteFile(e.path));
+  }
+
+  Future<void> _unggah() async {
+    final dipilih = await FilePicker.pickFiles();
+    final berkas = dipilih.firstOrNull;
+    if (berkas == null) return;
+
+    // Isinya dibaca ke memori karena itulah yang dikirim ke agent. Batas 16
+    // MB di sisi agent yang menjaganya tetap wajar; di sini tidak ada
+    // salinan kedua.
+    final bytes = await berkas.readAsBytes();
+    if (!mounted) return;
+
+    final tujuan = _gabung(widget.path, berkas.name);
+    final bentrok =
+        _listing?.entries.any((e) => e.name == berkas.name) ?? false;
+    if (bentrok) {
+      // Menimpa diam-diam adalah cara orang kehilangan berkas tanpa pernah
+      // tahu kapan.
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('Timpa ${berkas.name}?'),
+          content: const Text('Berkas dengan nama itu sudah ada di sini.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Timpa'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+
+    await _jalankan(tujuan, () => widget.connection.writeFile(tujuan, bytes));
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final listing = _listing;
+    final bisaUbah = listing != null && _error == null;
 
     return Scaffold(
       appBar: AppBar(
@@ -79,6 +219,12 @@ class _FilesScreenState extends State<FilesScreen> {
           textDirection: TextDirection.rtl,
         ),
         actions: [
+          if (bisaUbah)
+            IconButton(
+              onPressed: _busy != null ? null : _unggah,
+              icon: const Icon(Icons.upload_file_outlined),
+              tooltip: 'Unggah ke folder ini',
+            ),
           IconButton(
             onPressed: _loading ? null : _muat,
             icon: _loading
@@ -129,10 +275,20 @@ class _FilesScreenState extends State<FilesScreen> {
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
                             ),
-                            trailing: e.isDir
-                                ? const Icon(Icons.chevron_right, size: 18)
-                                : null,
-                            onTap: () => _buka(e),
+                            trailing: _busy == e.path
+                                ? const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : _MenuEntri(
+                                    enabled: _busy == null,
+                                    onRename: () => _rename(e),
+                                    onDelete: () => _hapus(e),
+                                  ),
+                            onTap: _busy == null ? () => _buka(e) : null,
                           );
                         },
                       ),
@@ -141,7 +297,47 @@ class _FilesScreenState extends State<FilesScreen> {
   }
 }
 
-/// Isi satu file teks.
+/// Menu per baris.
+///
+/// Selalu terlihat, bukan muncul saat ditahan lama: aksi yang hanya ada
+/// setelah gestur tersembunyi sama saja dengan tidak ada bagi orang yang
+/// tidak tahu gesturnya.
+class _MenuEntri extends StatelessWidget {
+  const _MenuEntri({
+    required this.enabled,
+    required this.onRename,
+    required this.onDelete,
+  });
+
+  final bool enabled;
+  final VoidCallback onRename;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PopupMenuButton<String>(
+      enabled: enabled,
+      icon: const Icon(Icons.more_vert, size: 20),
+      onSelected: (v) => v == 'rename' ? onRename() : onDelete(),
+      itemBuilder: (_) => [
+        const PopupMenuItem(value: 'rename', child: Text('Ganti nama')),
+        PopupMenuItem(
+          value: 'delete',
+          child: Text(
+            'Hapus',
+            style: TextStyle(color: theme.colorScheme.error),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _gabung(String dir, String nama) =>
+    dir == '/' ? '/$nama' : '$dir/$nama';
+
+/// Isi satu file teks, dan penyuntingnya.
 class _FileViewScreen extends StatefulWidget {
   const _FileViewScreen({required this.connection, required this.entry});
 
@@ -153,9 +349,18 @@ class _FileViewScreen extends StatefulWidget {
 }
 
 class _FileViewScreenState extends State<_FileViewScreen> {
-  String? _isi;
+  final _teks = TextEditingController();
+  String? _asli;
   String? _error;
   bool _loading = true;
+  bool _menyunting = false;
+  bool _menyimpan = false;
+
+  @override
+  void dispose() {
+    _teks.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -171,7 +376,10 @@ class _FileViewScreenState extends State<_FileViewScreen> {
     try {
       final f = await widget.connection.fileContent(widget.entry.path);
       if (!mounted) return;
-      setState(() => _isi = f.content);
+      setState(() {
+        _asli = f.content;
+        _teks.text = f.content;
+      });
     } on AgentException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
@@ -183,38 +391,144 @@ class _FileViewScreenState extends State<_FileViewScreen> {
     }
   }
 
+  Future<void> _simpan() async {
+    setState(() => _menyimpan = true);
+    try {
+      await widget.connection.writeFile(
+        widget.entry.path,
+        utf8.encode(_teks.text),
+      );
+      if (!mounted) return;
+      setState(() {
+        _asli = _teks.text;
+        _menyunting = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tersimpan.')),
+      );
+    } on AgentException catch (e) {
+      _pesan(e.message);
+    } catch (e) {
+      _pesan('Gagal menyimpan: $e');
+    } finally {
+      if (mounted) setState(() => _menyimpan = false);
+    }
+  }
+
+  void _pesan(String teks) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(teks)));
+  }
+
+  Future<void> _batal() async {
+    if (_teks.text == _asli) {
+      setState(() => _menyunting = false);
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Buang perubahan?'),
+        content: const Text('Suntingan yang belum disimpan akan hilang.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Lanjut menyunting'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Buang'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() {
+      _teks.text = _asli ?? '';
+      _menyunting = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final gaya = theme.textTheme.bodySmall?.copyWith(
+      fontFamily: 'monospace',
+      height: 1.5,
+    );
+
     return Scaffold(
       appBar: AppBar(
+        leading: _menyunting
+            ? IconButton(
+                onPressed: _menyimpan ? null : _batal,
+                icon: const Icon(Icons.close),
+                tooltip: 'Batal',
+              )
+            : null,
         title: Text(
           widget.entry.name,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
+        actions: [
+          if (_error == null && !_loading)
+            _menyunting
+                ? IconButton(
+                    onPressed: _menyimpan ? null : _simpan,
+                    icon: _menyimpan
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.check),
+                    tooltip: 'Simpan',
+                  )
+                : IconButton(
+                    onPressed: () => setState(() => _menyunting = true),
+                    icon: const Icon(Icons.edit_outlined),
+                    tooltip: 'Sunting',
+                  ),
+          const SizedBox(width: 4),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? _Pesan(text: _error!, danger: true, onRetry: _muat)
-              : SingleChildScrollView(
-                  // Dua arah: berkas config penuh baris panjang, dan
-                  // membungkusnya membuat indentasi — yang di config justru
-                  // menyampaikan struktur — hilang sama sekali.
-                  scrollDirection: Axis.vertical,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.all(16),
-                    child: SelectableText(
-                      _isi ?? '',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        fontFamily: 'monospace',
-                        height: 1.5,
+              : _menyunting
+                  // Saat menyunting teksnya MEMBUNGKUS, walau saat dibaca
+                  // tidak: kursor yang hanyut ke kanan di luar layar membuat
+                  // menyunting di HP mustahil, dan itu kerugian yang lebih
+                  // besar daripada indentasi yang bergeser sementara.
+                  ? Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: TextField(
+                        controller: _teks,
+                        maxLines: null,
+                        expands: true,
+                        textAlignVertical: TextAlignVertical.top,
+                        keyboardType: TextInputType.multiline,
+                        style: gaya,
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          filled: false,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      // Dua arah: berkas config penuh baris panjang, dan
+                      // membungkusnya membuat indentasi — yang di config
+                      // justru menyampaikan struktur — hilang sama sekali.
+                      scrollDirection: Axis.vertical,
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.all(16),
+                        child: SelectableText(_asli ?? '', style: gaya),
                       ),
                     ),
-                  ),
-                ),
     );
   }
 }
