@@ -330,6 +330,53 @@ void main() {
     w.dispose();
   });
 
+  // Menekan panel server membuka MENU modulnya, bukan langsung metrik.
+  // Modul yang belum ada tetap tampil — menyembunyikannya membuat menunya
+  // berubah bentuk tiap rilis — dan tetap menjawab saat ditekan.
+  testWidgets('panel server membuka menu modul', (tester) async {
+    final w = await _workspace(
+      [_creds('a', 'Prod')],
+      (_) async => _snapshot('produksi'),
+    );
+
+    await tester.pumpWidget(PoinhostApp(workspace: w, settings: _settings()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('produksi'));
+    await tester.pumpAndSettle();
+
+    for (final label in [
+      'Metrik',
+      'Website',
+      'Files',
+      'Terminal',
+      'Service',
+      'Firewall',
+      'Docker',
+    ]) {
+      expect(find.text(label), findsOneWidget, reason: 'modul $label');
+    }
+
+    // Yang belum ada menjawab, bukan diam.
+    await tester.ensureVisible(find.text('Docker'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Docker'));
+    await tester.pumpAndSettle();
+    expect(find.text('Belum tersedia di aplikasi mobile.'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // Dan Metrik membuka angkanya.
+    await tester.ensureVisible(find.text('Metrik'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Metrik'));
+    await tester.pumpAndSettle();
+    expect(find.text('Hostname'), findsOneWidget);
+    expect(find.text('prod'), findsOneWidget);
+    w.dispose();
+  });
+
   // Server yang BELUM bisa dibaca tetap menempati kartunya dengan alasannya
   // tertulis. Menyembunyikannya sampai sehat berarti server yang mati
   // menghilang dari layar, justru saat paling perlu terlihat.

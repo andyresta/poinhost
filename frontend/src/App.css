@@ -2618,10 +2618,19 @@ button svg {
 /* Kode pairing dibaca dari layar laptop lalu diketik ulang di HP, jadi dibuat
    besar dan berjarak — bukan sekadar <code> sebaris. */
 .agent-pairing__code {
-  padding: 6px 12px;
-  font-size: 18px;
-  letter-spacing: 0.12em;
+  /* Token pendaftaran 64 karakter hex TIDAK muat satu baris di panel mana
+     pun, dan hex tidak punya titik putus alami — tanpa break-all browser
+     memperlakukannya sebagai satu kata raksasa, meluber keluar kotak, lalu
+     terpotong. Yang terbaca user cuma sebagian token, tanpa tanda bahwa ada
+     sisanya. */
+  flex: 1 1 280px;
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  line-height: 1.7;
   font-weight: 600;
+  word-break: break-all;
   background: var(--bg);
   border: 1px dashed var(--accent);
   border-radius: 6px;

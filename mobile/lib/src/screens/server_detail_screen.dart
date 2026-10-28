@@ -1,11 +1,34 @@
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
-import '../format.dart';
 import '../session.dart';
 import '../theme.dart';
+import 'server_metrics_screen.dart';
 
-/// Satu server, dibuka dari panelnya di grid.
+/// Modul yang bisa dibuka untuk satu server.
+///
+/// Daftarnya mengikuti poinhost di desktop, termasuk yang belum ada di sini.
+/// Menyembunyikan yang belum jadi akan membuat menunya berubah bentuk tiap
+/// rilis — dan tidak memberi tahu apa pun tentang apa yang sedang dibangun.
+enum ServerModule {
+  metrik('Metrik', Icons.speed_outlined, siap: true),
+  website('Website', Icons.language_outlined),
+  files('Files', Icons.folder_outlined),
+  terminal('Terminal', Icons.terminal_outlined),
+  service('Service', Icons.manage_accounts_outlined),
+  firewall('Firewall', Icons.shield_outlined),
+  docker('Docker', Icons.inventory_2_outlined);
+
+  const ServerModule(this.label, this.icon, {this.siap = false});
+
+  final String label;
+  final IconData icon;
+
+  /// Sudah bisa dibuka. Yang belum tetap tampil, dalam keadaan redup.
+  final bool siap;
+}
+
+/// Menu satu server, dibuka dari panelnya di grid.
 class ServerDetailScreen extends StatelessWidget {
   const ServerDetailScreen({
     super.key,
@@ -42,34 +65,25 @@ class ServerDetailScreen extends StatelessWidget {
     if (context.mounted) Navigator.of(context).pop();
   }
 
+  void _open(BuildContext context, ServerModule module) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => module == ServerModule.metrik
+            ? ServerMetricsScreen(connection: connection)
+            : _BelumAdaScreen(module: module),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: connection,
       builder: (context, _) {
-        final theme = Theme.of(context);
-        final snapshot = connection.snapshot;
-        final metrics = snapshot?.metrics;
-
         return Scaffold(
           appBar: AppBar(
             title: Text(connection.displayName),
             actions: [
-              // Ikon berganti jadi spinner selama permintaannya berjalan.
-              // Tanpa itu menekan Segarkan tidak mengubah apa pun di layar
-              // sampai jawabannya tiba, dan di jaringan seluler jeda itu
-              // cukup panjang untuk terbaca sebagai tombol yang rusak.
-              IconButton(
-                onPressed: connection.isBusy ? null : connection.refresh,
-                icon: connection.isBusy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh),
-                tooltip: 'Segarkan',
-              ),
               IconButton(
                 onPressed: () => _remove(context),
                 icon: const Icon(Icons.delete_outline),
@@ -78,75 +92,24 @@ class ServerDetailScreen extends StatelessWidget {
               const SizedBox(width: 4),
             ],
           ),
-          body: RefreshIndicator(
-            onRefresh: connection.refresh,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              children: [
-                _StatusLine(connection: connection),
-                const SizedBox(height: 16),
-
-                // Pesan TIDAK menggantikan angka yang sudah tergambar.
-                // Jaringan seluler putus-sambung terus; mengosongkan layar
-                // tiap kali satu permintaan gagal membuatnya berkedip.
-                if (connection.message != null)
-                  _Note(text: connection.message!, danger: _danger(connection)),
-
-                if (metrics == null || !metrics.collected)
-                  const _Note(text: 'Metrik belum terbaca.')
-                else ...[
-                  if (metrics.stale)
-                    const _Note(text: 'Angka terakhir, belum diperbarui.'),
-                  if (metrics.error != null) _Note(text: metrics.error!, danger: true),
-                  _Gauge(
-                    label: 'CPU',
-                    value: '${metrics.cpuUsedPct.toStringAsFixed(1)}%',
-                    detail: '${metrics.cpuCores} core',
-                    fraction: metrics.cpuUsedPct / 100,
-                    faded: metrics.stale,
-                  ),
-                  _Gauge(
-                    label: 'Memori',
-                    value: gbPair(
-                      metrics.memUsedMB / 1024,
-                      metrics.memTotalMB / 1024,
-                    ),
-                    fraction: ratio(metrics.memUsedMB, metrics.memTotalMB),
-                    faded: metrics.stale,
-                  ),
-                  _Gauge(
-                    label: 'Disk',
-                    value: gbPair(metrics.diskUsedGB, metrics.diskTotalGB),
-                    fraction: ratio(metrics.diskUsedGB, metrics.diskTotalGB),
-                    faded: metrics.stale,
-                  ),
-                  const SizedBox(height: 12),
-                  _Row(label: 'OS', value: metrics.osName),
-                  _Row(label: 'Hostname', value: metrics.hostname),
-                  _Row(
-                    label: 'Uptime',
-                    value: formatUptime(metrics.uptimeSeconds, long: true),
-                  ),
+          body: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
+            children: [
+              _StatusLine(connection: connection),
+              const SizedBox(height: 18),
+              GridView.count(
+                crossAxisCount: 3,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 10,
+                crossAxisSpacing: 10,
+                childAspectRatio: 1,
+                children: [
+                  for (final m in ServerModule.values)
+                    _ModuleTile(module: m, onTap: () => _open(context, m)),
                 ],
-
-                const Divider(height: 36),
-                _Row(label: 'Alamat', value: connection.credentials.baseUrl.host),
-                _Row(label: 'Agent', value: snapshot?.agentVersion ?? '—'),
-                if (snapshot != null)
-                  _Row(
-                    label: 'Agent uptime',
-                    value: formatUptime(snapshot.agentUptimeSeconds, long: true),
-                  ),
-                const SizedBox(height: 20),
-                Text(
-                  'Hanya baca. Aplikasi ini menampilkan keadaan server, tidak '
-                  'mengubahnya.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         );
       },
@@ -154,15 +117,87 @@ class ServerDetailScreen extends StatelessWidget {
   }
 }
 
-bool _danger(ServerConnection c) => switch (c.phase) {
-      ServerPhase.revoked ||
-      ServerPhase.rejected ||
-      ServerPhase.unreachable ||
-      ServerPhase.notReady =>
-        true,
-      _ => false,
-    };
+/// Satu kotak modul.
+///
+/// Yang belum siap tetap bisa ditekan, dan menjawab. Kotak redup yang tidak
+/// melakukan apa pun saat ditekan terbaca sebagai aplikasi yang rusak, bukan
+/// sebagai modul yang belum dibuat.
+class _ModuleTile extends StatelessWidget {
+  const _ModuleTile({required this.module, required this.onTap});
 
+  final ServerModule module;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final warna = module.siap
+        ? theme.colorScheme.onSurface
+        : theme.colorScheme.onSurfaceVariant;
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Opacity(
+          opacity: module.siap ? 1 : 0.55,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(module.icon, size: 26, color: warna),
+              const SizedBox(height: 9),
+              Text(
+                module.label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(color: warna),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BelumAdaScreen extends StatelessWidget {
+  const _BelumAdaScreen({required this.module});
+
+  final ServerModule module;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(module.label)),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                module.icon,
+                size: 44,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Belum tersedia di aplikasi mobile.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Keadaan server, satu baris, di atas menunya.
 class _StatusLine extends StatelessWidget {
   const _StatusLine({required this.connection});
 
@@ -205,122 +240,6 @@ class _StatusLine extends StatelessWidget {
         const Spacer(),
         Text(connection.host, style: theme.textTheme.bodySmall),
       ],
-    );
-  }
-}
-
-class _Note extends StatelessWidget {
-  const _Note({required this.text, this.danger = false});
-
-  final String text;
-  final bool danger;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: danger
-            ? theme.colorScheme.errorContainer
-            : theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        text,
-        style: theme.textTheme.bodySmall?.copyWith(
-          color: danger ? theme.colorScheme.onErrorContainer : null,
-        ),
-      ),
-    );
-  }
-}
-
-class _Gauge extends StatelessWidget {
-  const _Gauge({
-    required this.label,
-    required this.value,
-    required this.fraction,
-    required this.faded,
-    this.detail,
-  });
-
-  final String label;
-  final String value;
-  final String? detail;
-  final double fraction;
-  final bool faded;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Opacity(
-      opacity: faded ? 0.5 : 1,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(label, style: theme.textTheme.labelLarge),
-                const Spacer(),
-                Text(value, style: theme.textTheme.bodyMedium),
-                if (detail != null) ...[
-                  const SizedBox(width: 8),
-                  Text(detail!, style: theme.textTheme.bodySmall),
-                ],
-              ],
-            ),
-            const SizedBox(height: 7),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: fraction.clamp(0.0, 1.0),
-                minHeight: 7,
-                backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
-  const _Row({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 110,
-            child: Text(
-              label,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value.isEmpty ? '—' : value,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
