@@ -2,7 +2,6 @@ package website
 
 import (
 	"strings"
-	"time"
 
 	"github.com/andyresta/poinhost/internal/core/pkgfail"
 )
@@ -17,7 +16,7 @@ import (
 func (s *Service) periksaJaringan(access *websiteAccess, distro distroInfo) error {
 	host := pkgfail.HostRepo(distro.PackageManager, strings.ToLower(strings.TrimSpace(distro.ID)))
 	return pkgfail.Periksa(host, func(script string) (int, error) {
-		res, err := s.run(access, script, 20*time.Second)
+		res, err := s.run(access, script, pkgfail.BatasPeriksa)
 		if err != nil || res == nil {
 			return 0, errPeriksaTidakSelesai
 		}

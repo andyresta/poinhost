@@ -18,7 +18,12 @@ func jalankanPeriksa(t *testing.T, getentPalsu, hostRepo string) int {
 	if err != nil {
 		t.Skip("bash tidak tersedia")
 	}
-	cmd := exec.Command(sh, "-c", getentPalsu+"\n"+skripPeriksa(hostRepo))
+	// timeout DIPALSUKAN sebagai fungsi juga. Di server ia menjalankan biner
+	// getent, jadi tanpa shim ini stub getent tidak pernah terpakai — dan
+	// tes ini akan diam-diam menguji resolver mesin yang menjalankannya,
+	// bukan skripnya.
+	const shimTimeout = "timeout() { shift; \"$@\"; }\n"
+	cmd := exec.Command(sh, "-c", shimTimeout+getentPalsu+"\n"+skripPeriksa(hostRepo))
 	if err := cmd.Run(); err != nil {
 		var ee *exec.ExitError
 		if errors.As(err, &ee) {
@@ -69,7 +74,7 @@ func TestSkripPeriksa_Perilaku(t *testing.T) {
 			// Menolak memasang karena alat pemeriksanya hilang akan
 			// menghalangi pemasangan yang sebenarnya sehat.
 			nama:   "getent tidak ada sama sekali",
-			getent: `unset -f getent 2>/dev/null; PATH=/nonexistent-poinhost`,
+			getent: `unset -f getent timeout 2>/dev/null; PATH=/nonexistent-poinhost`,
 			host:   rocky,
 			mau:    periksaOK,
 		},

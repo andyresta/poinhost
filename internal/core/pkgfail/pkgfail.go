@@ -16,6 +16,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Diagnosa adalah satu penjelasan beserta perintah pemeriksaannya.
@@ -157,6 +158,20 @@ func Pesan(exitCode int, baris []string) string {
 // pemilik server juga berbeda: resolver yang mati diperbaiki di
 // /etc/resolv.conf, sedangkan satu host repo yang tidak terjawab sementara
 // resolvernya sehat menunjuk ke penyaringan atau konfigurasi repo.
+// detikPerCarian membatasi satu pencarian nama.
+//
+// Cukup longgar untuk resolver yang sehat tapi lambat, cukup ketat supaya
+// seluruh pemeriksaan selesai jauh di dalam batas waktu pemanggilnya
+// walaupun SEMUA namanya gagal.
+const detikPerCarian = 3
+
+// BatasPeriksa adalah batas waktu yang harus diberikan pemanggil.
+//
+// Empat pencarian kali detikPerCarian, plus kelonggaran untuk SSH dan
+// sudo. Pemanggil yang memberi lebih sedikit akan membuat pemeriksaannya
+// kehabisan waktu persis saat ia paling dibutuhkan.
+const BatasPeriksa = 30 * time.Second
+
 const (
 	periksaOK        = 0
 	periksaDNSMati   = 1
@@ -174,15 +189,29 @@ const (
 // menuduh DNS mati padahal yang diblokir cuma host itu. Tahap kedua memakai
 // nama yang BENAR-BENAR dibutuhkan instalasi ini.
 func skripPeriksa(hostRepo string) string {
+	// Tiap pencarian DIBATASI waktunya.
+	//
+	// resolv.conf bawaan memakai timeout:5 attempts:2, jadi SATU nama yang
+	// gagal bisa menghabiskan sepuluh detik — dan pemeriksaan ini mencoba
+	// beberapa. Tanpa batas, pemeriksaannya sendiri kehabisan waktu justru
+	// saat resolvernya mati, lalu dianggap lulus: dikalahkan tepat oleh
+	// keadaan yang ia cari.
 	return `command -v getent >/dev/null 2>&1 || exit ` + itoa(periksaOK) + `
+_cari() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout ` + itoa(detikPerCarian) + ` getent hosts "$1" >/dev/null 2>&1
+  else
+    getent hosts "$1" >/dev/null 2>&1
+  fi
+}
 _umum=0
 for h in deb.debian.org archive.ubuntu.com mirrors.fedoraproject.org; do
-  getent hosts "$h" >/dev/null 2>&1 && { _umum=1; break; }
+  _cari "$h" && { _umum=1; break; }
 done
 [ "$_umum" = 1 ] || exit ` + itoa(periksaDNSMati) + `
 _repo=` + shellQuote(hostRepo) + `
 [ -n "$_repo" ] || exit ` + itoa(periksaOK) + `
-getent hosts "$_repo" >/dev/null 2>&1 || exit ` + itoa(periksaRepoBuntu) + `
+_cari "$_repo" || exit ` + itoa(periksaRepoBuntu) + `
 exit ` + itoa(periksaOK)
 }
 
