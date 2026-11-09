@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { GetWebsiteLog, StreamWebsiteLog, StopDockerStream } from '../../../wailsjs/go/main/App';
 import { website } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { pushStreamLine, renderStreamLines } from '../../components/streamLines';
 
 interface LogStreamEvent {
   type: 'line' | 'end' | 'error';
@@ -57,7 +58,7 @@ export function DomainLogsTab({ serverId, domain }: { serverId: string; domain: 
       setLive(true);
       unsub = EventsOn(`website:logs:${streamId}`, (evt: LogStreamEvent) => {
         if (evt.type === 'line' && evt.line !== undefined) {
-          setLines((l) => [...l, evt.line as string]);
+          setLines((l) => pushStreamLine(l, evt.line as string));
         } else if (evt.type === 'error') {
           setError(evt.message ?? 'Stream log terputus');
           setLive(false);
@@ -91,7 +92,7 @@ export function DomainLogsTab({ serverId, domain }: { serverId: string; domain: 
       {notFound && <p className="workspace__placeholder">File log belum ada — domain ini mungkin belum pernah diakses.</p>}
       {!notFound && (
         <pre className="docker-engine__log" ref={logRef} style={{ maxHeight: 420 }}>
-          {lines.join('\n')}
+          {renderStreamLines(lines)}
         </pre>
       )}
     </div>

@@ -3,6 +3,7 @@ import { DockerContainerLogs, StreamDockerContainerLogs, StopDockerStream } from
 import { docker } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { X } from 'lucide-react';
+import { pushStreamLine, renderStreamLines } from '../../components/streamLines';
 
 interface LogStreamEvent {
   type: 'line' | 'end' | 'error';
@@ -60,7 +61,7 @@ export function ContainerLogsModal({
       setLive(true);
       unsub = EventsOn(`docker:logs:${streamId}`, (evt: LogStreamEvent) => {
         if (evt.type === 'line' && evt.line !== undefined) {
-          setLines((l) => [...l, evt.line as string]);
+          setLines((l) => pushStreamLine(l, evt.line as string));
         } else if (evt.type === 'error') {
           setError(evt.message ?? 'Stream log terputus');
           setLive(false);
@@ -93,7 +94,7 @@ export function ContainerLogsModal({
         <div className="modal-card__body modal-card__body--editor">
           {error && <p className="overview__error">{error}</p>}
           <pre className="docker-engine__log" ref={logRef}>
-            {lines.join('\n')}
+            {renderStreamLines(lines)}
           </pre>
         </div>
         <div className="modal-card__footer">

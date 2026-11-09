@@ -24,6 +24,7 @@ import { DatabaseManagerPanel } from './DatabaseManagerPanel';
 import { ArrowLeft, CornerDownRight, Lock, Plus, Pause, Play, Trash2 } from 'lucide-react';
 import { DomainFeatureGrid, featureLabel, type FeatureKey } from './DomainFeatureGrid';
 import { useT } from '../../i18n';
+import { pushStreamLine, renderStreamLines } from '../../components/streamLines';
 
 const SSL_EMAIL_KEY = 'poinhost.website.sslEmail';
 
@@ -92,7 +93,7 @@ function PHPTab({ serverId, domain, onChanged }: { serverId: string; domain: str
     const streamId = await StreamWebsiteInstall(serverId, 'php', version);
     streamIdRef.current = streamId;
     const unsub = EventsOn(`website:install:${streamId}`, (evt: StreamLineEvent) => {
-      if (evt.type === 'line' && evt.line) setLines((l) => [...l, evt.line as string]);
+      if (evt.type === 'line' && evt.line) setLines((l) => pushStreamLine(l, evt.line as string));
       else if (evt.type === 'error') {
         setError(evt.message ?? 'Instalasi gagal');
         setInstalling(null);
@@ -115,7 +116,7 @@ function PHPTab({ serverId, domain, onChanged }: { serverId: string; domain: str
     const streamId = await StreamWebsiteInstall(serverId, 'php-repo', '');
     streamIdRef.current = streamId;
     const unsub = EventsOn(`website:install:${streamId}`, (evt: StreamLineEvent) => {
-      if (evt.type === 'line' && evt.line) setLines((l) => [...l, evt.line as string]);
+      if (evt.type === 'line' && evt.line) setLines((l) => pushStreamLine(l, evt.line as string));
       else if (evt.type === 'error') {
         setError(evt.message ?? 'Instalasi gagal');
         setInstalling(null);
@@ -192,7 +193,7 @@ function PHPTab({ serverId, domain, onChanged }: { serverId: string; domain: str
         </div>
       )}
 
-      {lines.length > 0 && <pre className="docker-engine__log">{lines.join('\n')}</pre>}
+      {lines.length > 0 && <pre className="docker-engine__log">{renderStreamLines(lines)}</pre>}
     </div>
   );
 }
@@ -306,7 +307,7 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
     const streamId = await StreamWebsiteInstall(serverId, 'certbot', '');
     streamIdRef.current = streamId;
     const unsub = EventsOn(`website:install:${streamId}`, (evt: StreamLineEvent) => {
-      if (evt.type === 'line' && evt.line) setLines((l) => [...l, evt.line as string]);
+      if (evt.type === 'line' && evt.line) setLines((l) => pushStreamLine(l, evt.line as string));
       else if (evt.type === 'error') {
         setError(evt.message ?? 'Instalasi gagal');
         setInstalling(false);
@@ -340,7 +341,7 @@ function SSLTab({ serverId, domain, onChanged }: { serverId: string; domain: str
           </button>
         )}
         {error && <p className="overview__error">{error}</p>}
-        {lines.length > 0 && <pre className="docker-engine__log">{lines.join('\n')}</pre>}
+        {lines.length > 0 && <pre className="docker-engine__log">{renderStreamLines(lines)}</pre>}
       </div>
     );
   }

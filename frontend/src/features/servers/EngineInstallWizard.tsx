@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { StartDockerEngine, StreamDockerEngineInstall, StopDockerStream } from '../../../wailsjs/go/main/App';
 import { docker } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { pushStreamLine, renderStreamLines } from '../../components/streamLines';
 
 interface StreamLineEvent {
   type: 'line' | 'end' | 'error';
@@ -60,7 +61,7 @@ export function EngineInstallWizard({
     streamIdRef.current = streamId;
     const unsub = EventsOn(`docker:install:${streamId}`, (evt: StreamLineEvent) => {
       if (evt.type === 'line' && evt.line) {
-        setLines((l) => [...l, evt.line as string]);
+        setLines((l) => pushStreamLine(l, evt.line as string));
       } else if (evt.type === 'error') {
         setError(evt.message ?? 'Instalasi gagal');
         setRunning(false);
@@ -110,7 +111,7 @@ export function EngineInstallWizard({
       {error && <p className="overview__error">{error}</p>}
       {lines.length > 0 && (
         <pre className="docker-engine__log" ref={logRef}>
-          {lines.join('\n')}
+          {renderStreamLines(lines)}
         </pre>
       )}
     </div>

@@ -4,6 +4,7 @@ import { GetFirewallInstallInfo, StreamFirewallInstall, StopDockerStream } from 
 import { firewall } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { useT } from '../../i18n';
+import { pushStreamLine, renderStreamLines } from '../../components/streamLines';
 
 interface StreamLineEvent {
   type: 'line' | 'end' | 'error';
@@ -83,7 +84,7 @@ export function FirewallInstallWizard({ serverId, onInstalled }: { serverId: str
       unsubRef.current = EventsOn(`firewall:install:${streamId}`, (evt: StreamLineEvent) => {
         if (evt.type === 'line' && evt.line !== undefined) {
           setLines((l) => {
-            const next = [...l, evt.line as string];
+            const next = pushStreamLine(l, evt.line as string);
             return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
           });
         } else if (evt.type === 'error') {
@@ -159,7 +160,7 @@ export function FirewallInstallWizard({ serverId, onInstalled }: { serverId: str
       {error && <p className="overview__error">{error}</p>}
       {lines.length > 0 && (
         <pre className="docker-engine__log" ref={logRef}>
-          {lines.join('\n')}
+          {renderStreamLines(lines)}
         </pre>
       )}
     </div>

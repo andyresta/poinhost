@@ -2,10 +2,13 @@ package firewall
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/andyresta/poinhost/internal/core/pkgfail"
 )
 
 // Instalasi firewall untuk server yang belum punya satu pun.
@@ -257,6 +260,11 @@ func (s *Service) StreamInstall(ctx context.Context, serverID, backend string, o
 	const sentinel = "__poinhost_INSTALL_DONE__:"
 	wrapped := "(\n" + script + "\n) 2>&1\necho \"" + sentinel + "$?\""
 	exitCode := -1
+	// Ekor keluaran disimpan untuk menebak SEBAB kalau pemasangannya gagal.
+	// Dibatasi, bukan seluruhnya: satu `apt upgrade` bisa mengeluarkan puluhan
+	// ribu baris, dan yang menjelaskan kegagalan selalu ada di dekat akhir.
+	const ekorMaks = 80
+	var ekor []string
 	streamErr := s.executor.ExecStreamPTY(ctx, serverID, access.wrap(wrapped), func(line string) error {
 		if rest, ok := strings.CutPrefix(line, sentinel); ok {
 			if n, err := strconv.Atoi(strings.TrimSpace(rest)); err == nil {
@@ -264,13 +272,17 @@ func (s *Service) StreamInstall(ctx context.Context, serverID, backend string, o
 			}
 			return nil
 		}
+		ekor = append(ekor, line)
+		if len(ekor) > ekorMaks {
+			ekor = ekor[len(ekor)-ekorMaks:]
+		}
 		return onLine(line)
 	})
 	if streamErr != nil {
 		return streamErr
 	}
 	if exitCode != 0 {
-		return fmt.Errorf("instalasi gagal (kode keluar %d)", exitCode)
+		return errors.New(pkgfail.Pesan(exitCode, ekor))
 	}
 	return nil
 }

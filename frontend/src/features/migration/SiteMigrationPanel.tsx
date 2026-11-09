@@ -14,6 +14,7 @@ import { useTabsStore } from '../../store/tabs';
 import { useT } from '../../i18n';
 import type { MessageKey } from '../../i18n/messages';
 import { formatBytes } from './RemoteBrowser';
+import { pushStreamLine, renderStreamLines } from '../../components/streamLines';
 
 // Bentuk event dari StreamWebsiteInstall — sama dengan yang dipakai panel
 // Website; instalasinya memang jalur yang sama.
@@ -284,7 +285,7 @@ export function SiteMigrationPanel() {
       const streamId = await StreamWebsiteInstall(dstServerId, fix.kind, fix.param ?? '');
       const unsub = EventsOn(`website:install:${streamId}`, (evt: StreamLineEvent) => {
         if (evt.type === 'line' && evt.line) {
-          setInstallLines((l) => [...l, evt.line as string]);
+          setInstallLines((l) => pushStreamLine(l, evt.line as string));
         } else if (evt.type === 'error') {
           setError(evt.message ?? 'Instalasi gagal');
           setInstalling(null);
@@ -574,7 +575,7 @@ export function SiteMigrationPanel() {
             </div>
           ))}
           {installLines.length > 0 && (
-            <pre className="mig-site__installlog">{installLines.slice(-12).join('\n')}</pre>
+            <pre className="mig-site__installlog">{renderStreamLines(installLines.slice(-12))}</pre>
           )}
           {planFresh && plan.canStart && (
             <div className="mig-site__problem mig-site__problem--ok">

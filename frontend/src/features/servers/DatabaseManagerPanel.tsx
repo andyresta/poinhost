@@ -38,6 +38,7 @@ import { website } from '../../../wailsjs/go/models';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { MySQLExplorer } from './MySQLExplorer';
 import { PGExplorer } from './PGExplorer';
+import { pushStreamLine, renderStreamLines } from '../../components/streamLines';
 
 interface StreamLineEvent {
   type: 'line' | 'end' | 'error';
@@ -580,7 +581,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
     const streamId = await StreamWebsiteInstall(serverId, engine, installVersion);
     streamIdRef.current = streamId;
     const unsub = EventsOn(`website:install:${streamId}`, (evt: StreamLineEvent) => {
-      if (evt.type === 'line' && evt.line) setLines((l) => [...l, evt.line as string]);
+      if (evt.type === 'line' && evt.line) setLines((l) => pushStreamLine(l, evt.line as string));
       else if (evt.type === 'error') {
         setError(evt.message ?? 'Instalasi gagal');
         setInstalling(false);
@@ -897,7 +898,7 @@ export function DatabaseManagerPanel({ serverId, domain }: { serverId: string; d
               tidak perlu langkah manual.
             </p>
           )}
-          {lines.length > 0 && <pre className="docker-engine__log">{lines.join('\n')}</pre>}
+          {lines.length > 0 && <pre className="docker-engine__log">{renderStreamLines(lines)}</pre>}
         </div>
       )}
 

@@ -3,10 +3,12 @@ package website
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/andyresta/poinhost/internal/core/pkgfail"
 	"github.com/andyresta/poinhost/internal/core/secrets"
 	"github.com/andyresta/poinhost/internal/core/sshpool"
 	"github.com/andyresta/poinhost/internal/modules/firewall"
@@ -196,6 +198,11 @@ func (s *Service) runInstallStream(ctx context.Context, access *websiteAccess, s
 	const sentinel = "__poinhost_INSTALL_DONE__:"
 	wrapped := "(\n" + script + "\n) 2>&1\necho \"" + sentinel + "$?\""
 	exitCode := -1
+	// Ekor keluaran disimpan untuk menebak SEBAB kalau pemasangannya gagal.
+	// Dibatasi, bukan seluruhnya: satu `apt upgrade` bisa mengeluarkan puluhan
+	// ribu baris, dan yang menjelaskan kegagalan selalu ada di dekat akhir.
+	const ekorMaks = 80
+	var ekor []string
 	streamErr := s.executor.ExecStreamPTY(ctx, access.serverID, access.wrap(wrapped), func(line string) error {
 		if strings.HasPrefix(line, sentinel) {
 			codeStr := strings.TrimSpace(strings.TrimPrefix(line, sentinel))
@@ -204,13 +211,17 @@ func (s *Service) runInstallStream(ctx context.Context, access *websiteAccess, s
 			}
 			return nil
 		}
+		ekor = append(ekor, line)
+		if len(ekor) > ekorMaks {
+			ekor = ekor[len(ekor)-ekorMaks:]
+		}
 		return onLine(line)
 	})
 	if streamErr != nil {
 		return streamErr
 	}
 	if exitCode != 0 {
-		return errFmt("proses gagal dengan kode keluar %d", exitCode)
+		return errors.New(pkgfail.Pesan(exitCode, ekor))
 	}
 	return nil
 }
