@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/andyresta/poinhost/internal/core/sshpool"
 )
 
 // Keluaran asli dnf di Rocky 8 saat resolvernya mati. Inilah yang memicu
@@ -190,8 +192,19 @@ func TestHostRepo(t *testing.T) {
 // sedangkan satu mirror yang tidak terjawab sementara resolvernya sehat
 // menunjuk ke tempat yang sama sekali lain.
 func TestPeriksa_MembedakanDuaKegagalan(t *testing.T) {
-	jalan := func(kode int) func(string) (int, error) {
-		return func(string) (int, error) { return kode, nil }
+	// Executor mengembalikan HASIL DAN galat sekaligus saat perintahnya
+	// keluar bukan nol. Jadi tiap kasus di sini meniru itu: ada hasil, ada
+	// galat. Versi sebelumnya menyerah begitu melihat galatnya dan
+	// meloloskan server yang resolvernya mati — kesimpulannya sendiri
+	// dibuang.
+	jalan := func(kode int) func(string) (*sshpool.ExecResult, error) {
+		return func(string) (*sshpool.ExecResult, error) {
+			var err error
+			if kode != 0 {
+				err = errors.New("process exited with status " + strconv.Itoa(kode))
+			}
+			return &sshpool.ExecResult{ExitCode: kode}, err
+		}
 	}
 
 	if err := Periksa("mirrors.rockylinux.org", jalan(periksaOK)); err != nil {
@@ -199,7 +212,10 @@ func TestPeriksa_MembedakanDuaKegagalan(t *testing.T) {
 	}
 
 	err := Periksa("mirrors.rockylinux.org", jalan(periksaDNSMati))
-	if err == nil || !strings.Contains(err.Error(), "resolv.conf") {
+	if err == nil {
+		t.Fatal("DNS mati TIDAK menghentikan pemasangan — galat menang atas hasilnya")
+	}
+	if !strings.Contains(err.Error(), "resolv.conf") {
 		t.Errorf("DNS mati = %v", err)
 	}
 
@@ -211,9 +227,11 @@ func TestPeriksa_MembedakanDuaKegagalan(t *testing.T) {
 		t.Error("repo buntu menyuruh memeriksa resolv.conf padahal resolvernya sehat")
 	}
 
-	// Pemeriksaan yang GAGAL DIJALANKAN tidak menghalangi pemasangan.
-	gagal := func(string) (int, error) { return 0, errors.New("ssh putus") }
-	if err := Periksa("x", gagal); err != nil {
+	// Tanpa hasil sama sekali: pemasangan TIDAK dihalangi.
+	kosong := func(string) (*sshpool.ExecResult, error) {
+		return nil, errors.New("ssh putus")
+	}
+	if err := Periksa("x", kosong); err != nil {
 		t.Errorf("pemeriksaan yang tidak selesai menghalangi pemasangan: %v", err)
 	}
 }

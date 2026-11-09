@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/andyresta/poinhost/internal/core/pkgfail"
+	"github.com/andyresta/poinhost/internal/core/sshpool"
 )
 
 // periksaJaringan menolak memulai pemasangan kalau server tidak bisa
@@ -15,23 +16,10 @@ import (
 // puluh detik kemudian, yang justru hendak dihindari.
 func (s *Service) periksaJaringan(access *websiteAccess, distro distroInfo) error {
 	host := pkgfail.HostRepo(distro.PackageManager, strings.ToLower(strings.TrimSpace(distro.ID)))
-	return pkgfail.Periksa(host, func(script string) (int, error) {
-		res, err := s.run(access, script, pkgfail.BatasPeriksa)
-		if err != nil || res == nil {
-			return 0, errPeriksaTidakSelesai
-		}
-		return res.ExitCode, nil
+	return pkgfail.Periksa(host, func(script string) (*sshpool.ExecResult, error) {
+		return s.run(access, script, pkgfail.BatasPeriksa)
 	})
 }
-
-// errPeriksaTidakSelesai menandai pemeriksaan yang GAGAL DIJALANKAN, bukan
-// yang gagal hasilnya — pkgfail.Periksa membiarkan pemasangan lanjut saat
-// ini terjadi.
-var errPeriksaTidakSelesai = errSentinel("pemeriksaan jaringan tidak selesai")
-
-type errSentinel string
-
-func (e errSentinel) Error() string { return string(e) }
 
 // namaDistro memilih sebutan yang paling berarti bagi pemilik server.
 //

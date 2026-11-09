@@ -76,14 +76,13 @@ func TestLoad_MengisiDefault(t *testing.T) {
 	}
 }
 
-
 // Konfigurasi harus bertahan melewati restart agent — terutama enrollToken,
 // karena tanpa itu seluruh API Mobile Control menolak melayani sampai agent
 // dipasang ulang.
 func TestSaveLoad_MempertahankanEnrollToken(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "config.json")
 	in := &Config{
-		Listen:   DefaultListen,
+		Listen:      DefaultListen,
 		EnrollToken: "rahasia",
 	}
 	if err := Save(p, in); err != nil {
@@ -108,7 +107,6 @@ func TestSaveLoad_MempertahankanEnrollToken(t *testing.T) {
 		t.Errorf("EnrollToken = %q", out.EnrollToken)
 	}
 }
-
 
 // Regresi dari bug nyata: agent versi lama menyimpan allowlist dengan menulis
 // ulang seluruh config dari struct-nya, sehingga blok `selfServer` yang baru

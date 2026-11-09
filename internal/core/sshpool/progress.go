@@ -22,10 +22,10 @@ const jedaLapor = 150 * time.Millisecond
 
 // penghitung membungkus writer dan melaporkan kemajuannya.
 type penghitung struct {
-	w       io.Writer
-	total   int64
-	done    int64
-	lapor   Progress
+	w        io.Writer
+	total    int64
+	done     int64
+	lapor    Progress
 	terakhir time.Time
 }
 

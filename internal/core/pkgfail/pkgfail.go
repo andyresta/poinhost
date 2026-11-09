@@ -17,6 +17,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/andyresta/poinhost/internal/core/sshpool"
 )
 
 // Diagnosa adalah satu penjelasan beserta perintah pemeriksaannya.
@@ -261,11 +263,25 @@ func RepoBuntu(host string) Diagnosa {
 // (SSH putus, timeout) TIDAK menghalangi pemasangan: yang diketahui cuma
 // "pemeriksaan tidak selesai", bukan "DNS rusak", dan menolak atas dasar itu
 // menukar satu kegagalan yang jelas dengan satu lagi yang membingungkan.
-func Periksa(hostRepo string, jalankan func(script string) (int, error)) error {
-	kode, err := jalankan(skripPeriksa(hostRepo))
-	if err != nil {
+func Periksa(hostRepo string, jalankan func(script string) (*sshpool.ExecResult, error)) error {
+	res, _ := jalankan(skripPeriksa(hostRepo))
+
+	// Hasil yang ADA menang atas galatnya.
+	//
+	// sshpool.Executor sengaja mengembalikan hasil DAN galat sekaligus saat
+	// perintahnya keluar dengan kode bukan nol, supaya stdout-nya tidak
+	// hilang. Jadi galat yang disertai hasil BUKAN "tidak bisa dijalankan",
+	// melainkan jawabannya sendiri — dan memperlakukannya sebagai kegagalan
+	// adalah persis cara pemeriksaan ini pernah membuang kesimpulannya
+	// sendiri lalu meloloskan server yang resolvernya mati.
+	//
+	// Tanpa hasil sama sekali, yang diketahui cuma "pemeriksaan tidak
+	// selesai" — bukan "DNS rusak". Menolak memasang atas dasar itu menukar
+	// satu kegagalan yang jelas dengan satu lagi yang membingungkan.
+	if res == nil {
 		return nil
 	}
+	kode := res.ExitCode
 	switch kode {
 	case periksaDNSMati:
 		return errors.New(PesanAwal(DNSMati))
