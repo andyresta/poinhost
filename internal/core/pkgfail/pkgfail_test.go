@@ -1,6 +1,7 @@
 package pkgfail
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 	"testing"
@@ -135,18 +136,84 @@ func TestDNSMati_SatuKalimatUntukKeduaJalur(t *testing.T) {
 	}
 }
 
-// Skrip pemeriksaannya LULUS saat getent tidak ada: menolak memasang karena
-// alat pemeriksanya hilang menghalangi pemasangan yang sebenarnya sehat.
-func TestSkripPeriksaDNS_BentuknyaAman(t *testing.T) {
-	if !strings.Contains(SkripPeriksaDNS, "command -v getent") {
-		t.Error("tidak memeriksa keberadaan getent lebih dulu")
+// Pemeriksaannya DUA tahap, dan tahap keduanya yang menutup lubang nyata:
+// versi pertama lulus begitu satu nama berhasil, sehingga server yang
+// resolvernya hidup tapi tidak bisa menerjemahkan mirror distronya sendiri
+// lolos — lalu gagal di dnf beberapa puluh detik kemudian.
+func TestSkripPeriksa_MemeriksaMirrorDistroJuga(t *testing.T) {
+	skrip := skripPeriksa("mirrors.rockylinux.org")
+
+	if !strings.Contains(skrip, "mirrors.rockylinux.org") {
+		t.Error("host repo tidak ikut diperiksa")
 	}
-	if !strings.Contains(SkripPeriksaDNS, "|| exit 0") {
+	// Tahap pertama TIDAK boleh memuat host distronya, atau ia akan lulus
+	// lewat jalur umum dan tahap kedua jadi tidak pernah menentukan.
+	tahap1 := skrip[:strings.Index(skrip, "_repo=")]
+	if strings.Contains(tahap1, "rockylinux") {
+		t.Error("host distro ikut di tahap umum — tahap kedua jadi percuma")
+	}
+	// getent yang hilang membuat pemeriksaan LULUS: menolak memasang karena
+	// alat pemeriksanya tidak ada akan menghalangi pemasangan yang sehat.
+	if !strings.HasPrefix(skrip, "command -v getent >/dev/null 2>&1 || exit 0") {
 		t.Error("getent yang hilang tidak membuat pemeriksaan lulus")
 	}
-	// Lebih dari satu nama: satu nama saja akan menuduh DNS padahal yang
-	// diblokir cuma host itu.
-	if strings.Count(SkripPeriksaDNS, ".org")+strings.Count(SkripPeriksaDNS, ".com") < 2 {
-		t.Error("hanya mencoba satu nama")
+}
+
+func TestSkripPeriksa_TanpaHostRepoHanyaTahapUmum(t *testing.T) {
+	skrip := skripPeriksa("")
+	if !strings.Contains(skrip, `_repo=''`) {
+		t.Errorf("host kosong tidak dilewati dengan benar:\n%s", skrip)
+	}
+}
+
+func TestHostRepo(t *testing.T) {
+	kasus := map[string]string{
+		"rocky":     "mirrors.rockylinux.org",
+		"almalinux": "mirrors.almalinux.org",
+		"debian":    "deb.debian.org",
+		"ubuntu":    "archive.ubuntu.com",
+		"alpine":    "dl-cdn.alpinelinux.org",
+	}
+	for id, mau := range kasus {
+		if got := HostRepo("", id); got != mau {
+			t.Errorf("HostRepo(%q) = %q, mau %q", id, got, mau)
+		}
+	}
+	// Distro tak dikenal: tahap kedua DILEWATI, bukan ditebak. Menebak
+	// host yang salah akan menolak pemasangan yang sebenarnya sehat.
+	if got := HostRepo("", "distro-aneh"); got != "" {
+		t.Errorf("distro tak dikenal menebak host %q", got)
+	}
+}
+
+// Dua kegagalan, dua kalimat: resolver mati diperbaiki di /etc/resolv.conf,
+// sedangkan satu mirror yang tidak terjawab sementara resolvernya sehat
+// menunjuk ke tempat yang sama sekali lain.
+func TestPeriksa_MembedakanDuaKegagalan(t *testing.T) {
+	jalan := func(kode int) func(string) (int, error) {
+		return func(string) (int, error) { return kode, nil }
+	}
+
+	if err := Periksa("mirrors.rockylinux.org", jalan(periksaOK)); err != nil {
+		t.Errorf("lulus malah dianggap gagal: %v", err)
+	}
+
+	err := Periksa("mirrors.rockylinux.org", jalan(periksaDNSMati))
+	if err == nil || !strings.Contains(err.Error(), "resolv.conf") {
+		t.Errorf("DNS mati = %v", err)
+	}
+
+	err = Periksa("mirrors.rockylinux.org", jalan(periksaRepoBuntu))
+	if err == nil || !strings.Contains(err.Error(), "mirrors.rockylinux.org") {
+		t.Errorf("repo buntu = %v", err)
+	}
+	if err != nil && strings.Contains(err.Error(), "resolv.conf") {
+		t.Error("repo buntu menyuruh memeriksa resolv.conf padahal resolvernya sehat")
+	}
+
+	// Pemeriksaan yang GAGAL DIJALANKAN tidak menghalangi pemasangan.
+	gagal := func(string) (int, error) { return 0, errors.New("ssh putus") }
+	if err := Periksa("x", gagal); err != nil {
+		t.Errorf("pemeriksaan yang tidak selesai menghalangi pemasangan: %v", err)
 	}
 }

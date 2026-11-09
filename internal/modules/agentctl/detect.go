@@ -63,7 +63,6 @@ type Status struct {
 	Problem string `json:"problem,omitempty"`
 }
 
-
 // detectScript mengumpulkan SEMUA fakta dalam satu round-trip SSH: keadaan
 // yang dilaporkan harus menggambarkan satu momen, bukan lima momen berbeda.
 const detectScript = `

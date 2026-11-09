@@ -1,34 +1,38 @@
 package website
 
 import (
-	"errors"
 	"strings"
 	"time"
 
 	"github.com/andyresta/poinhost/internal/core/pkgfail"
 )
 
-// periksaDNS menolak memulai pemasangan kalau server tidak bisa
-// menerjemahkan nama publik sama sekali.
+// periksaJaringan menolak memulai pemasangan kalau server tidak bisa
+// menerjemahkan nama yang dibutuhkannya.
 //
-// Tanpa ini, dnf atau apt tetap dijalankan, menghabiskan puluhan detik
-// mencoba setiap cermin, lalu berhenti dengan layar penuh keluaran yang
-// mengarahkan perhatian ke repositori — padahal resolvernya yang mati.
-//
-// Kegagalan pemeriksaannya SENDIRI (SSH putus, timeout) tidak menghalangi
-// pemasangan: yang diketahui cuma "pemeriksaan tidak selesai", bukan
-// "DNS rusak", dan menolak memasang atas dasar itu menukar satu kegagalan
-// yang jelas dengan satu lagi yang membingungkan.
-func (s *Service) periksaDNS(access *websiteAccess) error {
-	res, err := s.run(access, pkgfail.SkripPeriksaDNS, 15*time.Second)
-	if err != nil || res == nil {
-		return nil
-	}
-	if res.ExitCode != 0 {
-		return errors.New(pkgfail.PesanAwal(pkgfail.DNSMati))
-	}
-	return nil
+// Dua tahap, dan tahap keduanya yang penting: resolver boleh saja hidup
+// sementara mirror distronya sendiri tidak terjawab. Versi pertama fungsi
+// ini hanya memeriksa tahap pertama dan lulus — lalu dnf gagal beberapa
+// puluh detik kemudian, yang justru hendak dihindari.
+func (s *Service) periksaJaringan(access *websiteAccess, distro distroInfo) error {
+	host := pkgfail.HostRepo(distro.PackageManager, strings.ToLower(strings.TrimSpace(distro.ID)))
+	return pkgfail.Periksa(host, func(script string) (int, error) {
+		res, err := s.run(access, script, 20*time.Second)
+		if err != nil || res == nil {
+			return 0, errPeriksaTidakSelesai
+		}
+		return res.ExitCode, nil
+	})
 }
+
+// errPeriksaTidakSelesai menandai pemeriksaan yang GAGAL DIJALANKAN, bukan
+// yang gagal hasilnya — pkgfail.Periksa membiarkan pemasangan lanjut saat
+// ini terjadi.
+var errPeriksaTidakSelesai = errSentinel("pemeriksaan jaringan tidak selesai")
+
+type errSentinel string
+
+func (e errSentinel) Error() string { return string(e) }
 
 // namaDistro memilih sebutan yang paling berarti bagi pemilik server.
 //

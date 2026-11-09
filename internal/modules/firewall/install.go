@@ -237,6 +237,9 @@ func (s *Service) StreamInstall(ctx context.Context, serverID, backend string, o
 	}
 	info := parseInstallInfo(res.Stdout, access.sshPort)
 	_ = onLine(fmt.Sprintf("Distro: %s (paket: %s)", info.DistroName, info.PackageManager))
+	if derr := s.periksaJaringan(access, info.PackageManager, info.DistroID); derr != nil {
+		return derr
+	}
 	if info.Blocker != "" {
 		return fmt.Errorf("%s", info.Blocker)
 	}
@@ -252,10 +255,6 @@ func (s *Service) StreamInstall(ctx context.Context, serverID, backend string, o
 	script, ok := installFirewallScript(info.PackageManager, backend, access.sshPort)
 	if !ok {
 		return fmt.Errorf("kombinasi %s/%s belum didukung", info.PackageManager, backend)
-	}
-
-	if derr := s.periksaDNS(access); derr != nil {
-		return derr
 	}
 
 	s.mutex.Lock(serverID)

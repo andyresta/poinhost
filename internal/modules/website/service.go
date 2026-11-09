@@ -192,6 +192,12 @@ func (s *Service) StreamInstall(ctx context.Context, serverID, kind, param strin
 locked:
 	defer s.mutex.Unlock(serverID)
 
+	// Diperiksa SEBELUM "Memulai instalasi...", supaya layar tidak pernah
+	// menjanjikan sesuatu yang langsung dibatalkan di baris berikutnya.
+	if err := s.periksaJaringan(access, distro); err != nil {
+		return err
+	}
+
 	_ = onLine("Memulai instalasi...")
 	if err := s.runInstallStream(ctx, access, script, onLine); err != nil {
 		return err
@@ -207,10 +213,6 @@ locked:
 }
 
 func (s *Service) runInstallStream(ctx context.Context, access *websiteAccess, script string, onLine func(string) error) error {
-	if err := s.periksaDNS(access); err != nil {
-		return err
-	}
-
 	const sentinel = "__poinhost_INSTALL_DONE__:"
 	wrapped := "(\n" + script + "\n) 2>&1\necho \"" + sentinel + "$?\""
 	exitCode := -1

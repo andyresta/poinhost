@@ -13,6 +13,7 @@
 package pkgfail
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 )
@@ -152,11 +153,104 @@ func Pesan(exitCode int, baris []string) string {
 // getent bagian dari glibc dan ada di Debian maupun RHEL. Kalau toh tidak
 // ada, pemeriksaannya LULUS: menolak memasang karena alat pemeriksanya
 // hilang akan menghalangi pemasangan yang sebenarnya sehat.
-const SkripPeriksaDNS = `command -v getent >/dev/null 2>&1 || exit 0
-for h in deb.debian.org archive.ubuntu.com mirrors.rockylinux.org mirrors.almalinux.org; do
-  getent hosts "$h" >/dev/null 2>&1 && exit 0
+// Kode keluar skrip pemeriksaan. Dibedakan karena yang harus dilakukan
+// pemilik server juga berbeda: resolver yang mati diperbaiki di
+// /etc/resolv.conf, sedangkan satu host repo yang tidak terjawab sementara
+// resolvernya sehat menunjuk ke penyaringan atau konfigurasi repo.
+const (
+	periksaOK        = 0
+	periksaDNSMati   = 1
+	periksaRepoBuntu = 2
+)
+
+// skripPeriksa membangun pemeriksaan untuk satu host repo tertentu.
+//
+// DUA tahap, dan itu intinya. Versi pertama hanya mencoba beberapa nama dan
+// lulus kalau SATU saja berhasil — sehingga server yang resolvernya hidup
+// tapi tidak bisa menerjemahkan mirror distronya sendiri lolos, lalu gagal
+// di dnf beberapa puluh detik kemudian. Persis yang terjadi di Rocky.
+//
+// Tahap pertama tetap memakai beberapa nama netral: satu nama saja akan
+// menuduh DNS mati padahal yang diblokir cuma host itu. Tahap kedua memakai
+// nama yang BENAR-BENAR dibutuhkan instalasi ini.
+func skripPeriksa(hostRepo string) string {
+	return `command -v getent >/dev/null 2>&1 || exit ` + itoa(periksaOK) + `
+_umum=0
+for h in deb.debian.org archive.ubuntu.com mirrors.fedoraproject.org; do
+  getent hosts "$h" >/dev/null 2>&1 && { _umum=1; break; }
 done
-exit 1`
+[ "$_umum" = 1 ] || exit ` + itoa(periksaDNSMati) + `
+_repo=` + shellQuote(hostRepo) + `
+[ -n "$_repo" ] || exit ` + itoa(periksaOK) + `
+getent hosts "$_repo" >/dev/null 2>&1 || exit ` + itoa(periksaRepoBuntu) + `
+exit ` + itoa(periksaOK)
+}
+
+// HostRepo adalah nama host yang BENAR-BENAR dibutuhkan pemasangan di
+// distro ini. Kosong berarti tidak diketahui — dan tahap kedua dilewati,
+// bukan ditebak.
+func HostRepo(pm, distroID string) string {
+	switch distroID {
+	case "rocky":
+		return "mirrors.rockylinux.org"
+	case "almalinux":
+		return "mirrors.almalinux.org"
+	case "fedora", "centos", "rhel", "ol", "oracle":
+		return "mirrors.fedoraproject.org"
+	case "debian":
+		return "deb.debian.org"
+	case "ubuntu":
+		return "archive.ubuntu.com"
+	case "alpine":
+		return "dl-cdn.alpinelinux.org"
+	}
+	// Distro tidak dikenal: tebak dari package managernya, dan kalau itu pun
+	// tidak menunjuk ke satu tempat yang pasti, lewati saja.
+	switch pm {
+	case "apk":
+		return "dl-cdn.alpinelinux.org"
+	}
+	return ""
+}
+
+// RepoBuntu dipakai saat resolver SEHAT tapi mirror distronya sendiri tidak
+// terjawab. Sengaja berbeda dari DNSMati: menyuruh orang memeriksa
+// /etc/resolv.conf padahal resolvernya baik-baik saja membuang waktunya di
+// tempat yang salah.
+func RepoBuntu(host string) Diagnosa {
+	return Diagnosa{
+		Sebab: "DNS server berjalan, tapi " + host + " — mirror yang dibutuhkan " +
+			"distro ini — tidak bisa diterjemahkan",
+		Periksa: "getent hosts " + host + " ; grep -rn mirror /etc/yum.repos.d/ /etc/apt/sources.list* 2>/dev/null | head",
+	}
+}
+
+// Periksa menjalankan pemeriksaan lewat runner pemanggilnya, lalu
+// menerjemahkan kode keluarnya.
+//
+// Runner mengembalikan kode keluar dan galat transport. Galat transport
+// (SSH putus, timeout) TIDAK menghalangi pemasangan: yang diketahui cuma
+// "pemeriksaan tidak selesai", bukan "DNS rusak", dan menolak atas dasar itu
+// menukar satu kegagalan yang jelas dengan satu lagi yang membingungkan.
+func Periksa(hostRepo string, jalankan func(script string) (int, error)) error {
+	kode, err := jalankan(skripPeriksa(hostRepo))
+	if err != nil {
+		return nil
+	}
+	switch kode {
+	case periksaDNSMati:
+		return errors.New(PesanAwal(DNSMati))
+	case periksaRepoBuntu:
+		return errors.New(PesanAwal(RepoBuntu(hostRepo)))
+	}
+	return nil
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }
 
 // PesanAwal menyusun galat untuk pemeriksaan yang gagal SEBELUM pemasangan
 // dimulai. Tanpa kode keluar, karena memang belum ada yang dijalankan.

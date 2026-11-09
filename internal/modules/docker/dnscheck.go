@@ -1,22 +1,26 @@
 package docker
 
 import (
-	"errors"
 	"time"
 
 	"github.com/andyresta/poinhost/internal/core/pkgfail"
 )
 
-// periksaDNS menolak memulai pemasangan kalau server tidak bisa
-// menerjemahkan nama publik sama sekali — lihat website.periksaDNS untuk
-// alasan lengkapnya.
-func (s *Service) periksaDNS(access *dockerAccess) error {
-	res, err := s.runDocker(access, pkgfail.SkripPeriksaDNS, 15*time.Second)
-	if err != nil || res == nil {
-		return nil
-	}
-	if res.ExitCode != 0 {
-		return errors.New(pkgfail.PesanAwal(pkgfail.DNSMati))
-	}
-	return nil
+// periksaJaringan menolak memulai pemasangan kalau server tidak bisa
+// menerjemahkan nama yang dibutuhkannya — lihat website.periksaJaringan.
+func (s *Service) periksaJaringan(access *dockerAccess, distro distroInfo) error {
+	host := pkgfail.HostRepo(distro.PackageManager, distro.ID)
+	return pkgfail.Periksa(host, func(script string) (int, error) {
+		res, err := s.runDocker(access, script, 20*time.Second)
+		if err != nil || res == nil {
+			return 0, errPeriksaTidakSelesai
+		}
+		return res.ExitCode, nil
+	})
 }
+
+type errSentinel string
+
+func (e errSentinel) Error() string { return string(e) }
+
+var errPeriksaTidakSelesai = errSentinel("pemeriksaan jaringan tidak selesai")

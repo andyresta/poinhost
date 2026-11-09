@@ -252,7 +252,6 @@ func (s *Service) buildPlan(req StartRequest) (*planData, error) {
 	return pd, nil
 }
 
-
 // planRuntime memeriksa hal-hal yang baru dibutuhkan SESUDAH domain pindah:
 // PHP-FPM dengan versi yang dipakai tiap domain, dan certbot untuk domain
 // yang di server asal ber-SSL.
@@ -627,8 +626,10 @@ func (s *Service) Cancel(jobID string) (*Progress, error) {
 	return &snap, nil
 }
 
-func dbKey(engine, name string) string        { return "db:" + engine + ":" + name }
-func dbUserKey(u website.DBUserExport) string { return "dbuser:" + u.Engine + ":" + u.Username + "@" + u.Host }
+func dbKey(engine, name string) string { return "db:" + engine + ":" + name }
+func dbUserKey(u website.DBUserExport) string {
+	return "dbuser:" + u.Engine + ":" + u.Username + "@" + u.Host
+}
 func dbUserLabel(u website.DBUserExport) string {
 	if u.Host != "" {
 		return u.Username + "@" + u.Host
