@@ -2,6 +2,7 @@ package website
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/andyresta/poinhost/internal/core/pkgfail"
@@ -27,4 +28,19 @@ func (s *Service) periksaDNS(access *websiteAccess) error {
 		return errors.New(pkgfail.PesanAwal(pkgfail.DNSMati))
 	}
 	return nil
+}
+
+// namaDistro memilih sebutan yang paling berarti bagi pemilik server.
+//
+// PRETTY_NAME kalau ada ("Rocky Linux 8.10"), karena itu yang ia kenali;
+// ID sebagai cadangan; dan kalau /etc/os-release pun tidak terbaca, sebut
+// itu apa adanya alih-alih mencetak "unknown".
+func namaDistro(d distroInfo) string {
+	if n := strings.TrimSpace(d.Name); n != "" && n != "unknown" {
+		return n
+	}
+	if id := strings.TrimSpace(d.ID); id != "" && id != "unknown" {
+		return id
+	}
+	return "server ini"
 }

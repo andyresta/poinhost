@@ -159,7 +159,19 @@ func (s *Service) StreamInstall(ctx context.Context, serverID, kind, param strin
 		return errFmt("jenis instalasi %q tidak dikenal", kind)
 	}
 	if !ok {
-		return errFmt("distro tidak didukung untuk instalasi otomatis (package manager: %s)", distro.PackageManager)
+		// Dua keadaan yang berbeda, dan dulu keduanya mencetak kalimat yang
+		// sama — yang kedua bahkan dengan tanda kurung kosong, sehingga tidak
+		// menyebut apa pun yang bisa ditindaklanjuti.
+		if strings.TrimSpace(distro.PackageManager) == "" {
+			return errFmt(
+				"tidak menemukan package manager yang dikenal di %s — poinhost memasang lewat apt, dnf, yum, atau apk",
+				namaDistro(distro),
+			)
+		}
+		return errFmt(
+			"%s belum didukung untuk memasang %s secara otomatis (package manager: %s)",
+			namaDistro(distro), kind, distro.PackageManager,
+		)
 	}
 
 	if !s.mutex.TryLock(serverID) {
