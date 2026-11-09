@@ -15,6 +15,7 @@ import {
   ListSystemUsers,
 } from '../../../wailsjs/go/main/App';
 import { files, sshpool } from '../../../wailsjs/go/models';
+import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { useConfirm } from '../../components/ConfirmDialog';
 import { useT } from '../../i18n';
 import { useTabsStore } from '../../store/tabs';
@@ -73,6 +74,35 @@ function breadcrumbParts(p: string, root: string): { label: string; path: string
 // dipakai tab Files milik satu domain di menu Website (dikunci ke document
 // root domain itu, lihat DomainFilesTab.tsx), kosongkan untuk modul Files
 // biasa (root filesystem penuh, mulai dari "/").
+/** Bentuk event kemajuan unduhan dari app.go (fileProgressEvent). */
+type FileProgress = { path: string; done: number; total: number; finished: boolean };
+
+/**
+ * Bar kemajuan unduhan, menggantikan kolom ukuran selama berjalan.
+ *
+ * Menumpang kolom yang sudah ada, bukan menambah baris: tabel di app ini
+ * barisnya setinggi satu baris, dan bar yang menambah tinggi akan membuat
+ * tombol aksi tidak lagi sejajar dengan datanya.
+ *
+ * total < 0 berarti ukurannya tidak bisa dibaca lebih dulu — bar-nya tak
+ * tentu, bukan 0%, karena 0% menjanjikan sesuatu yang tidak diketahui.
+ */
+function DownloadProgress({ done, total }: { done: number; total: number }) {
+  const tentu = total > 0;
+  const persen = tentu ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  return (
+    <span className="files-dl" title={tentu ? `${formatSize(done, false)} / ${formatSize(total, false)}` : undefined}>
+      <span className="files-dl__track">
+        <span
+          className={tentu ? 'files-dl__fill' : 'files-dl__fill files-dl__fill--tak-tentu'}
+          style={tentu ? { width: `${persen}%` } : undefined}
+        />
+      </span>
+      <span className="files-dl__pct">{tentu ? `${persen}%` : '…'}</span>
+    </span>
+  );
+}
+
 export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; rootPath?: string }) {
   const confirm = useConfirm();
   const t = useT();
@@ -181,10 +211,35 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
     });
   }
 
+  // Kemajuan unduhan, per path. Satu dialog simpan menahan panggilannya
+  // sampai user memilih tujuan, jadi dua unduhan bisa berjalan bersamaan dan
+  // satu nilai bersama akan membuat keduanya saling menimpa.
+  const [unduh, setUnduh] = useState<Record<string, { done: number; total: number }>>({});
+
   async function handleDownload(entry: sshpool.FileEntry) {
-    await withBusy(async () => {
-      await DownloadFileFromServer(serverId, entry.path, asUser);
+    const lepas = EventsOn(`files:download:${entry.path}`, (e: FileProgress) => {
+      setUnduh((u) => {
+        if (e.finished) {
+          const { [entry.path]: _, ...sisa } = u;
+          return sisa;
+        }
+        return { ...u, [entry.path]: { done: e.done, total: e.total } };
+      });
     });
+    try {
+      await withBusy(async () => {
+        await DownloadFileFromServer(serverId, entry.path, asUser);
+      });
+    } finally {
+      lepas();
+      // Dibersihkan juga di sini: dialog simpan yang DIBATALKAN tidak
+      // pernah memancarkan event selesai, dan tanpa ini barnya akan
+      // menggantung di layar tanpa ada yang mengunduh apa pun.
+      setUnduh((u) => {
+        const { [entry.path]: _, ...sisa } = u;
+        return sisa;
+      });
+    }
   }
 
   async function handleDelete() {
@@ -311,11 +366,21 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
                   <span className="files-panel__icon">{entry.isDir ? <Folder size={13} /> : <FileText size={13} />}</span>
                   {entry.name}
                 </td>
-                <td>{formatSize(entry.size, entry.isDir)}</td>
+                <td>
+                  {unduh[entry.path] ? (
+                    <DownloadProgress {...unduh[entry.path]} />
+                  ) : (
+                    formatSize(entry.size, entry.isDir)
+                  )}
+                </td>
                 <td>{formatDate(entry.modTime)}</td>
                 <td className="files-panel__row-actions">
                   {!entry.isDir && (
-                    <button title="Download" onClick={() => void handleDownload(entry)}>
+                    <button
+                      title="Download"
+                      disabled={!!unduh[entry.path]}
+                      onClick={() => void handleDownload(entry)}
+                    >
                       <Download size={14} />
                     </button>
                   )}

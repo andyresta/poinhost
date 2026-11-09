@@ -447,6 +447,16 @@ func (s *Service) UploadFromLocalPath(ctx context.Context, serverID, localPath, 
 // user lewat dialog "Simpan" OS asli (lihat app.go), stream langsung tanpa
 // buffer perantara (kecuali jalur sudo — lihat catatan di UploadFromLocalPath).
 func (s *Service) DownloadToLocalPath(ctx context.Context, serverID, remotePath, localPath, asUser string) error {
+	return s.DownloadToLocalPathProgress(ctx, serverID, remotePath, localPath, asUser, nil)
+}
+
+// DownloadToLocalPathProgress sama, tapi melaporkan kemajuannya.
+//
+// Jalur sudo TIDAK melaporkan kemajuan: ia membaca seluruh berkas ke memori
+// lebih dulu (lihat readFileSudo), jadi tidak ada yang bisa dilaporkan di
+// tengah — dan berpura-pura ada akan menampilkan bar yang melompat dari 0
+// ke 100 tanpa pernah bergerak.
+func (s *Service) DownloadToLocalPathProgress(ctx context.Context, serverID, remotePath, localPath, asUser string, lapor sshpool.Progress) error {
 	access, err := s.resolveAccess(ctx, serverID, asUser)
 	if err != nil {
 		return err
@@ -475,7 +485,7 @@ func (s *Service) DownloadToLocalPath(ctx context.Context, serverID, remotePath,
 		return nil
 	}
 
-	if err := s.sftp.DownloadFile(ctx, serverID, p, f); err != nil {
+	if err := s.sftp.DownloadFileProgress(ctx, serverID, p, f, lapor); err != nil {
 		_ = os.Remove(localPath)
 		return err
 	}

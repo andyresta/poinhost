@@ -522,7 +522,33 @@ func (a *App) DownloadFileFromServer(serverID, remotePath, asUser string) error 
 	if localPath == "" {
 		return nil
 	}
-	return a.filesSvc.DownloadToLocalPath(a.ctx, serverID, remotePath, localPath, asUser)
+	// Kemajuan dikirim per berkas, bukan per sesi: dialog simpan menahan
+	// panggilan ini sampai user memilih tujuan, jadi dua unduhan bisa
+	// berjalan bersamaan dan satu nama event bersama akan membuat keduanya
+	// saling menimpa bar masing-masing.
+	event := "files:download:" + remotePath
+	lapor := func(done, total int64) {
+		runtime.EventsEmit(a.ctx, event, fileProgressEvent{
+			Path: remotePath, Done: done, Total: total,
+		})
+	}
+	err = a.filesSvc.DownloadToLocalPathProgress(a.ctx, serverID, remotePath, localPath, asUser, lapor)
+	runtime.EventsEmit(a.ctx, event, fileProgressEvent{
+		Path: remotePath, Done: -1, Total: -1, Finished: true,
+	})
+	return err
+}
+
+// fileProgressEvent adalah kemajuan satu transfer berkas.
+//
+// Done -1 menandai transfer SELESAI, baik berhasil maupun gagal: layar harus
+// membuang bar-nya apa pun hasilnya, dan galatnya sendiri sudah dikembalikan
+// lewat nilai balik panggilannya.
+type fileProgressEvent struct {
+	Path     string `json:"path"`
+	Done     int64  `json:"done"`
+	Total    int64  `json:"total"`
+	Finished bool   `json:"finished"`
 }
 
 // ---------------------------------------------------------------------
