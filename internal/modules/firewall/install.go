@@ -254,6 +254,10 @@ func (s *Service) StreamInstall(ctx context.Context, serverID, backend string, o
 		return fmt.Errorf("kombinasi %s/%s belum didukung", info.PackageManager, backend)
 	}
 
+	if derr := s.periksaDNS(access); derr != nil {
+		return derr
+	}
+
 	s.mutex.Lock(serverID)
 	defer s.mutex.Unlock(serverID)
 

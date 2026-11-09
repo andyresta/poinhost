@@ -36,6 +36,14 @@ type pola struct {
 // keluaran gagal sering memicu beberapa pola sekaligus. DNS, misalnya, juga
 // memunculkan "Failed to download metadata" — dan yang berguna disebut
 // adalah DNS-nya, bukan akibatnya.
+// DNSMati dipakai DUA kali: oleh Telaah, sesudah pemasangan gagal, dan oleh
+// pemeriksaan awal sebelum pemasangan dimulai. Kalimatnya satu supaya user
+// tidak membaca dua penjelasan berbeda untuk keadaan yang sama.
+var DNSMati = Diagnosa{
+	Sebab:   "server tidak bisa menerjemahkan nama domain (DNS), jadi repositori paket tidak terjangkau",
+	Periksa: "cat /etc/resolv.conf && getent hosts deb.debian.org",
+}
+
 var daftar = []pola{
 	{
 		cocok: []string{
@@ -44,10 +52,7 @@ var daftar = []pola{
 			"name or service not known",
 			"curl error (6)",
 		},
-		hasil: Diagnosa{
-			Sebab:   "server tidak bisa menerjemahkan nama domain (DNS), jadi repositori paket tidak terjangkau",
-			Periksa: "cat /etc/resolv.conf && getent hosts deb.debian.org",
-		},
+		hasil: DNSMati,
 	},
 	{
 		cocok: []string{
@@ -127,6 +132,39 @@ func Pesan(exitCode int, baris []string) string {
 		return dasar
 	}
 	out := dasar + " — " + d.Sebab
+	if d.Periksa != "" {
+		out += ". Periksa di server: " + d.Periksa
+	}
+	return out
+}
+
+// SkripPeriksaDNS memeriksa server masih bisa menerjemahkan nama publik.
+//
+// Dijalankan SEBELUM pemasangan, bukan hanya ditebak sesudahnya: dnf dan apt
+// butuh puluhan detik sampai menyerah, dan selama itu layar penuh keluaran
+// yang mengarahkan perhatian ke repositori padahal resolvernya yang mati.
+//
+// Lulus kalau SATU saja nama berhasil diterjemahkan. Memakai satu nama saja
+// akan menuduh DNS padahal yang diblokir cuma host itu — dan menolak
+// memasang karena tuduhan yang salah jauh lebih merugikan daripada
+// membiarkan dnf mencoba.
+//
+// getent bagian dari glibc dan ada di Debian maupun RHEL. Kalau toh tidak
+// ada, pemeriksaannya LULUS: menolak memasang karena alat pemeriksanya
+// hilang akan menghalangi pemasangan yang sebenarnya sehat.
+const SkripPeriksaDNS = `command -v getent >/dev/null 2>&1 || exit 0
+for h in deb.debian.org archive.ubuntu.com mirrors.rockylinux.org mirrors.almalinux.org; do
+  getent hosts "$h" >/dev/null 2>&1 && exit 0
+done
+exit 1`
+
+// PesanAwal menyusun galat untuk pemeriksaan yang gagal SEBELUM pemasangan
+// dimulai. Tanpa kode keluar, karena memang belum ada yang dijalankan.
+func PesanAwal(d Diagnosa) string {
+	out := d.Sebab
+	if out != "" {
+		out = strings.ToUpper(out[:1]) + out[1:]
+	}
 	if d.Periksa != "" {
 		out += ". Periksa di server: " + d.Periksa
 	}

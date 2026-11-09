@@ -252,6 +252,10 @@ echo ">> Selesai."
 
 // runInstallStream menjalankan script install via PTY stream + sentinel exit code.
 func (s *Service) runInstallStream(ctx context.Context, access *dockerAccess, script string, onLine func(string) error) error {
+	if err := s.periksaDNS(access); err != nil {
+		return err
+	}
+
 	const sentinel = "__poinhost_INSTALL_DONE__:"
 	wrapped := "(\n" + script + "\n) 2>&1\necho \"" + sentinel + "$?\""
 	exitCode := -1

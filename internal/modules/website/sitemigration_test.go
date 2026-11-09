@@ -7,10 +7,10 @@ import (
 
 func TestMySQLGrantDatabase(t *testing.T) {
 	cases := []struct {
-		grant    string
-		db       string
-		global   bool
-		ok       bool
+		grant  string
+		db     string
+		global bool
+		ok     bool
 	}{
 		{"GRANT USAGE ON *.* TO `shop`@`%`", "", true, true},
 		{"GRANT ALL PRIVILEGES ON `shop\\_db`.* TO `shop`@`%`", "shop_db", false, true},

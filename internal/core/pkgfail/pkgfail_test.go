@@ -111,3 +111,42 @@ func TestPesan_MenyebutKodeDanLangkahnya(t *testing.T) {
 		}
 	}
 }
+
+// Kalimatnya satu, dipakai sebelum maupun sesudah pemasangan. Kalau
+// DNSMati lepas dari daftar polanya, user membaca dua penjelasan berbeda
+// untuk keadaan yang persis sama.
+func TestDNSMati_SatuKalimatUntukKeduaJalur(t *testing.T) {
+	sesudah, ok := Telaah(rockyDNSMati)
+	if !ok {
+		t.Fatal("Telaah tidak mengenali DNS mati")
+	}
+	if sesudah != DNSMati {
+		t.Errorf("diagnosa dari Telaah berbeda dari DNSMati:\n%+v\n%+v", sesudah, DNSMati)
+	}
+
+	awal := PesanAwal(DNSMati)
+	if !strings.Contains(awal, "DNS") || !strings.Contains(awal, "Periksa di server:") {
+		t.Errorf("pesan awal = %q", awal)
+	}
+	// Berdiri sendiri sebagai kalimat, jadi huruf pertamanya besar — beda
+	// dari Pesan(), yang menyisipkannya di tengah kalimat.
+	if awal[0] < 'A' || awal[0] > 'Z' {
+		t.Errorf("pesan awal tidak diawali huruf besar: %q", awal)
+	}
+}
+
+// Skrip pemeriksaannya LULUS saat getent tidak ada: menolak memasang karena
+// alat pemeriksanya hilang menghalangi pemasangan yang sebenarnya sehat.
+func TestSkripPeriksaDNS_BentuknyaAman(t *testing.T) {
+	if !strings.Contains(SkripPeriksaDNS, "command -v getent") {
+		t.Error("tidak memeriksa keberadaan getent lebih dulu")
+	}
+	if !strings.Contains(SkripPeriksaDNS, "|| exit 0") {
+		t.Error("getent yang hilang tidak membuat pemeriksaan lulus")
+	}
+	// Lebih dari satu nama: satu nama saja akan menuduh DNS padahal yang
+	// diblokir cuma host itu.
+	if strings.Count(SkripPeriksaDNS, ".org")+strings.Count(SkripPeriksaDNS, ".com") < 2 {
+		t.Error("hanya mencoba satu nama")
+	}
+}

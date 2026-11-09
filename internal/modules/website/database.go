@@ -1396,5 +1396,3 @@ func (s *Service) DBEnsureDatabase(req DBCreateDatabaseRequest) (bool, error) {
 	}
 	return true, nil
 }
-
-
