@@ -189,11 +189,15 @@ const certbotDeployHookPath = "/etc/letsencrypt/renewal-hooks/deploy/poinhost-re
 // samping untuk sertifikat yang belum perlu diperbarui.
 const certbotRenewCronPath = "/etc/cron.d/poinhost-certbot-renew"
 
+// Hook ini DITULIS KE DISK dan dijalankan certbot sendiri, di luar sesi
+// poinhost — jadi definisi poinhost_svc harus ikut di dalam berkasnya,
+// bukan hanya di skrip yang memasangnya.
 const certbotDeployHookScript = `#!/bin/sh
 # Dikelola poinhost — reload Nginx setiap kali certbot berhasil memperbarui
 # sertifikat apa pun di server ini (dipanggil OTOMATIS oleh certbot sendiri,
 # baik dari timer/cron bawaan OS maupun tombol Renew manual di poinhost).
-nginx -t && (systemctl reload nginx 2>/dev/null || systemctl restart nginx 2>/dev/null || service nginx reload 2>/dev/null || service nginx restart 2>/dev/null)
+` + SvcHelper + `
+nginx -t && poinhost_svc reload nginx
 `
 
 const certbotRenewCronContent = `# Dikelola poinhost — jangan edit manual.
@@ -564,9 +568,10 @@ func (s *Service) SSLRenew(serverID, domain string) (*SSLStatus, error) {
 	defer s.mutex.Unlock(serverID)
 
 	script := `set -e
+` + SvcHelper + `
 certbot renew --cert-name ` + shellQuote(domain) + ` --non-interactive
 nginx -t
-systemctl reload nginx || systemctl restart nginx`
+poinhost_svc reload nginx`
 	if _, err := s.run(access, script, 120*time.Second); err != nil {
 		return nil, err
 	}

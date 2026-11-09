@@ -114,6 +114,7 @@ func (s *Service) ProvisionMigratedVhost(serverID string, info DomainInfo) error
 	defer s.mutex.Unlock(serverID)
 
 	script := fmt.Sprintf(`set -e
+`+SvcHelper+`
 ENABLED=%s
 DISABLED=%s
 TARGET=%s
@@ -122,7 +123,7 @@ mkdir -p %s
 trap 'rm -f "$TARGET"' ERR
 echo %s | base64 -d > "$TARGET"
 nginx -t
-systemctl reload nginx || systemctl restart nginx
+poinhost_svc reload nginx
 trap - ERR
 `, shellQuote(configFilePath(domain, true)), shellQuote(configFilePath(domain, false)), shellQuote(target),
 		shellQuote(info.Root), shellQuote(b64))

@@ -216,13 +216,14 @@ func (s *Service) rewriteVhost(access *websiteAccess, path string, opts *vhostOp
 	content := buildVhostConfig(opts)
 	b64 := base64.StdEncoding.EncodeToString([]byte(content))
 	script := fmt.Sprintf(`set -e
+`+SvcHelper+`
 TARGET=%s
 BACKUP="$TARGET.bak.$$"
 cp "$TARGET" "$BACKUP"
 trap 'mv "$BACKUP" "$TARGET" 2>/dev/null || true' ERR
 echo %s | base64 -d > "$TARGET"
 nginx -t
-systemctl reload nginx || systemctl restart nginx
+poinhost_svc reload nginx
 rm -f "$BACKUP"
 trap - ERR
 `, shellQuote(path), shellQuote(b64))
@@ -256,6 +257,7 @@ func (s *Service) provisionDomain(access *websiteAccess, domain, root string, op
 	indexB64 := base64.StdEncoding.EncodeToString([]byte(defaultIndexHTML(domain)))
 
 	script := fmt.Sprintf(`set -e
+`+SvcHelper+`
 ENABLED=%s
 DISABLED=%s
 if [ -f "$ENABLED" ] || [ -f "$DISABLED" ]; then
@@ -268,7 +270,7 @@ echo %s | base64 -d > %s/index.html
 trap 'rm -f "$ENABLED"' ERR
 echo %s | base64 -d > "$ENABLED"
 nginx -t
-systemctl reload nginx || systemctl restart nginx
+poinhost_svc reload nginx
 trap - ERR
 `, shellQuote(enabledPath), shellQuote(disabledPath),
 		prepareWebRootScript(root, access.sshUser),
@@ -387,9 +389,10 @@ func (s *Service) Delete(req DeleteDomainRequest) error {
 		rmRoot = "rm -rf " + shellQuote(info.Root) + "\n"
 	}
 	script := fmt.Sprintf(`set -e
+`+SvcHelper+`
 rm -f %s %s
 %snginx -t
-systemctl reload nginx || systemctl restart nginx
+poinhost_svc reload nginx
 `, shellQuote(enabledPath), shellQuote(disabledPath), rmRoot)
 
 	if _, err := s.run(access, script, 20*time.Second); err != nil {
@@ -423,13 +426,14 @@ func (s *Service) SetEnabled(req SetEnabledRequest) error {
 		from, to = enabledPath, disabledPath
 	}
 	script := fmt.Sprintf(`set -e
+`+SvcHelper+`
 FROM=%s
 TO=%s
 if [ ! -f "$FROM" ]; then echo "__poinhost_MISSING__"; exit 1; fi
 mv "$FROM" "$TO"
 trap 'mv "$TO" "$FROM" 2>/dev/null || true' ERR
 nginx -t
-systemctl reload nginx || systemctl restart nginx
+poinhost_svc reload nginx
 trap - ERR
 `, shellQuote(from), shellQuote(to))
 

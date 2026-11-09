@@ -62,11 +62,11 @@ func parseDistroOutput(out string) distroInfo {
 // — gabungan + cache di getNginxStatus ini yang menghilangkan sebagian
 // besar rasa "lambat pindah menu" di homepoin, BUKAN soal SSH re-handshake
 // (yang di poinhost memang sudah tidak pernah terjadi sejak awal, §3).
-const combinedStatusScript = distroDetectScript + `
+const combinedStatusScript = distroDetectScript + SvcHelper + `
 echo "BIN=$(command -v nginx 2>/dev/null || true)"
 if command -v nginx >/dev/null 2>&1; then nginx -v 2>&1 | head -1; fi
-echo "ACTIVE=$(systemctl is-active nginx 2>/dev/null || echo unknown)"
-echo "ENABLED=$(systemctl is-enabled nginx 2>/dev/null || echo unknown)"
+echo "ACTIVE=$(poinhost_svc is-active nginx 2>/dev/null || echo unknown)"
+echo "ENABLED=$(poinhost_svc is-enabled nginx 2>/dev/null || echo unknown)"
 true`
 
 // getNginxStatus mengembalikan status Nginx (+ distro) untuk satu server,
@@ -141,8 +141,9 @@ func (s *Service) StartNginx(serverID string) (*NginxStatus, error) {
 	defer s.mutex.Unlock(serverID)
 
 	script := `set -e
-systemctl enable nginx 2>/dev/null || true
-systemctl start nginx 2>&1 || systemctl restart nginx 2>&1
+` + SvcHelper + `
+poinhost_svc enable nginx 2>/dev/null || true
+poinhost_svc start nginx 2>&1 || poinhost_svc restart nginx 2>&1
 nginx -v 2>&1 | head -1 || true`
 	if _, err := s.run(access, script, 20*time.Second); err != nil {
 		return nil, err
@@ -157,8 +158,9 @@ nginx -v 2>&1 | head -1 || true`
 // jadi vhost yang salah tidak pernah ikut di-reload ke config yang berjalan.
 func (s *Service) testReload(access *websiteAccess) error {
 	script := `set -e
+` + SvcHelper + `
 nginx -t 2>&1
-systemctl reload nginx 2>&1 || systemctl restart nginx 2>&1`
+poinhost_svc reload nginx`
 	res, err := s.run(access, script, 20*time.Second)
 	if err != nil {
 		return err
@@ -194,28 +196,29 @@ func installNginxScript(pm string) (string, bool) {
 	switch pm {
 	case "apt":
 		return `set -e
-` + aptWaitLock + `
+` + aptWaitLock + SvcHelper + `
 apt-get update
 apt-get install -y nginx
-systemctl enable nginx
-systemctl start nginx
+poinhost_svc enable nginx
+poinhost_svc start nginx
 nginx -t
 echo ">> Selesai."
 `, true
 	case "dnf", "yum":
 		bin := pm
 		return `set -e
-` + bin + ` install -y nginx
-systemctl enable nginx
-systemctl start nginx
+` + SvcHelper + bin + ` install -y nginx
+poinhost_svc enable nginx
+poinhost_svc start nginx
 nginx -t
 echo ">> Selesai."
 `, true
 	case "apk":
 		return `set -e
+` + SvcHelper + `
 apk add --no-cache nginx
-rc-update add nginx default 2>/dev/null || true
-service nginx start 2>/dev/null || rc-service nginx start 2>/dev/null || true
+poinhost_svc enable nginx
+poinhost_svc start nginx
 nginx -t
 echo ">> Selesai."
 `, true
