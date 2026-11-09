@@ -17,7 +17,15 @@ package website
 //
 // Untuk server yang memang memakai systemd, perintah yang dijalankan sama
 // persis dengan sebelumnya — termasuk jatuh ke restart saat reload gagal.
-const SvcHelper = `poinhost_svc() {
+// Diawali baris baru dengan SENGAJA. Konstanta ini disambung ke skrip lain,
+// dan yang di depannya tidak selalu berakhir dengan baris baru —
+// distroDetectScript berakhir dengan `true`, yang pernah menyambung jadi
+// satu kata dengan nama fungsi di bawah ini. Bash menerima itu sebagai
+// definisi fungsi dengan NAMA LAIN, jadi tidak ada galat sintaks sama
+// sekali: fungsinya cuma tidak pernah ada, dan setiap pemanggilnya gagal
+// sebagai "command not found" yang langsung ditelan `|| echo unknown`.
+const SvcHelper = `
+poinhost_svc() {
   _aksi="$1"; _svc="$2"
   if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then
     case "$_aksi" in
