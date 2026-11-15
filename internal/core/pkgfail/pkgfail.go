@@ -90,6 +90,23 @@ var daftar = []pola{
 		},
 	},
 	{
+		// Paketnya memang TIDAK ADA di repo yang aktif — beda dari repo yang
+		// tidak terjangkau. Keduanya dulu jatuh ke pola terakhir dan
+		// menyuruh orang memeriksa repolist, padahal yang ini sudah tahu
+		// persis apa yang kurang: satu repositori yang belum diaktifkan.
+		// Terjadi nyata untuk certbot di keluarga RHEL (ada di EPEL, bukan
+		// di BaseOS/AppStream) dan untuk docker-ce di jalur repo Rocky.
+		cocok: []string{
+			"unable to find a match",
+			"no match for argument",
+			"has no installation candidate",
+		},
+		hasil: Diagnosa{
+			Sebab:   "paket yang diminta tidak ada di satu pun repositori yang aktif di server ini",
+			Periksa: "dnf repolist enabled || apt-cache policy",
+		},
+	},
+	{
 		// Paling umum, jadi paling akhir: ia benar untuk banyak sebab, dan
 		// tiap pola di atas lebih berguna kalau yang cocok memang itu.
 		cocok: []string{

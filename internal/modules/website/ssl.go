@@ -590,14 +590,51 @@ command -v certbot
 echo ">> Certbot terpasang."
 `, true
 	case "dnf", "yum":
-		return `set -e
-` + pm + ` install -y certbot
-command -v certbot
-echo ">> Certbot terpasang."
-`, true
+		return skripCertbotRPM(pm), true
 	default:
 		return "", false
 	}
+}
+
+// skripCertbotRPM memasang certbot di keluarga RPM.
+//
+// `dnf install -y certbot` SAJA tidak cukup di sini, dan itu bukan detail
+// kecil: di Rocky, AlmaLinux, CentOS, dan RHEL, certbot tidak ada di BaseOS
+// maupun AppStream — ia ada di EPEL. Perintah polos itu karena itu berhenti
+// dengan "No match for argument: certbot", galat yang terdengar seperti
+// salah ketik nama paket padahal yang kurang adalah satu repositori.
+//
+// Fedora BERBEDA: certbot ada di repo utamanya, dan EPEL bahkan tidak ada
+// untuk Fedora. Jadi EPEL tidak boleh dipasang begitu saja untuk semua yang
+// memakai dnf.
+//
+// Yang menentukan karena itu adalah PERTANYAANNYA SENDIRI — apakah certbot
+// terjangkau dari repositori yang sekarang aktif — bukan daftar nama distro
+// di dalam kode. Daftar begitu akan salah untuk klon RHEL yang belum
+// disebut, dan salah lagi saat sebuah distro memindahkan paketnya.
+//
+// Nama paket pengaktif EPEL-nya sendiri berbeda-beda, jadi ketiga jalur
+// resminya dicoba berurutan: `epel-release` (ada di repo extras Rocky,
+// AlmaLinux, dan CentOS), `oracle-epel-release-elN` (Oracle Linux memberinya
+// nama lain), lalu rpm langsung dari Fedora Project (jalur resmi untuk RHEL,
+// yang memang tidak membawa epel-release sendiri).
+func skripCertbotRPM(pm string) string {
+	return `set -e
+if command -v certbot >/dev/null 2>&1 || ` + pm + ` -q info certbot >/dev/null 2>&1; then
+  echo ">> certbot sudah terjangkau dari repositori yang aktif."
+else
+  echo ">> certbot tidak ada di repositori yang aktif; mengaktifkan EPEL..."
+  # || true: di bawah set -e, server tanpa /etc/os-release akan berhenti di
+  # baris ini, padahal yang hilang cuma nomor versinya.
+  . /etc/os-release 2>/dev/null || true
+  _major="${VERSION_ID%%.*}"
+  ` + pm + ` install -y epel-release     || ` + pm + ` install -y "oracle-epel-release-el${_major}"     || ` + pm + ` install -y "https://dl.fedoraproject.org/pub/epel/epel-release-latest-${_major}.noarch.rpm"
+  ` + pm + ` makecache
+fi
+` + pm + ` install -y certbot
+command -v certbot
+echo ">> Certbot terpasang."
+`
 }
 
 // certbotProblem menarik blok laporan kegagalan certbot dari keluaran

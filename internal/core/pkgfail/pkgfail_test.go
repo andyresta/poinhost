@@ -63,6 +63,12 @@ func TestTelaah(t *testing.T) {
 			mau:   "jaringan",
 		},
 		{
+			// Rocky 8: certbot ada di EPEL, bukan di BaseOS/AppStream.
+			nama:  "paket tidak ada di repo yang aktif",
+			baris: []string{"No match for argument: certbot", "Error: Unable to find a match: certbot"},
+			mau:   "tidak ada di satu pun repositori yang aktif",
+		},
+		{
 			nama:  "repo rusak tanpa sebab yang lebih spesifik",
 			baris: []string{"Error: Failed to download metadata for repo 'epel'"},
 			mau:   "repositori",
