@@ -943,6 +943,36 @@ export namespace dockerxfer {
 
 export namespace files {
 	
+	export class ArchiveToolInfo {
+	    format: string;
+	    ready: boolean;
+	    missing: string[];
+	    packages: string[];
+	    distroId: string;
+	    distroName: string;
+	    packageManager: string;
+	    canInstall: boolean;
+	    blocker?: string;
+	    manualCommand?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ArchiveToolInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.format = source["format"];
+	        this.ready = source["ready"];
+	        this.missing = source["missing"];
+	        this.packages = source["packages"];
+	        this.distroId = source["distroId"];
+	        this.distroName = source["distroName"];
+	        this.packageManager = source["packageManager"];
+	        this.canInstall = source["canInstall"];
+	        this.blocker = source["blocker"];
+	        this.manualCommand = source["manualCommand"];
+	    }
+	}
 	export class ChmodRequest {
 	    serverId: string;
 	    path: string;

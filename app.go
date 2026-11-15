@@ -114,7 +114,7 @@ func NewApp() *App {
 	terminalSvc := terminal.NewService(terminals)
 
 	sftpClient := sshpool.NewSFTPClient(pool)
-	filesSvc := files.NewService(sftpClient, executor, serversSvc)
+	filesSvc := files.NewService(sftpClient, executor, serversSvc, mutex)
 	filexferSvc := filexfer.NewService(serversSvc, pool, sftpClient)
 
 	dockerSvc := docker.NewService(serversSvc, executor, mutex)
@@ -459,6 +459,47 @@ func (a *App) CompressFiles(req files.CompressRequest) error {
 // ExtractArchive mengekstrak arsip zip/tar.gz ke direktori tujuan.
 func (a *App) ExtractArchive(req files.ExtractRequest) error {
 	return a.filesSvc.Extract(a.ctx, req)
+}
+
+// CheckArchiveTool memeriksa apakah arsip ini bisa diekstrak di server —
+// dipanggil SEBELUM ExtractArchive, supaya alat yang kurang (`unzip` di
+// hampir semua image minimal) ketahuan sebelum pekerjaannya dimulai, bukan
+// muncul sebagai "exit 127" sesudahnya.
+func (a *App) CheckArchiveTool(req files.ExtractRequest) (*files.ArchiveToolInfo, error) {
+	return a.filesSvc.ArchiveTool(a.ctx, req)
+}
+
+// StreamArchiveToolInstall memasang alat ekstraksi yang kurang sambil
+// mengalirkan progresnya lewat event "files:install:<streamID>".
+//
+// Yang dikirim dari UI cuma FORMAT arsipnya ("zip" / "tar.gz"); nama paket
+// ditentukan backend, jadi panel file tidak bisa dipakai memasang paket
+// sembarangan.
+func (a *App) StreamArchiveToolInstall(serverID, format string) (string, error) {
+	streamID := uuid.NewString()
+	ctx, cancel := context.WithTimeout(a.ctx, 15*time.Minute)
+	a.registerStream(streamID, cancel)
+	eventName := "files:install:" + streamID
+
+	go func() {
+		err := a.filesSvc.StreamInstallArchiveTool(ctx, serverID, format, func(line string) error {
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "line", Line: line})
+			return nil
+		})
+		a.stopStream(streamID)
+		switch {
+		case err == nil:
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "end"})
+		case errors.Is(err, context.Canceled):
+			// Dibatalkan user lewat StopDockerStream — tidak perlu event error.
+		case errors.Is(err, context.DeadlineExceeded):
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "error", Message: "Instalasi melebihi batas waktu (15 menit) — periksa koneksi atau lock paket di server."})
+		default:
+			runtime.EventsEmit(a.ctx, eventName, dockerStreamEvent{Type: "error", Message: err.Error()})
+		}
+	}()
+
+	return streamID, nil
 }
 
 // CopyFiles menyalin satu/lebih file/direktori ke lokasi tujuan (sumber

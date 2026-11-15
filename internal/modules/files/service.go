@@ -42,11 +42,18 @@ type Service struct {
 	sftp     *sshpool.SFTPClient
 	executor *sshpool.Executor
 	servers  *servers.Service
+	// mutex dipakai HANYA oleh pemasangan paket (lihat archivetool.go).
+	// Operasi berkas biasa sengaja tidak memakainya: menyalin satu berkas
+	// besar tidak ada alasan menghalangi penelusuran direktori di tab lain.
+	// Yang tidak boleh bersamaan adalah dua hal yang memakai manajer paket
+	// server yang sama, dan registry ini yang sama dipegang modul website,
+	// docker, dan firewall.
+	mutex *sshpool.ServerMutexRegistry
 }
 
 // NewService membuat files.Service baru.
-func NewService(sftp *sshpool.SFTPClient, executor *sshpool.Executor, serversSvc *servers.Service) *Service {
-	return &Service{sftp: sftp, executor: executor, servers: serversSvc}
+func NewService(sftp *sshpool.SFTPClient, executor *sshpool.Executor, serversSvc *servers.Service, mutex *sshpool.ServerMutexRegistry) *Service {
+	return &Service{sftp: sftp, executor: executor, servers: serversSvc, mutex: mutex}
 }
 
 // List menampilkan isi satu direktori remote, direktori dulu baru file,
@@ -239,15 +246,19 @@ func (s *Service) Extract(ctx context.Context, req ExtractRequest) error {
 		return err
 	}
 
-	lower := strings.ToLower(archive)
-	var cmd string
-	switch {
-	case strings.HasSuffix(lower, ".zip"):
-		cmd = fmt.Sprintf("mkdir -p %s && ", shellQuote(dest)) + buildZipExtractCmd(archive, dest)
-	case strings.HasSuffix(lower, ".tar.gz"), strings.HasSuffix(lower, ".tgz"):
-		cmd = fmt.Sprintf("mkdir -p %s && tar -xzf %s -C %s", shellQuote(dest), shellQuote(archive), shellQuote(dest))
-	default:
+	// Formatnya ditentukan lewat archiveFormat yang SAMA dengan yang
+	// dipakai ArchiveTool, supaya pemeriksaan alat dan ekstraksi tidak
+	// mungkin berbeda pendapat tentang arsip yang sama.
+	format, ok := archiveFormat(archive)
+	if !ok {
 		return fmt.Errorf("format arsip tidak dikenali dari nama file: %s", BaseName(archive))
+	}
+	var cmd string
+	switch format {
+	case "zip":
+		cmd = fmt.Sprintf("mkdir -p %s && ", shellQuote(dest)) + buildZipExtractCmd(archive, dest)
+	default:
+		cmd = fmt.Sprintf("mkdir -p %s && tar -xzf %s -C %s", shellQuote(dest), shellQuote(archive), shellQuote(dest))
 	}
 
 	_, err = s.execAccess(ctx, access, cmd, 10*time.Minute, true)

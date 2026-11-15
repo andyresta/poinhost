@@ -51,7 +51,7 @@ func buildZipCompressCmd(archive string, quotedSources []string) string {
 		`if command -v zip >/dev/null 2>&1; then zip -r %s %s; `+
 			`elif command -v python3 >/dev/null 2>&1; then echo %s | base64 -d | python3 - %s %s; `+
 			`elif command -v python >/dev/null 2>&1; then echo %s | base64 -d | python - %s %s; `+
-			`else echo 'Perintah zip tidak ditemukan di server. Pasang dengan: apt install zip  (atau pastikan python3 tersedia).' >&2; exit 127; fi`,
+			`else echo 'Perintah zip tidak ada di server ini, dan python3 juga tidak — pasang salah satunya untuk bisa mengompres jadi .zip.' >&2; exit 127; fi`,
 		archiveQ, joined,
 		shellQuote(pyB64), archiveQ, joined,
 		shellQuote(pyB64), archiveQ, joined,
@@ -68,7 +68,7 @@ func buildZipExtractCmd(archive, dest string) string {
 		`if command -v unzip >/dev/null 2>&1; then unzip -o %s -d %s; `+
 			`elif command -v python3 >/dev/null 2>&1; then echo %s | base64 -d | python3 - %s %s; `+
 			`elif command -v python >/dev/null 2>&1; then echo %s | base64 -d | python - %s %s; `+
-			`else echo 'Perintah unzip tidak ditemukan di server. Pasang dengan: apt install unzip  (atau pastikan python3 tersedia).' >&2; exit 127; fi`,
+			`else echo 'Perintah unzip tidak ada di server ini. Buka arsip ini lewat tombol Ekstrak di poinhost — di sana unzip bisa dipasang sesuai distronya.' >&2; exit 127; fi`,
 		archiveQ, destQ,
 		shellQuote(pyB64), archiveQ, destQ,
 		shellQuote(pyB64), archiveQ, destQ,

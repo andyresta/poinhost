@@ -8,6 +8,7 @@ import {
   DeleteFiles,
   CompressFiles,
   ExtractArchive,
+  CheckArchiveTool,
   UploadFilesToServer,
   DownloadFileFromServer,
   ChmodFile,
@@ -25,6 +26,7 @@ import { CompressModal } from './CompressModal';
 import { ChmodModal } from './ChmodModal';
 import { EditFileModal } from './EditFileModal';
 import { SearchModal } from './SearchModal';
+import { ArchiveToolModal } from './ArchiveToolModal';
 
 // File > 512KB tidak ditawari untuk diedit sebagai teks — kemungkinan besar
 // biner atau terlalu besar untuk nyaman diedit di aplikasi (backend sendiri
@@ -119,6 +121,13 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
   const [renameTarget, setRenameTarget] = useState<sshpool.FileEntry | null>(null);
   const [editTarget, setEditTarget] = useState<sshpool.FileEntry | null>(null);
   const [chmodTarget, setChmodTarget] = useState<sshpool.FileEntry | null>(null);
+  // Arsip yang menunggu alat ekstraksinya dipasang. Entry-nya ikut disimpan
+  // supaya ekstraksi bisa dilanjutkan persis untuk arsip yang tadi diklik,
+  // tanpa menyuruh user menekan tombol yang sama dua kali.
+  const [toolGate, setToolGate] = useState<{
+    entry: sshpool.FileEntry;
+    info: files.ArchiveToolInfo;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
 
   // "Jalankan sebagai" — kosong berarti user SSH biasa (jalur SFTP cepat,
@@ -258,13 +267,36 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
     });
   }
 
-  async function handleExtract(entry: sshpool.FileEntry) {
+  async function runExtract(entry: sshpool.FileEntry) {
     await withBusy(async () => {
       await ExtractArchive(
         new files.ExtractRequest({ serverId, archivePath: entry.path, destPath: path, asUser }),
       );
       await load(path);
     });
+  }
+
+  // Alatnya diperiksa DULU. `unzip` tidak ada di hampir semua image minimal,
+  // dan sebelumnya itu baru ketahuan sesudah ekstraksi gagal dengan exit 127.
+  async function handleExtract(entry: sshpool.FileEntry) {
+    let info: files.ArchiveToolInfo;
+    try {
+      setBusy(true);
+      setError(null);
+      info = await CheckArchiveTool(
+        new files.ExtractRequest({ serverId, archivePath: entry.path, destPath: path, asUser }),
+      );
+    } catch (e) {
+      setError(String(e));
+      return;
+    } finally {
+      setBusy(false);
+    }
+    if (!info.ready) {
+      setToolGate({ entry, info });
+      return;
+    }
+    await runExtract(entry);
   }
 
   return (
@@ -415,6 +447,20 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
         </div>
         {loading && <div className="files-panel__loading">{t('common.loading')}</div>}
       </div>
+
+      {toolGate && (
+        <ArchiveToolModal
+          serverId={serverId}
+          info={toolGate.info}
+          archiveName={toolGate.entry.name}
+          onClose={() => setToolGate(null)}
+          onReady={() => {
+            const entry = toolGate.entry;
+            setToolGate(null);
+            void runExtract(entry);
+          }}
+        />
+      )}
 
       {modal === 'newFolder' && (
         <PromptModal

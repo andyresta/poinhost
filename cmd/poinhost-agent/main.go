@@ -218,7 +218,7 @@ func newStack(acfg *agentcfg.Config, cfgPath string) (*stack, error) {
 	// unit, daftar aksi yang sah, dan penyusunan perintah systemctl hanya ada
 	// di satu tempat.
 	servicesSvc := services.NewService(serversSvc, executor, mutex)
-	filesSvc := files.NewService(sshpool.NewSFTPClient(pool), executor, serversSvc)
+	filesSvc := files.NewService(sshpool.NewSFTPClient(pool), executor, serversSvc, mutex)
 	firewallSvc := firewall.NewService(serversSvc, executor, mutex)
 	websiteSvc := website.NewService(serversSvc, executor, mutex, db, vault, firewallSvc)
 	dockerSvc := docker.NewService(serversSvc, executor, mutex)

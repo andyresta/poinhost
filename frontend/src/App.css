@@ -2513,6 +2513,33 @@ button svg {
   margin-top: 2px;
 }
 
+/* Modal "alat ekstraksi belum ada" (lihat features/servers/ArchiveToolModal.tsx) */
+.archive-tool__distro {
+  margin: 6px 0 10px;
+  color: var(--neutral);
+  font-size: 12px;
+}
+.archive-tool__note,
+.archive-tool__manual {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--neutral);
+}
+.archive-tool__note svg,
+.archive-tool__manual svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.archive-tool__ok {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--success);
+}
+
 /* ---------------------------------------------------------------------
    Agent Control (lihat features/servers/AgentControlPanel.tsx)
    --------------------------------------------------------------------- */

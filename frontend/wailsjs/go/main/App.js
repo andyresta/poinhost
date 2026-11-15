@@ -26,6 +26,10 @@ export function ApproveMobileControlDevice(arg1, arg2) {
   return window['go']['main']['App']['ApproveMobileControlDevice'](arg1, arg2);
 }
 
+export function CheckArchiveTool(arg1) {
+  return window['go']['main']['App']['CheckArchiveTool'](arg1);
+}
+
 export function ChmodFile(arg1) {
   return window['go']['main']['App']['ChmodFile'](arg1);
 }
@@ -624,6 +628,10 @@ export function StopDockerContainer(arg1, arg2) {
 
 export function StopDockerStream(arg1) {
   return window['go']['main']['App']['StopDockerStream'](arg1);
+}
+
+export function StreamArchiveToolInstall(arg1, arg2) {
+  return window['go']['main']['App']['StreamArchiveToolInstall'](arg1, arg2);
 }
 
 export function StreamDockerContainerLogs(arg1) {

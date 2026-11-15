@@ -26,6 +26,8 @@ export function ApplyComposeConfig(arg1:string,arg2:string):Promise<docker.Compo
 
 export function ApproveMobileControlDevice(arg1:string,arg2:string):Promise<Array<agentctl.Device>>;
 
+export function CheckArchiveTool(arg1:files.ExtractRequest):Promise<files.ArchiveToolInfo>;
+
 export function ChmodFile(arg1:files.ChmodRequest):Promise<void>;
 
 export function CloseServerTab(arg1:string):Promise<void>;
@@ -325,6 +327,8 @@ export function StartWebsiteDB(arg1:string,arg2:string):Promise<website.DBEngine
 export function StopDockerContainer(arg1:string,arg2:string):Promise<void>;
 
 export function StopDockerStream(arg1:string):Promise<void>;
+
+export function StreamArchiveToolInstall(arg1:string,arg2:string):Promise<string>;
 
 export function StreamDockerContainerLogs(arg1:docker.LogsRequest):Promise<string>;
 
