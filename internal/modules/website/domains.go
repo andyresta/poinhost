@@ -215,9 +215,13 @@ func optionsFromInfo(info DomainInfo) *vhostOptions {
 func (s *Service) rewriteVhost(access *websiteAccess, path string, opts *vhostOptions) error {
 	content := buildVhostConfig(opts)
 	b64 := base64.StdEncoding.EncodeToString([]byte(content))
+	// Boolean jaringan SELinux dinyalakan SEBELUM vhost ditulis, bukan
+	// sesudah: kalau ia gagal, yang gagal adalah langkah yang tidak mengubah
+	// apa pun, dan vhost lama masih utuh. Untuk domain static baris ini
+	// kosong — lihat selinuxProxy.
 	script := fmt.Sprintf(`set -e
-`+SvcHelper+`
-TARGET=%s
+`+SvcHelper+SELinuxHelper+`
+`+selinuxProxy(opts)+`TARGET=%s
 BACKUP="$TARGET.bak.$$"
 cp "$TARGET" "$BACKUP"
 trap 'mv "$BACKUP" "$TARGET" 2>/dev/null || true' ERR
@@ -257,7 +261,7 @@ func (s *Service) provisionDomain(access *websiteAccess, domain, root string, op
 	indexB64 := base64.StdEncoding.EncodeToString([]byte(defaultIndexHTML(domain)))
 
 	script := fmt.Sprintf(`set -e
-`+SvcHelper+`
+`+SvcHelper+SELinuxHelper+`
 ENABLED=%s
 DISABLED=%s
 if [ -f "$ENABLED" ] || [ -f "$DISABLED" ]; then
@@ -267,7 +271,7 @@ fi
 %s
 echo %s | base64 -d > %s/index.html
 %s
-trap 'rm -f "$ENABLED"' ERR
+%s%strap 'rm -f "$ENABLED"' ERR
 echo %s | base64 -d > "$ENABLED"
 nginx -t
 poinhost_svc reload nginx
@@ -276,6 +280,7 @@ trap - ERR
 		prepareWebRootScript(root, access.sshUser),
 		shellQuote(indexB64), shellQuote(root),
 		prepareWebRootScript(root, access.sshUser),
+		selinuxLabel(root), selinuxProxy(opts),
 		shellQuote(vhostB64))
 
 	res, err := s.run(access, script, 30*time.Second)

@@ -414,8 +414,18 @@ func (s *Service) SSLIssue(req SSLIssueRequest) (*SSLStatus, error) {
 		}
 	}
 
+	// Label SELinux webroot dikembalikan ke bawaan SEBELUM certbot jalan,
+	// bukan cuma saat domainnya dibuat.
+	//
+	// Berkas bisa masuk ke webroot kapan saja sesudah itu — diunggah,
+	// di-rsync, diekstrak, atau DIPINDAH dari tempat lain. `mv` membawa
+	// label lamanya ikut serta, dan satu berkas berlabel salah membuat nginx
+	// ditolak membaca berkas verifikasi yang baru saja ditulis certbot. Yang
+	// sampai ke Let's Encrypt adalah 403 dari server sendiri, dan pesan
+	// "unauthorized" yang diterima user tidak menyebut SELinux sama sekali.
 	var mkdirs strings.Builder
 	mkdirs.WriteString("set -e\n")
+	mkdirs.WriteString(SELinuxHelper)
 	seen := map[string]bool{}
 	for _, t := range targets {
 		if seen[t.Root] {
@@ -423,6 +433,7 @@ func (s *Service) SSLIssue(req SSLIssueRequest) (*SSLStatus, error) {
 		}
 		seen[t.Root] = true
 		mkdirs.WriteString("mkdir -p " + shellQuote(t.Root+"/.well-known/acme-challenge") + "\n")
+		mkdirs.WriteString(selinuxLabel(t.Root))
 	}
 	script := mkdirs.String() + buildIssueCommand(email, domain, targets, false)
 
