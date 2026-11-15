@@ -253,6 +253,18 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
     }
   }
 
+  // Update agent, lalu baca ulang daftar perangkat.
+  //
+  // Pembacaan ulang itu bukan kemewahan: effect yang memuat daftar perangkat
+  // bergantung pada status.state, dan state-nya sudah 'running' SEBELUM
+  // update maupun sesudahnya. Tanpa pemanggilan eksplisit di sini, galat
+  // "agent belum mendukung persetujuan perangkat" tetap terpampang sesudah
+  // update yang justru baru saja memperbaikinya.
+  async function handleUpdate() {
+    await act('update', () => UpdateAgent(serverId), (st) => setStatus(st));
+    await loadDevices();
+  }
+
   async function handleUninstall() {
     const ok = await confirm({
       title: t('mobile.uninstall'),
@@ -553,14 +565,32 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
             </button>
           </h3>
 
+          {/* Tombolnya mengikuti SEBAB kegagalannya.
+              Sebelumnya di sini selalu ada "Coba lagi", dan untuk sebab yang
+              paling sering terjadi — agent di server lebih tua daripada yang
+              dibawa poinhost — tombol itu tidak akan pernah berhasil berapa
+              kali pun ditekan. Yang memperbaikinya ada jauh di bawah, di blok
+              aksi service, tempat orang yang sedang membaca galat ini tidak
+              sedang melihat. */}
           {deviceError && (
             <>
               <p className="fw-notice fw-notice--warn">
                 <TriangleAlert size={13} /> {deviceError}
               </p>
-              <button className="btn" disabled={anyBusy} onClick={() => void loadDevices()}>
-                <RotateCw size={13} /> {t('common.retry')}
-              </button>
+              {status.updateAvailable ? (
+                <button
+                  className="btn btn--primary"
+                  disabled={anyBusy}
+                  onClick={() => void handleUpdate()}
+                >
+                  {busy === 'update' ? <span className="spinner" /> : <Download size={13} />}{' '}
+                  {t('mobile.updateTo', { version: status.bundledVersion ?? '' })}
+                </button>
+              ) : (
+                <button className="btn" disabled={anyBusy} onClick={() => void loadDevices()}>
+                  <RotateCw size={13} /> {t('common.retry')}
+                </button>
+              )}
             </>
           )}
 
@@ -756,7 +786,7 @@ export function MobileControlPanel({ serverId }: { serverId: string }) {
             {/* Hanya muncul kalau versi yang dibundel terbukti lebih baru dari
                 yang terpasang — bukan sekadar berbeda. */}
             {status.updateAvailable && (
-              <button className="btn btn--primary" disabled={anyBusy} onClick={() => void act('update', () => UpdateAgent(serverId))}>
+              <button className="btn btn--primary" disabled={anyBusy} onClick={() => void handleUpdate()}>
                 {busy === 'update' ? <span className="spinner" /> : <Download size={13} />}{' '}
                 {t('mobile.updateTo', { version: status.bundledVersion ?? '' })}
               </button>

@@ -9,17 +9,18 @@ import (
 	"time"
 
 	"github.com/andyresta/poinhost/internal/agent/agentcfg"
+	"github.com/andyresta/poinhost/internal/agent/dist"
 )
 
 // AdminSocket adalah unix socket permukaan admin agent.
 const AdminSocket = DataDir + "/admin.sock"
 
-// errAgentTooOld adalah pesan untuk agent yang belum punya socket admin.
+// penandaNoAdmin menandai stderr saat socket admin tidak ada.
 //
-// Dipakai sebagai penanda di stderr sekaligus sebagai pesan ke user, supaya
-// yang dibaca layar persis yang dimaksud — bukan terjemahan curl atas
-// keadaan yang tidak dipahaminya.
-const errAgentTooOld = "Agent di server ini belum mendukung persetujuan perangkat — tekan Update agent dulu."
+// Penanda, bukan kalimat: kalimatnya disusun di Go dari fakta-fakta yang
+// ikut dikumpulkan skrip, supaya yang dibaca layar adalah sebab yang
+// BENAR, bukan satu tebakan yang kebetulan sering tepat.
+const penandaNoAdmin = "POINHOST_NOADMIN"
 
 // callAdmin memanggil permukaan admin agent lewat SSH.
 //
@@ -28,29 +29,76 @@ const errAgentTooOld = "Agent di server ini belum mendukung persetujuan perangka
 // internet tidak punya jalan menyentuh persetujuan perangkat sama sekali.
 // Autentikasinya adalah izin berkas itu — app desktop sudah naik ke root di
 // sesi SSH-nya, dan tidak ada rahasia tambahan yang perlu disimpan di sini.
+//
+// Socket yang TIDAK ADA punya lebih dari satu sebab, dan versi pertama fungsi
+// ini menyebut satu saja: "agent terlalu lama, tekan Update agent". Itu
+// menyesatkan untuk agent baru yang kebetulan sedang mati atau sedang
+// di-restart, dan untuk agent baru yang socket adminnya gagal dibuka — yang
+// di main.go memang SENGAJA tidak fatal. Jadi fakta pembedanya dikumpulkan
+// dalam round-trip yang sama: service hidup atau tidak, dan versi berapa yang
+// benar-benar terpasang.
 func (s *Service) callAdmin(ctx context.Context, serverID, method, path string) (string, error) {
 	access, err := s.resolveAccess(serverID)
 	if err != nil {
 		return "", err
 	}
-	// Socket diperiksa lebih dulu supaya agent versi lama punya jawaban yang
-	// bisa ditindaklanjuti. Tanpa ini curl gagal menyambung dan yang sampai
-	// ke layar adalah "agent tidak merespons", yang mengirim pemiliknya
-	// memeriksa service yang sebenarnya sehat — padahal yang kurang cuma
-	// satu tombol Update agent.
-	script := "if [ ! -S " + shellQuote(AdminSocket) + " ]; then echo " +
-		shellQuote(errAgentTooOld) + " >&2; exit 90; fi\n" +
-		"curl -fsS --max-time 10 -X " + method +
-		" --unix-socket " + shellQuote(AdminSocket) +
-		" http://localhost" + path + "\n"
-	res, err := s.run(ctx, access, script, 30*time.Second)
+	res, err := s.run(ctx, access, skripAdmin(method, path), 30*time.Second)
 	if err != nil {
-		if res != nil && strings.Contains(res.Stderr, errAgentTooOld) {
-			return "", errors.New(errAgentTooOld)
+		if res != nil && strings.Contains(res.Stderr, penandaNoAdmin) {
+			return "", errors.New(sebabNoAdmin(res.Stderr, dist.Version()))
 		}
 		return "", fmt.Errorf("agent tidak merespons — pastikan service-nya berjalan dan versinya sudah mendukung persetujuan perangkat: %w", err)
 	}
 	return strings.TrimSpace(res.Stdout), nil
+}
+
+// skripAdmin memanggil permukaan admin, atau — kalau socketnya tidak ada —
+// mengumpulkan fakta yang membedakan sebab-sebabnya.
+//
+// Pengumpulan fakta itu ada di round-trip yang SAMA dengan pemanggilannya,
+// bukan di SSH kedua: keadaan yang dilaporkan harus menggambarkan satu
+// momen. Socket yang hilang lalu service yang dibaca sedetik kemudian bisa
+// menghasilkan cerita yang tidak pernah benar-benar terjadi.
+func skripAdmin(method, path string) string {
+	return `sock=` + shellQuote(AdminSocket) + `
+if [ -S "$sock" ]; then
+  curl -fsS --max-time 10 -X ` + method + ` --unix-socket "$sock" http://localhost` + path + `
+  exit $?
+fi
+echo ` + penandaNoAdmin + ` >&2
+echo "active=$(systemctl is-active ` + UnitName + ` 2>/dev/null)" >&2
+if [ -x ` + BinaryPath + ` ]; then echo "version=$(` + BinaryPath + ` --version 2>/dev/null | head -n1)" >&2; fi
+exit 90
+`
+}
+
+// sebabNoAdmin menyusun kalimat dari fakta yang dikumpulkan skripAdmin.
+//
+// Tiap cabang menyebut langkah yang benar-benar memperbaiki keadaan itu.
+// Yang paling sering terjadi — agent lama yang memang perlu di-update —
+// menyebut KEDUA versinya, karena "tekan Update agent" tanpa angka tidak
+// menerangkan apa pun bagi orang yang baru saja menekan Pasang.
+// bundel diterima sebagai argumen, bukan dibaca dari dist di dalam sini:
+// versi yang dibundel berasal dari berkas yang dibuat saat rilis dan TIDAK
+// ikut di-commit, jadi fungsi yang membacanya sendiri akan berperilaku beda
+// di mesin pengembang dan di CI — dan tesnya ikut berbeda.
+func sebabNoAdmin(stderr, bundel string) string {
+	kv := parseKV(stderr)
+	versi := strings.TrimSpace(kv["version"])
+	aktif := strings.TrimSpace(kv["active"]) == "active"
+	bundel = strings.TrimSpace(bundel)
+
+	switch {
+	case versi == "":
+		return "Agent belum terpasang di server ini — pasang dulu dari panel Mobile Control."
+	case !aktif:
+		return "Agent " + versi + " sedang tidak berjalan, jadi persetujuan perangkat tidak bisa dibuka. Nyalakan agent-nya dulu."
+	case decideVersionAction(versi, bundel) == versionUpdate:
+		return "Agent " + versi + " di server ini belum punya persetujuan perangkat; versi " + bundel +
+			" yang dibawa poinhost sudah. Tekan Update agent untuk memasangnya."
+	}
+	return "Agent " + versi + " berjalan, tapi socket admin " + AdminSocket +
+		" tidak terbuka. Buka Log agent untuk melihat alasannya."
 }
 
 func (s *Service) readConfig(ctx context.Context, access *agentAccess) (*agentcfg.Config, error) {
