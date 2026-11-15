@@ -208,33 +208,9 @@ docker version
 echo ">> Selesai."
 `, true
 	case "dnf":
-		return `set -e
-echo ">> Menginstall Docker Engine (skrip resmi get.docker.com)..."
-dnf install -y curl ca-certificates || true
-curl -fsSL https://get.docker.com -o /tmp/poinhost-get-docker.sh
-sh /tmp/poinhost-get-docker.sh
-rm -f /tmp/poinhost-get-docker.sh
-echo ">> Mengaktifkan service docker..."
-systemctl enable docker 2>/dev/null || true
-systemctl start docker 2>/dev/null || systemctl restart docker 2>/dev/null || true
-sleep 2
-docker version
-echo ">> Selesai."
-`, true
+		return skripRPM("dnf"), true
 	case "yum":
-		return `set -e
-echo ">> Menginstall Docker Engine (skrip resmi get.docker.com)..."
-yum install -y curl ca-certificates || true
-curl -fsSL https://get.docker.com -o /tmp/poinhost-get-docker.sh
-sh /tmp/poinhost-get-docker.sh
-rm -f /tmp/poinhost-get-docker.sh
-echo ">> Mengaktifkan service docker..."
-systemctl enable docker 2>/dev/null || true
-systemctl start docker 2>/dev/null || systemctl restart docker 2>/dev/null || true
-sleep 2
-docker version
-echo ">> Selesai."
-`, true
+		return skripRPM("yum"), true
 	case "apk":
 		return `set -e
 echo ">> Memasang Docker via APK (Alpine)..."
@@ -248,6 +224,76 @@ echo ">> Selesai."
 	default:
 		return "", false
 	}
+}
+
+// skripRPM memasang Docker di keluarga RPM.
+//
+// Beda dari cabang apt, ia TIDAK langsung menyerahkan semuanya ke
+// get.docker.com. Alasannya satu kegagalan nyata: get.docker.com memilih
+// repositori dari ID distro, sehingga di Rocky ia memakai
+// download.docker.com/linux/rocky — dan jalur itu memuat containerd.io
+// serta semua plugin, TAPI tidak memuat docker-ce sama sekali. Hasilnya
+// instalasi berjalan dua menit, menambah repo, memperbarui metadata, lalu
+// berhenti dengan "Unable to find a match: docker-ce docker-ce-cli
+// docker-ce-rootless-extras" — galat yang tidak menyebutkan bahwa yang salah
+// adalah jalur reponya. Hal yang sama berlaku untuk AlmaLinux dan Oracle
+// Linux; yang berisi engine-nya adalah jalur centos, rhel, dan fedora.
+//
+// Jalur yang dipakai karena itu DIPERIKSA, bukan ditebak atau ditanam
+// sebagai daftar distro di sini. Daftar seperti itu akan salah dua kali:
+// hari ini untuk klon RHEL yang belum kita sebut, dan nanti saat Docker
+// melengkapi jalur rocky lalu kode ini tetap memaksa centos. Yang diperiksa
+// adalah pertanyaan yang sebenarnya — apakah di jalur itu ada docker-ce —
+// dan kalau pemeriksaannya sendiri tidak bisa menjawab, instalasi tetap
+// diteruskan lewat get.docker.com seperti sebelumnya, bukan dihentikan.
+func skripRPM(bin string) string {
+	return `set -e
+echo ">> Memasang dependensi..."
+` + bin + ` install -y curl ca-certificates || true
+
+# Dibaca dengan || true: di bawah set -e, satu server tanpa /etc/os-release
+# akan menghentikan SELURUH instalasi di baris ini, padahal yang hilang cuma
+# nama distronya — dan pemeriksaan di bawah sudah menangani "unknown".
+. /etc/os-release 2>/dev/null || true
+_id="${ID:-unknown}"
+_ver="${VERSION_ID%%.*}"
+_arch="$(uname -m)"
+
+_ada_engine() {
+  curl -fsS --max-time 20 "https://download.docker.com/linux/$1/$_ver/$_arch/stable/Packages/" 2>/dev/null | grep -q 'docker-ce-'
+}
+
+echo ">> Memeriksa repositori Docker untuk $_id $_ver ($_arch)..."
+_jalur=""
+if _ada_engine "$_id"; then
+  _jalur="$_id"
+elif _ada_engine centos; then
+  _jalur="centos"
+fi
+
+if [ "$_jalur" = "centos" ] && [ "$_id" != "centos" ]; then
+  echo ">> Repo Docker untuk $_id tidak memuat docker-ce; memakai jalur resmi centos/$_ver."
+  rm -f /etc/yum.repos.d/docker-ce.repo /etc/yum.repos.d/docker-ce-staging.repo
+  # Berkas .repo diunduh langsung, bukan lewat ` + "`config-manager --add-repo`" + `:
+  # perintah itu dihapus di dnf5, yang dipakai Fedora dan RHEL 10 ke atas.
+  curl -fsSL https://download.docker.com/linux/centos/docker-ce.repo -o /etc/yum.repos.d/docker-ce.repo
+  ` + bin + ` makecache
+  echo ">> Menginstall Docker Engine..."
+  ` + bin + ` install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+else
+  echo ">> Menginstall Docker Engine (skrip resmi get.docker.com)..."
+  curl -fsSL https://get.docker.com -o /tmp/poinhost-get-docker.sh
+  sh /tmp/poinhost-get-docker.sh
+  rm -f /tmp/poinhost-get-docker.sh
+fi
+
+echo ">> Mengaktifkan service docker..."
+systemctl enable docker 2>/dev/null || true
+systemctl start docker 2>/dev/null || systemctl restart docker 2>/dev/null || true
+sleep 2
+docker version
+echo ">> Selesai."
+`
 }
 
 // runInstallStream menjalankan script install via PTY stream + sentinel exit code.
