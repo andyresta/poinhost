@@ -2873,3 +2873,22 @@ button svg {
   font-variant-numeric: tabular-nums;
   color: var(--neutral);
 }
+
+/* Bar unggahan, menumpang di toolbar — berkas yang diunggah belum punya
+   baris di tabel untuk ditumpangi (lihat UploadProgressBar). */
+.files-up {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 190px;
+  max-width: 320px;
+  font-size: 12px;
+}
+.files-up__nama {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--neutral);
+}

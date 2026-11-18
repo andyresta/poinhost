@@ -360,7 +360,7 @@ export function UpdateAgent(arg1:string):Promise<agentctl.Status>;
 
 export function UpdateWebsiteCronJob(arg1:website.CronJobRequest):Promise<website.CronJobInfo>;
 
-export function UploadFilesToServer(arg1:string,arg2:string,arg3:string):Promise<void>;
+export function UploadFilesToServer(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function WriteFileContent(arg1:files.WriteFileRequest):Promise<void>;
 

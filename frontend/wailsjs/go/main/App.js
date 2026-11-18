@@ -694,8 +694,8 @@ export function UpdateWebsiteCronJob(arg1) {
   return window['go']['main']['App']['UpdateWebsiteCronJob'](arg1);
 }
 
-export function UploadFilesToServer(arg1, arg2, arg3) {
-  return window['go']['main']['App']['UploadFilesToServer'](arg1, arg2, arg3);
+export function UploadFilesToServer(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['UploadFilesToServer'](arg1, arg2, arg3, arg4);
 }
 
 export function WriteFileContent(arg1) {

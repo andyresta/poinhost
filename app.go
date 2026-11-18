@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -534,19 +535,54 @@ func (a *App) ChmodFile(req files.ChmodRequest) error {
 // remoteDir. Ini sengaja BUKAN <input type=file>+base64 ala aplikasi web —
 // dialog asli lebih natural untuk aplikasi desktop dan menghindari
 // menampung seluruh isi file di memori JS.
-func (a *App) UploadFilesToServer(serverID, remoteDir, asUser string) error {
+// uploadID dipakai untuk menamai event kemajuannya, dan datang dari layar,
+// bukan dibuat di sini. Alasannya: nama berkas yang diunggah baru diketahui
+// SESUDAH dialog OS ditutup, jadi layar tidak punya apa pun untuk dijadikan
+// kunci pendengar sebelum panggilan ini dimulai. Id dari layar memutus
+// masalah itu, sekaligus membuat dua panel yang mengunggah ke direktori yang
+// sama tidak saling menimpa bar masing-masing.
+func (a *App) UploadFilesToServer(serverID, remoteDir, asUser, uploadID string) error {
 	localPaths, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
 		Title: "Pilih file untuk diupload",
 	})
 	if err != nil {
 		return err
 	}
-	for _, localPath := range localPaths {
-		if err := a.filesSvc.UploadFromLocalPath(a.ctx, serverID, localPath, remoteDir, asUser); err != nil {
-			return fmt.Errorf("upload %s: %w", localPath, err)
+
+	event := "files:upload:" + uploadID
+	// Dialog yang DIBATALKAN tidak memilih berkas apa pun. Event selesai
+	// tetap dikirim, supaya bar yang sudah terlanjur dipasang layar tidak
+	// menggantung menunggu unggahan yang tidak pernah dimulai.
+	defer runtime.EventsEmit(a.ctx, event, uploadProgressEvent{Finished: true})
+
+	for i, localPath := range localPaths {
+		nama := filepath.Base(localPath)
+		nomor, jumlah := i+1, len(localPaths)
+		lapor := func(done, total int64) {
+			runtime.EventsEmit(a.ctx, event, uploadProgressEvent{
+				Name: nama, Index: nomor, Count: jumlah, Done: done, Total: total,
+			})
+		}
+		if err := a.filesSvc.UploadFromLocalPathProgress(a.ctx, serverID, localPath, remoteDir, asUser, lapor); err != nil {
+			return fmt.Errorf("upload %s: %w", nama, err)
 		}
 	}
 	return nil
+}
+
+// uploadProgressEvent adalah kemajuan satu sesi unggahan.
+//
+// Berbeda dari fileProgressEvent, ia membawa nomor berkas keberapa dari
+// berapa: satu dialog bisa memilih banyak berkas sekaligus, dan bar yang
+// kembali ke nol tanpa menyebut "2 dari 5" terlihat seperti unggahan yang
+// mengulang dari awal.
+type uploadProgressEvent struct {
+	Name     string `json:"name"`
+	Index    int    `json:"index"`
+	Count    int    `json:"count"`
+	Done     int64  `json:"done"`
+	Total    int64  `json:"total"`
+	Finished bool   `json:"finished"`
 }
 
 // DownloadFileFromServer membuka dialog simpan NATIVE OS untuk memilih

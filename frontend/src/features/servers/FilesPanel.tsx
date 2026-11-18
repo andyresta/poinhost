@@ -79,6 +79,16 @@ function breadcrumbParts(p: string, root: string): { label: string; path: string
 /** Bentuk event kemajuan unduhan dari app.go (fileProgressEvent). */
 type FileProgress = { path: string; done: number; total: number; finished: boolean };
 
+/** Bentuk event kemajuan unggahan dari app.go (uploadProgressEvent). */
+type UploadProgress = {
+  name: string;
+  index: number;
+  count: number;
+  done: number;
+  total: number;
+  finished: boolean;
+};
+
 /**
  * Bar kemajuan unduhan, menggantikan kolom ukuran selama berjalan.
  *
@@ -94,6 +104,36 @@ function DownloadProgress({ done, total }: { done: number; total: number }) {
   const persen = tentu ? Math.min(100, Math.round((done / total) * 100)) : 0;
   return (
     <span className="files-dl" title={tentu ? `${formatSize(done, false)} / ${formatSize(total, false)}` : undefined}>
+      <span className="files-dl__track">
+        <span
+          className={tentu ? 'files-dl__fill' : 'files-dl__fill files-dl__fill--tak-tentu'}
+          style={tentu ? { width: `${persen}%` } : undefined}
+        />
+      </span>
+      <span className="files-dl__pct">{tentu ? `${persen}%` : '…'}</span>
+    </span>
+  );
+}
+
+/**
+ * Bar kemajuan unggahan, di toolbar.
+ *
+ * Tidak menumpang baris tabel seperti bar unduhan: berkas yang diunggah
+ * BELUM ADA di daftar, jadi tidak ada baris miliknya untuk ditumpangi.
+ *
+ * Nomor berkas keberapa dari berapa ikut ditampilkan — satu dialog bisa
+ * memilih banyak berkas, dan bar yang kembali ke nol tanpa keterangan itu
+ * terlihat seperti unggahan yang mengulang dari awal.
+ */
+function UploadProgressBar({ p }: { p: UploadProgress }) {
+  const tentu = p.total > 0;
+  const persen = tentu ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
+  return (
+    <span className="files-up" title={p.name}>
+      <span className="files-up__nama">
+        {p.name}
+        {p.count > 1 ? ` (${p.index}/${p.count})` : ''}
+      </span>
       <span className="files-dl__track">
         <span
           className={tentu ? 'files-dl__fill' : 'files-dl__fill files-dl__fill--tak-tentu'}
@@ -214,16 +254,33 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
   }
 
   async function handleUpload() {
-    await withBusy(async () => {
-      await UploadFilesToServer(serverId, path, asUser);
-      await load(path);
+    // Id dibuat di sini, bukan di backend: nama berkasnya baru diketahui
+    // sesudah dialog OS ditutup, jadi tidak ada apa pun untuk dijadikan
+    // kunci pendengar kalau menunggu backend yang menamainya.
+    const uploadId = crypto.randomUUID();
+    const lepas = EventsOn(`files:upload:${uploadId}`, (e: UploadProgress) => {
+      setUnggah(e.finished ? null : e);
     });
+    try {
+      await withBusy(async () => {
+        await UploadFilesToServer(serverId, path, asUser, uploadId);
+        await load(path);
+      });
+    } finally {
+      lepas();
+      setUnggah(null);
+    }
   }
 
   // Kemajuan unduhan, per path. Satu dialog simpan menahan panggilannya
   // sampai user memilih tujuan, jadi dua unduhan bisa berjalan bersamaan dan
   // satu nilai bersama akan membuat keduanya saling menimpa.
   const [unduh, setUnduh] = useState<Record<string, { done: number; total: number }>>({});
+
+  // Kemajuan unggahan: SATU saja, bukan per berkas. Dialog OS hanya bisa
+  // dibuka satu kali dalam satu waktu, jadi tidak ada dua sesi yang berjalan
+  // bersamaan dari panel yang sama.
+  const [unggah, setUnggah] = useState<UploadProgress | null>(null);
 
   async function handleDownload(entry: sshpool.FileEntry) {
     const lepas = EventsOn(`files:download:${entry.path}`, (e: FileProgress) => {
@@ -314,6 +371,7 @@ export function FilesPanel({ serverId, rootPath = '/' }: { serverId: string; roo
         <button className="btn btn--sm" disabled={busy} onClick={() => void handleUpload()}>
           {busy ? <span className="spinner" /> : <Upload size={13} />} Upload
         </button>
+        {unggah && <UploadProgressBar p={unggah} />}
         <button className="btn btn--sm" disabled={busy} onClick={() => setModal('search')}>
           <Search size={13} /> Cari
         </button>

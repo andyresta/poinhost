@@ -423,6 +423,20 @@ func parseFileMode(raw string) (os.FileMode, error) {
 // dialog OS, lihat app.go) ke direktori remote yang sedang dibuka, memakai
 // nama file aslinya.
 func (s *Service) UploadFromLocalPath(ctx context.Context, serverID, localPath, remoteDir, asUser string) error {
+	return s.UploadFromLocalPathProgress(ctx, serverID, localPath, remoteDir, asUser, nil)
+}
+
+// UploadFromLocalPathProgress sama dengan UploadFromLocalPath, tapi
+// melaporkan kemajuannya.
+//
+// Jalur sudo tetap melapor, walau cuma dua kali — awal dan akhir, dengan
+// total -1 (tidak diketahui). Ia memang tidak bisa streaming: isinya dibaca
+// penuh ke memori dulu lalu ditulis lewat shell, jadi tidak ada titik di
+// tengah yang bisa dihitung. Tapi "tidak bisa menghitung" bukan alasan
+// untuk diam: layar yang kosong selama satu menit tidak bisa dibedakan dari
+// aplikasi yang menggantung, dan bar tak tentu sudah menjawab pertanyaan
+// yang sebenarnya — apakah ini masih berjalan.
+func (s *Service) UploadFromLocalPathProgress(ctx context.Context, serverID, localPath, remoteDir, asUser string, lapor sshpool.Progress) error {
 	access, err := s.resolveAccess(ctx, serverID, asUser)
 	if err != nil {
 		return err
@@ -439,6 +453,10 @@ func (s *Service) UploadFromLocalPath(ctx context.Context, serverID, localPath, 
 	if access.viaSudo() {
 		// Sudo tidak bisa stream langsung (perlu lewat shell) — baca penuh
 		// dulu ke memori, batasan yang diterima sama seperti homepoin.
+		if lapor != nil {
+			lapor(0, -1)
+			defer lapor(-1, -1)
+		}
 		data, err := os.ReadFile(localPath)
 		if err != nil {
 			return fmt.Errorf("baca file lokal: %w", err)
@@ -451,7 +469,15 @@ func (s *Service) UploadFromLocalPath(ctx context.Context, serverID, localPath, 
 		return fmt.Errorf("buka file lokal: %w", err)
 	}
 	defer f.Close()
-	return s.sftp.UploadStream(ctx, serverID, target, f)
+
+	// Ukurannya dibaca lebih dulu supaya barnya bergerak ke ujung, bukan
+	// sekadar berputar. Stat yang gagal TIDAK menggagalkan unggahan —
+	// totalnya cukup dilaporkan sebagai tidak diketahui.
+	var total int64 = -1
+	if st, serr := f.Stat(); serr == nil {
+		total = st.Size()
+	}
+	return s.sftp.UploadFileProgress(ctx, serverID, target, f, total, lapor)
 }
 
 // DownloadToLocalPath mengunduh satu file remote ke path LOKAL yang dipilih
@@ -484,6 +510,11 @@ func (s *Service) DownloadToLocalPathProgress(ctx context.Context, serverID, rem
 	defer f.Close()
 
 	if access.viaSudo() {
+		// Sama seperti unggahan lewat sudo: tidak ada titik di tengah yang
+		// bisa dihitung, tapi layar tetap harus menunjukkan ada yang jalan.
+		if lapor != nil {
+			lapor(0, -1)
+		}
 		data, err := s.readFileSudo(ctx, access, p)
 		if err != nil {
 			_ = os.Remove(localPath)
